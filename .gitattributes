@@ -1,0 +1,62 @@
+# ===============================
+# AutoTarefas - Git Attributes
+# Padroniza finais de linha e tipos de arquivo
+# ===============================
+
+# Detectar automaticamente arquivos de texto e normalizar finais de linha (LF)
+* text=auto
+
+# --- Python ---
+*.py  text eol=lf
+*.pyw text eol=lf
+*.pyx text eol=lf
+*.pxd text eol=lf
+
+# --- Shell Scripts ---
+*.sh   text eol=lf
+*.bash text eol=lf
+
+# --- Scripts Windows ---
+*.bat  text eol=crlf
+*.cmd  text eol=crlf
+*.ps1  text eol=crlf
+
+# --- Documentação ---
+*.md   text eol=lf
+*.rst  text eol=lf
+*.txt  text eol=lf
+LICENSE text eol=lf
+
+# --- Configurações ---
+*.json  text eol=lf
+*.yaml  text eol=lf
+*.yml   text eol=lf
+*.toml  text eol=lf
+*.ini   text eol=lf
+*.cfg   text eol=lf
+.gitignore     text eol=lf
+.gitattributes text eol=lf
+
+# --- Dados ---
+*.csv text eol=lf
+*.tsv text eol=lf
+
+# --- Arquivos binários ---
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.gif  binary
+*.ico  binary
+*.xlsx binary
+*.xls  binary
+*.pdf  binary
+*.zip  binary
+*.gz   binary
+*.tar  binary
+*.7z   binary
+*.pyc  binary
+*.pyo  binary
+*.pyd  binary
+*.so   binary
+*.exe  binary
+*.dll  binary
