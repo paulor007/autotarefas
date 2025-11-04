@@ -1,0 +1,35 @@
+# cspell:disable
+
+# AutoTarefas - Dependências de Produção
+# Compatível com Python >=3.13
+
+# ------------------------------------
+# Núcleo principal (Core)
+# ------------------------------------
+python-dotenv>=1.0.0      # Gerencia variáveis de ambiente (.env)
+click>=8.1.0              # CLI (comandos)
+schedule>=1.2.0           # Agendar tarefas
+pyyaml>=6.0               # Config YAML (use se realmente precisar)
+
+# ------------------------------------
+# Utilitários e suporte (opcionais)
+# ------------------------------------
+colorama>=0.4.6           # Cores no terminal
+tqdm>=4.65.0              # Barras de progresso
+tabulate>=0.9.0           # Tabelas formatadas
+
+# ------------------------------------
+# Sistema e automação
+# ------------------------------------
+psutil>=5.9.0             # CPU/memória/processos
+watchdog>=3.0.0           # Monitoramento de arquivos
+
+# ------------------------------------
+# Logs
+# ------------------------------------
+loguru>=0.7.0             # Logging moderno
+
+# ------------------------------------
+# E-mail (opcional)
+# ------------------------------------
+yagmail>=0.15.0           # Envio de e-mail simplificado

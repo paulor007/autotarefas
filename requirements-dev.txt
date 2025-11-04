@@ -1,0 +1,36 @@
+# =====================================
+# AutoTarefas - Dependências de Desenvolvimento
+# Compatível com Python >=3.13
+# =====================================
+
+# -------------------------------------
+# TESTES AUTOMATIZADOS
+# -------------------------------------
+pytest>=8.3.3          # Framework principal de testes
+pytest-cov>=5.0.0      # Relatórios de cobertura de código
+pytest-mock>=3.14.0    # Mock de objetos para testes
+pytest-xdist>=3.6.1    # Execução paralela de testes (opcional, melhora performance)
+
+# -------------------------------------
+# QUALIDADE DE CÓDIGO
+# -------------------------------------
+black>=24.10.0         # Formatador automático (PEP8)
+isort>=5.13.2          # Organizador de imports
+flake8>=7.1.1          # Linter de estilo e boas práticas
+mypy>=1.11.2           # Verificação de type hints
+
+# (Opcional) Type stubs para análise estática mais completa
+types-PyYAML>=6.0.12.12
+types-tabulate>=0.9.0.20240106
+
+# -------------------------------------
+# DESENVOLVIMENTO E PRODUTIVIDADE
+# -------------------------------------
+ipython>=8.27.0        # Shell interativo avançado
+pre-commit>=3.8.0      # Git hooks automáticos de lint/format
+
+# -------------------------------------
+# DOCUMENTAÇÃO E AUXÍLIO (opcional)
+# -------------------------------------
+sphinx>=7.3.7          # Geração automática de documentação
+sphinx-rtd-theme>=2.0.0  # Tema ReadTheDocs

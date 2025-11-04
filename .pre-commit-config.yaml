@@ -1,0 +1,40 @@
+# ===============================
+# Pre-commit configuration
+# AutoTarefas - Python 3.13+
+# ===============================
+# Este arquivo define ganchos automáticos de validação
+# executados antes de cada commit no Git.
+# Ele garante que o código siga os padrões de formatação,
+# qualidade e consistência definidos no projeto.
+
+repos:
+  # --- Verificações básicas ---
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.5.0
+    hooks:
+      - id: trailing-whitespace            # Remove espaços em branco no final de linhas
+      - id: end-of-file-fixer              # Garante quebra de linha no fim do arquivo
+      - id: check-yaml                     # Valida arquivos YAML
+      - id: check-added-large-files        # Evita commits de arquivos muito grandes
+      - id: check-merge-conflict           # Impede commits com conflitos não resolvidos
+
+  # --- Formatação de código (Black) ---
+  - repo: https://github.com/psf/black
+    rev: 24.10.0
+    hooks:
+      - id: black
+        language_version: python3.13
+
+  # --- Organização de imports (isort) ---
+  - repo: https://github.com/PyCQA/isort
+    rev: 5.13.2
+    hooks:
+      - id: isort
+        args: ["--profile", "black"]
+
+  # --- Análise estática de código (Flake8) ---
+  - repo: https://github.com/PyCQA/flake8
+    rev: 7.1.1
+    hooks:
+      - id: flake8
+        args: ["--config=.flake8"]
