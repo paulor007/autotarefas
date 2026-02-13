@@ -2,10 +2,11 @@
 
 > Automação modular de processos repetitivos em **Python 3.13+**
 
-[![Python](https://img.shields.io/badge/python-3.13-blue.svg)](https://www.python.org/)
+[![Python](https://img.shields.io/badge/python-3.13+-blue.svg)](https://www.python.org/)
+[![Tests](https://github.com/paulor007/autotarefas/actions/workflows/tests.yml/badge.svg)](https://github.com/paulor007/autotarefas/actions/workflows/tests.yml)
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
+[![Imports: isort](https://img.shields.io/badge/%20imports-isort-%231674b1?style=flat&labelColor=ef8336)](https://pycqa.github.io/isort/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Tests](https://github.com/paulor007/autotarefas/actions/workflows/tests.yml/badge.svg)](https://github.com/paulor007/autotarefas/actions)
 
 ---
 
@@ -209,6 +210,3 @@ Paulo Lavarini
 Em desenvolvimento ativo (v0.1.0-alpha)
 - **Estrutura modular concluída, ambiente configurado e testes básicos funcionando.
 - **Próximas etapas: Implementação dos módulos core e tasks.
-
-
-

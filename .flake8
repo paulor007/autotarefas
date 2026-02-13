@@ -1,0 +1,40 @@
+[flake8]
+# Configuração do Flake8 para AutoTarefas
+
+# Tamanho máximo da linha
+max-line-length = 120
+
+# Ignorar alguns erros comuns
+extend-ignore =
+    # E203: whitespace before ':' (conflita com black)
+    E203,
+    # E501: line too long (black cuida disso)
+    E501,
+    # W503: line break before binary operator (conflita com black)
+    W503,
+    # E266: too many leading '#' for block comment
+    E266
+
+# Excluir pastas
+exclude =
+    .git,
+    .github,
+    __pycache__,
+    .venv,
+    venv,
+    build,
+    dist,
+    *.egg-info,
+    .eggs,
+    .mypy_cache,
+    .pytest_cache,
+    .tox,
+    docs,
+    site
+
+# Complexidade máxima
+max-complexity = 10
+
+# Estatísticas
+statistics = True
+count = True

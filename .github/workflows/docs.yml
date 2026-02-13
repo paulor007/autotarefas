@@ -1,0 +1,90 @@
+# ============================================
+# AUTOTAREFAS - Deploy Documentação
+# ============================================
+# Localização: .github/workflows/docs.yml
+#
+# Este workflow publica a documentação no GitHub Pages
+# automaticamente quando há push na branch main.
+
+name: Deploy Documentação
+
+on:
+  # Executa no push para main
+  push:
+    branches:
+      - main
+    paths:
+      - 'docs/**'
+      - 'mkdocs.yml'
+      - '.github/workflows/docs.yml'
+
+  # Permite execução manual
+  workflow_dispatch:
+
+# Permissões necessárias para GitHub Pages
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Evita deploys simultâneos
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+jobs:
+  # ==========================================
+  # JOB: Build da documentação
+  # ==========================================
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1. Checkout do código
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # 2. Configurar Python
+      - name: Configurar Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      # 3. Instalar dependências
+      - name: Instalar dependências
+        run: |
+          pip install --upgrade pip
+          pip install mkdocs-material
+          pip install "mkdocs-material[imaging]"
+
+      # 4. Build da documentação
+      - name: Build MkDocs
+        run: mkdocs build --strict
+
+      # 5. Upload do artefato para Pages
+      - name: Setup Pages
+        uses: actions/configure-pages@v4
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site/
+
+  # ==========================================
+  # JOB: Deploy para GitHub Pages
+  # ==========================================
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - name: Deploy para GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
