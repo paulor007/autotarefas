@@ -1,0 +1,174 @@
+# ============================================
+# AUTOTAREFAS - Configuração MkDocs
+# ============================================
+# Localização: RAIZ do projeto (junto com pyproject.toml)
+
+site_name: AutoTarefas
+site_url: https://paulor007.github.io/autotarefas
+site_description: Sistema de automação de tarefas repetitivas do computador
+site_author: Paulo Lavarini
+
+# Repositório
+repo_name: paulor007/autotarefas
+repo_url: https://github.com/paulor007/autotarefas
+edit_uri: edit/main/docs/
+
+# Copyright
+copyright: Copyright &copy; 2025 Paulo Lavarini
+
+# ============================================
+# TEMA MATERIAL
+# ============================================
+theme:
+  name: material
+  language: pt-BR
+
+  # Paleta de cores com toggle claro/escuro
+  palette:
+    - scheme: default
+      primary: blue
+      accent: light-blue
+      toggle:
+        icon: material/brightness-7
+        name: Mudar para modo escuro
+    - scheme: slate
+      primary: blue
+      accent: light-blue
+      toggle:
+        icon: material/brightness-4
+        name: Mudar para modo claro
+
+  # Fontes
+  font:
+    text: Roboto
+    code: Roboto Mono
+
+  # Ícone do site
+  icon:
+    repo: fontawesome/brands/github
+
+  # Features do tema
+  features:
+    # Navegação
+    - navigation.tabs
+    - navigation.tabs.sticky
+    - navigation.sections
+    - navigation.expand
+    - navigation.path
+    - navigation.top
+    - navigation.footer
+
+    # Busca
+    - search.suggest
+    - search.highlight
+    - search.share
+
+    # Conteúdo
+    - content.code.copy
+    - content.code.annotate
+    - content.tabs.link
+    - content.tooltips
+
+# ============================================
+# PLUGINS
+# ============================================
+plugins:
+  - search:
+      lang: pt
+      separator: '[\s\-\.]+'
+
+# ============================================
+# EXTENSÕES MARKDOWN
+# ============================================
+markdown_extensions:
+  # Código
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.superfences
+  - pymdownx.snippets
+
+  # Tabs
+  - pymdownx.tabbed:
+      alternate_style: true
+
+  # Admonitions (notas, avisos, dicas)
+  - admonition
+  - pymdownx.details
+
+  # Listas de tarefas
+  - pymdownx.tasklist:
+      custom_checkbox: true
+
+  # Outros
+  - attr_list
+  - md_in_html
+  - tables
+  - def_list
+  - footnotes
+  - abbr
+  - toc:
+      permalink: true
+      toc_depth: 3
+
+# ============================================
+# NAVEGAÇÃO
+# ============================================
+nav:
+  - Início: index.md
+  - Instalação: quickstart.md
+  - Configuração: configuracao.md
+
+  - Guias:
+      - guias/index.md
+      - Backup: guias/backup.md
+      - Limpeza: guias/cleaner.md
+      - Monitoramento: guias/monitor.md
+      - Agendamento: guias/scheduler.md
+      - Email: guias/email.md
+
+  - Tutoriais:
+      - Primeiros Passos: tutorials/getting-started.md
+      - Instalação: tutorials/instalacao.md
+      - Uso Básico: tutorials/uso-basico.md
+
+  - API:
+      - api/index.md
+      - Base: api/base.md
+      - Core: api/core.md
+      - Tasks: api/tasks.md
+      - CLI: api/cli.md
+
+  - Desenvolvimento:
+      - desenvolvimento/index.md
+      - Contribuindo: desenvolvimento/contribuindo.md
+      - Arquitetura: desenvolvimento/arquitetura.md
+      - Configuração do Pacote: desenvolvimento/configuracao_pacote.md
+      - Publicação PyPI: desenvolvimento/publicacao_pypi.md
+      - Changelog: desenvolvimento/changelog.md
+
+  - Arquitetura: architecture.md
+
+# ============================================
+# EXTRAS
+# ============================================
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/paulor007/autotarefas
+      name: GitHub
+    - icon: fontawesome/brands/linkedin
+      link: https://www.linkedin.com/in/paulo-lavarini-45900438/
+      name: LinkedIn
+    - icon: fontawesome/brands/python
+      link: https://pypi.org/project/autotarefas/
+      name: PyPI
+
+# CSS e JS customizados
+extra_css:
+  - assets/css/custom.css
+
+extra_javascript:
+  - assets/js/custom.js
