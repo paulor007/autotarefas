@@ -1,0 +1,492 @@
+"""Tests for autotarefas.tasks.reporter.
+
+Cobre:
+- ReportFormat: valores, extensão e parsing (from_string)
+- ReportMetadata: defaults, timezone (UTC) e serialização (to_dict)
+- ReporterTask: contrato abstrato, name/description, validate
+- Execução: geração de conteúdo, salvamento em arquivo, include_content
+- Formatters: TXT/HTML/JSON/CSV/MD (inclui escaping e dados tabulares)
+- Integração com BaseTask.run(): dry-run deve pular execução
+
+Notas:
+- A interface pública de tasks no projeto é BaseTask.run(); usamos execute()
+  apenas quando queremos testar a lógica interna do ReporterTask diretamente.
+"""
+
+from __future__ import annotations
+
+import csv
+import json
+import re
+from datetime import UTC, datetime
+from pathlib import Path
+
+import pytest
+
+# =============================================================================
+# Fixtures / Helpers
+# =============================================================================
+
+
+@pytest.fixture()
+def sample_reporter():
+    """Instância de ReporterTask usada na maioria dos testes."""
+    from autotarefas.tasks.reporter import ReporterTask
+
+    class SampleReport(ReporterTask):
+        @property
+        def report_name(self) -> str:
+            return "sample"
+
+        @property
+        def report_title(self) -> str:
+            return "Sample Report"
+
+        def generate_data(self, **_kwargs):
+            return {
+                "title": "Test Data",
+                "items": [
+                    {"id": 1, "name": "Item 1", "value": 100},
+                    {"id": 2, "name": "Item 2", "value": 200},
+                ],
+                "summary": {"total": 300, "count": 2},
+            }
+
+    return SampleReport()
+
+
+def _read_csv_rows(path: Path) -> list[list[str]]:
+    """Lê um CSV (com o dialect padrão) e retorna as linhas."""
+    with path.open("r", encoding="utf-8", newline="") as f:
+        return list(csv.reader(f))
+
+
+# =============================================================================
+# ReportFormat
+# =============================================================================
+
+
+class TestReportFormat:
+    """Testes do enum ReportFormat."""
+
+    @pytest.mark.parametrize(
+        ("attr", "value", "ext"),
+        [
+            ("TXT", "txt", ".txt"),
+            ("HTML", "html", ".html"),
+            ("JSON", "json", ".json"),
+            ("CSV", "csv", ".csv"),
+            ("MD", "md", ".md"),
+        ],
+    )
+    def test_format_values_and_extension(self, attr: str, value: str, ext: str):
+        """Enum deve expor value e extension corretos."""
+        from autotarefas.tasks.reporter import ReportFormat
+
+        fmt = getattr(ReportFormat, attr)
+        assert fmt.value == value
+        assert fmt.extension == ext
+
+    @pytest.mark.parametrize(
+        ("raw", "expected_attr"),
+        [
+            ("txt", "TXT"),
+            (" html ", "HTML"),
+            ("JSON", "JSON"),
+            (".csv", "CSV"),
+            ("Md", "MD"),
+        ],
+    )
+    def test_from_string_valid(self, raw: str, expected_attr: str):
+        """from_string deve aceitar case/whitespace e opcionalmente '.'."""
+        from autotarefas.tasks.reporter import ReportFormat
+
+        assert ReportFormat.from_string(raw) == getattr(ReportFormat, expected_attr)
+
+    @pytest.mark.parametrize("raw", ["invalid", "pdf", "", "   "])
+    def test_from_string_invalid(self, raw: str):
+        """from_string deve falhar para formatos inválidos."""
+        from autotarefas.tasks.reporter import ReportFormat
+
+        with pytest.raises(ValueError):
+            ReportFormat.from_string(raw)
+
+
+# =============================================================================
+# ReportMetadata
+# =============================================================================
+
+
+class TestReportMetadata:
+    """Testes da dataclass ReportMetadata."""
+
+    def test_metadata_defaults(self):
+        """Deve aplicar defaults corretamente."""
+        from autotarefas.config import settings
+        from autotarefas.tasks.reporter import ReportFormat, ReportMetadata
+
+        metadata = ReportMetadata(title="Test")
+
+        assert metadata.title == "Test"
+        assert metadata.description == ""
+        assert metadata.generated_by == "autotarefas"
+        assert metadata.version == "1.0"
+        assert metadata.format == ReportFormat.TXT
+
+        # Contexto do app vem de settings
+        assert metadata.app_name == settings.APP_NAME
+        assert metadata.app_env == settings.APP_ENV
+
+        # generated_at deve ser timezone-aware em UTC
+        assert isinstance(metadata.generated_at, datetime)
+        assert metadata.generated_at.tzinfo is not None
+        assert metadata.generated_at.tzinfo == UTC
+
+    def test_metadata_to_dict(self):
+        """to_dict deve retornar payload JSON-friendly."""
+        from autotarefas.tasks.reporter import ReportMetadata
+
+        metadata = ReportMetadata(title="Test Report", description="Desc")
+        data = metadata.to_dict()
+
+        assert data["title"] == "Test Report"
+        assert data["description"] == "Desc"
+        assert "generated_at" in data
+        assert "format" in data
+
+        # generated_at deve ser ISO válido
+        parsed = datetime.fromisoformat(data["generated_at"])
+        assert parsed.tzinfo is not None
+
+
+# =============================================================================
+# ReporterTask base / contrato
+# =============================================================================
+
+
+class TestReporterTaskBase:
+    """Testes do contrato abstrato do ReporterTask."""
+
+    def test_cannot_instantiate_directly(self):
+        """ReporterTask não pode ser instanciado diretamente (ABC)."""
+        from autotarefas.tasks.reporter import ReporterTask
+
+        with pytest.raises(TypeError):
+            ReporterTask()  # type: ignore[abstract]
+
+    def test_subclass_missing_abstracts_raises(self):
+        """Subclasses incompletas devem falhar (métodos abstratos)."""
+        from autotarefas.tasks.reporter import ReporterTask
+
+        class MissingGenerate(ReporterTask):
+            @property
+            def report_name(self) -> str:
+                return "x"
+
+            @property
+            def report_title(self) -> str:
+                return "X"
+
+        with pytest.raises(TypeError):
+            MissingGenerate()  # type: ignore[abstract]
+
+    def test_name_and_description(self, sample_reporter):
+        """name e description seguem o padrão do projeto."""
+        assert sample_reporter.name == "reporter-sample"
+        assert "Gera relatório" in sample_reporter.description
+        assert "Sample Report" in sample_reporter.description
+
+
+class TestReporterTaskValidation:
+    """Testes do validate() do ReporterTask."""
+
+    def test_validate_empty_report_name(self):
+        """report_name vazio deve falhar."""
+        from autotarefas.tasks.reporter import ReporterTask
+
+        class EmptyName(ReporterTask):
+            @property
+            def report_name(self) -> str:
+                return "  "
+
+            @property
+            def report_title(self) -> str:
+                return "Ok"
+
+            def generate_data(self, **_kwargs):
+                return {}
+
+        report = EmptyName()
+        ok, msg = report.validate()
+        assert ok is False
+        assert "report_name" in msg.lower()
+
+    def test_validate_empty_report_title(self):
+        """report_title vazio deve falhar."""
+        from autotarefas.tasks.reporter import ReporterTask
+
+        class EmptyTitle(ReporterTask):
+            @property
+            def report_name(self) -> str:
+                return "ok"
+
+            @property
+            def report_title(self) -> str:
+                return ""
+
+            def generate_data(self, **_kwargs):
+                return {}
+
+        report = EmptyTitle()
+        ok, msg = report.validate()
+        assert ok is False
+        assert "report_title" in msg.lower()
+
+    def test_validate_valid_report(self, sample_reporter):
+        """Reporter válido deve passar."""
+        ok, msg = sample_reporter.validate()
+        assert ok is True
+        assert msg == ""
+
+
+# =============================================================================
+# Execução / salvamento
+# =============================================================================
+
+
+class TestReporterExecution:
+    """Testes de execução do ReporterTask."""
+
+    def test_execute_without_saving_returns_payload(self, sample_reporter):
+        """Sem output_path e save=False, não deve salvar arquivo."""
+        result = sample_reporter.execute()
+
+        assert result.is_success
+        assert isinstance(result.data, dict)
+        assert result.data["output_file"] is None
+        assert result.data["format"] == "txt"
+        assert "metadata" in result.data
+        assert "data" in result.data
+        assert "content" in result.data
+
+    def test_execute_include_content_false(self, sample_reporter):
+        """include_content=False deve remover 'content' do payload."""
+        result = sample_reporter.execute(include_content=False)
+
+        assert result.is_success
+        assert "content" not in result.data
+
+    @pytest.mark.parametrize(
+        ("fmt", "suffix"),
+        [
+            ("txt", ".txt"),
+            ("html", ".html"),
+            ("json", ".json"),
+            ("csv", ".csv"),
+            ("md", ".md"),
+        ],
+    )
+    def test_execute_saves_file_with_explicit_format(self, sample_reporter, temp_dir: Path, fmt: str, suffix: str):
+        """output_path deve ser respeitado e criar arquivo no formato solicitado."""
+        output_path = temp_dir / f"report{suffix}"
+
+        result = sample_reporter.execute(output_path=output_path, format=fmt)
+
+        assert result.is_success
+        assert output_path.exists()
+        assert output_path.read_text(encoding="utf-8").strip() != ""
+
+    def test_save_report_adds_extension_when_missing(self, sample_reporter, temp_dir: Path):
+        """Se output_path não tiver sufixo, deve adicionar extensão do formato."""
+        output_path = temp_dir / "report"  # sem extensão
+
+        result = sample_reporter.execute(output_path=output_path, format="json")
+        assert result.is_success
+
+        expected = output_path.with_suffix(".json")
+        assert expected.exists()
+
+    def test_save_report_when_output_is_directory(self, sample_reporter, temp_dir: Path):
+        """Se output_path for diretório existente, deve gerar filename automático."""
+        out_dir = temp_dir / "reports_out"
+        out_dir.mkdir(parents=True, exist_ok=True)
+
+        result = sample_reporter.execute(output_path=out_dir, format="md")
+        assert result.is_success
+
+        output_file = Path(result.data["output_file"])
+        assert output_file.exists()
+        assert output_file.parent == out_dir
+        assert re.search(r"sample_\d{8}_\d{6}\.md$", output_file.name)
+
+    def test_save_true_uses_settings_reports_path(self, sample_reporter, temp_dir: Path, monkeypatch):
+        """save=True deve salvar no settings.REPORTS_PATH (monkeypatched)."""
+        from autotarefas.config import settings
+
+        reports_dir = temp_dir / "reports"
+        monkeypatch.setattr(settings, "REPORTS_PATH", reports_dir)
+
+        result = sample_reporter.execute(save=True, format="txt")
+        assert result.is_success
+
+        output_file = Path(result.data["output_file"])
+        assert output_file.exists()
+        assert output_file.parent == reports_dir
+
+    def test_invalid_format_returns_failure(self, sample_reporter):
+        """Formato inválido deve retornar TaskResult.failure."""
+        result = sample_reporter.execute(format="pdf")
+        assert result.is_success is False
+        assert "Formato não suportado" in result.message
+
+
+class TestReporterRunDryRun:
+    """Integração com BaseTask.run()."""
+
+    def test_run_dry_run_skips_execution(self, sample_reporter, temp_dir: Path):
+        """dry_run=True deve retornar SKIPPED e não criar arquivo."""
+        output_path = temp_dir / "report.txt"
+
+        result = sample_reporter.run(dry_run=True, output_path=output_path, format="txt")
+
+        assert result.status.value == "skipped"
+        assert result.is_success is False
+        assert not output_path.exists()
+
+
+# =============================================================================
+# Formatters (conteúdo / estrutura)
+# =============================================================================
+
+
+class TestReporterFormatters:
+    """Testes focados nos formatters padrão."""
+
+    def test_txt_has_header_and_footer(self, sample_reporter, temp_dir: Path):
+        """TXT deve conter cabeçalho, dados e rodapé."""
+        output_path = temp_dir / "report.txt"
+        sample_reporter.execute(output_path=output_path, format="txt")
+
+        content = output_path.read_text(encoding="utf-8")
+        assert "Sample Report" in content
+        assert "Gerado em:" in content
+        assert "Fim do relatório" in content
+
+    def test_html_has_doctype_and_escapes_content(self, temp_dir: Path):
+        """HTML deve ter estrutura e escapar conteúdo potencialmente perigoso."""
+        from autotarefas.tasks.reporter import ReporterTask
+
+        class HtmlEscapeReport(ReporterTask):
+            @property
+            def report_name(self) -> str:
+                return "html_escape"
+
+            @property
+            def report_title(self) -> str:
+                return 'Title <b>"x"</b>'
+
+            def generate_data(self, **_kwargs):
+                return {"payload": "<script>alert('xss')</script>"}
+
+        report = HtmlEscapeReport()
+        output_path = temp_dir / "report.html"
+        result = report.execute(output_path=output_path, format="html")
+        assert result.is_success
+
+        content = output_path.read_text(encoding="utf-8").lower()
+        assert "<!doctype html>" in content
+        assert "<script>" not in content  # deve estar escapado
+
+    def test_json_is_valid_and_contains_metadata_and_data(self, sample_reporter, temp_dir: Path):
+        """JSON deve ser válido e conter metadata + data."""
+        output_path = temp_dir / "report.json"
+        sample_reporter.execute(output_path=output_path, format="json")
+
+        payload = json.loads(output_path.read_text(encoding="utf-8"))
+        assert "metadata" in payload
+        assert "data" in payload
+        assert payload["metadata"]["format"] == "json"
+        assert isinstance(payload["data"], dict)
+
+    def test_json_serializes_datetime(self, temp_dir: Path):
+        """Datetime dentro de data deve virar string ISO no JSON."""
+        from autotarefas.tasks.reporter import ReporterTask
+
+        class DateReport(ReporterTask):
+            @property
+            def report_name(self) -> str:
+                return "dates"
+
+            @property
+            def report_title(self) -> str:
+                return "Date Report"
+
+            def generate_data(self, **_kwargs):
+                return {"created": datetime(2024, 1, 15, 10, 0, 0, tzinfo=UTC)}
+
+        report = DateReport()
+        out = temp_dir / "dates.json"
+        report.execute(output_path=out, format="json")
+
+        payload = json.loads(out.read_text(encoding="utf-8"))
+        created = payload["data"]["created"]
+        assert isinstance(created, str)
+        assert created.startswith("2024-01-15")
+
+    def test_csv_from_tabular_list_of_dicts(self, sample_reporter, temp_dir: Path):
+        """CSV deve gerar cabeçalho e linhas a partir da primeira lista tabular."""
+        output_path = temp_dir / "report.csv"
+        sample_reporter.execute(output_path=output_path, format="csv")
+
+        rows = _read_csv_rows(output_path)
+        assert rows[0] == ["id", "name", "value"]
+        assert rows[1][0] == "1"
+        assert rows[2][0] == "2"
+
+    def test_csv_fallback_when_no_tabular_data(self, temp_dir: Path):
+        """Quando não há lista tabular, CSV vira key/value + metadata."""
+        from autotarefas.tasks.reporter import ReporterTask
+
+        class KVReport(ReporterTask):
+            @property
+            def report_name(self) -> str:
+                return "kv"
+
+            @property
+            def report_title(self) -> str:
+                return "KV"
+
+            def generate_data(self, **_kwargs):
+                return {"a": 1, "b": {"c": 2}}
+
+        report = KVReport()
+        output_path = temp_dir / "kv.csv"
+        report.execute(output_path=output_path, format="csv")
+
+        rows = _read_csv_rows(output_path)
+        assert rows[0] == ["Campo", "Valor"]
+        assert any(r and r[0] == "__title__" for r in rows)
+
+    def test_md_has_headers_and_escapes_pipes(self, temp_dir: Path):
+        """Markdown deve ter cabeçalhos e escapar pipes em tabelas."""
+        from autotarefas.tasks.reporter import ReporterTask
+
+        class MdReport(ReporterTask):
+            @property
+            def report_name(self) -> str:
+                return "md"
+
+            @property
+            def report_title(self) -> str:
+                return "MD Report"
+
+            def generate_data(self, **_kwargs):
+                return {"table": {"col|1": "v|1"}}
+
+        report = MdReport()
+        output_path = temp_dir / "report.md"
+        report.execute(output_path=output_path, format="md")
+
+        content = output_path.read_text(encoding="utf-8")
+        assert content.startswith("# ")
+        assert "\\|" in content  # pipes devem ser escapados

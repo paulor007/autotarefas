@@ -1,28 +1,21 @@
-### 7. Criar CHANGELOG.md
+MIT License
 
-Crie o arquivo `CHANGELOG.md`:
+Copyright (c) 2026 Paulo Lavarini
 
-```markdown
-# Changelog
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
 
-Todas as mudanças notáveis neste projeto serão documentadas neste arquivo.
-O histórico de alterações do projeto é documentado em [`CHANGELOG.md`](CHANGELOG.md)
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
 
-O formato é baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/),
-e este projeto adere ao [Semantic Versioning](https://semver.org/lang/pt-BR/).
-
-## [Unreleased]
-
-### Adicionado
-- Estrutura inicial do projeto
-- Configuração do ambiente de desenvolvimento
-- Documentação básica
-
-## [0.1.0] - 2024-11-XX
-
-### Adicionado
-- Setup inicial do projeto
-- Estrutura de pastas profissional
-- Arquivos de configuração base
-
-Copyright (c) 2025   Paulo Lavarini
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.

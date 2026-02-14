@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+  <title>{{title}} - AutoTarefas</title>
+
+  <!--[if mso]>
+  <noscript>
+    <xml>
+      <o:OfficeDocumentSettings>
+        <o:PixelsPerInch>96</o:PixelsPerInch>
+      </o:OfficeDocumentSettings>
+    </xml>
+  </noscript>
+  <![endif]-->
+
+  <style type="text/css">
+    /* =========================================================
+       RESET (email-safe)
+       ========================================================= */
+    html, body { margin: 0 !important; padding: 0 !important; height: 100% !important; width: 100% !important; }
+    * { -ms-text-size-adjust: 100%; -webkit-text-size-adjust: 100%; }
+    table, td {
+        /* Outlook (Word engine) specific */
+        mso-table-lspace:
+        0pt; mso-table-rspace:
+        0pt; border-collapse: collapse !important;
+    }
+    img { -ms-interpolation-mode: bicubic; border: 0; outline: none; text-decoration: none; display: block; }
+    a { text-decoration: none; }
+
+    /* Evita que iOS auto-detecte links com cor estranha */
+    a[x-apple-data-detectors] { color: inherit !important; text-decoration: none !important; }
+
+    /* =========================================================
+       BASE
+       ========================================================= */
+    body {
+      background-color: #f1f5f9; /* fallback */
+      background: linear-gradient(135deg, #667eea15 0%, #764ba215 100%);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+      font-size: 16px;
+      line-height: 1.7;
+      color: #334155;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    .email-wrapper { width: 100%; padding: 20px; }
+    @media screen and (max-width: 600px) {
+      .email-wrapper { padding: 12px !important; }
+    }
+
+    /* Container: o "width=600" na tabela já garante boa compatibilidade */
+    .email-container {
+      background-color: #ffffff;
+      border: 1px solid #e2e8f0;
+      border-radius: 16px; /* pode falhar em alguns Outlook, mas ok */
+      overflow: hidden;
+      box-shadow: 0 10px 40px rgba(0,0,0,0.08); /* pode falhar em Outlook */
+    }
+    @media screen and (max-width: 600px) {
+      .email-container { border-radius: 12px !important; }
+    }
+
+    /* =========================================================
+       HEADER
+       ========================================================= */
+    .header {
+      background-color: #6366f1; /* fallback */
+      background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+      padding: 40px 40px 30px;
+      text-align: center;
+    }
+    @media screen and (max-width: 600px) {
+      .header { padding: 30px 24px !important; }
+    }
+
+    .top-bar {
+      height: 4px;
+      line-height: 4px;
+      font-size: 0;
+      background-color: #3b82f6; /* fallback */
+      background: linear-gradient(90deg, #3b82f6, #8b5cf6, #ec4899);
+    }
+
+    .logo {
+      display: inline-block;
+      margin-bottom: 15px;
+      background: rgba(255, 255, 255, 0.15);
+      width: 60px;
+      height: 60px;
+      border-radius: 16px;
+      line-height: 60px;
+      font-size: 28px;
+      border: 1px solid rgba(255,255,255,0.2);
+    }
+    @media screen and (max-width: 480px) {
+      .logo { width: 50px !important; height: 50px !important; line-height: 50px !important; font-size: 24px !important; }
+    }
+
+    .header h1 {
+      margin: 0 0 8px 0;
+      color: #ffffff;
+      font-size: 28px;
+      font-weight: 700;
+      letter-spacing: -0.5px;
+    }
+    @media screen and (max-width: 600px) {
+      .header h1 { font-size: 24px !important; }
+    }
+
+    .header .subtitle {
+      color: rgba(255,255,255,0.88);
+      font-size: 15px;
+      font-weight: 400;
+    }
+
+    /* =========================================================
+       CONTENT
+       ========================================================= */
+    .content { padding: 48px 40px; background-color: #ffffff; }
+    @media screen and (max-width: 600px) {
+      .content { padding: 30px 24px !important; }
+    }
+
+    .content h2 {
+      margin: 0 0 24px 0;
+      color: #1e293b;
+      font-size: 22px;
+      font-weight: 700;
+      line-height: 1.3;
+      padding-bottom: 12px;
+      border-bottom: 2px solid #f1f5f9;
+    }
+    @media screen and (max-width: 600px) {
+      .content h2 { font-size: 20px !important; }
+    }
+
+    .content h3 {
+      margin: 28px 0 16px 0;
+      color: #334155;
+      font-size: 18px;
+      font-weight: 600;
+    }
+
+    .content p {
+      margin: 0 0 20px 0;
+      color: #475569;
+      font-size: 16px;
+      line-height: 1.7;
+    }
+
+    .content ul, .content ol {
+      margin: 16px 0;
+      padding-left: 24px;
+      color: #475569;
+    }
+    .content li { margin-bottom: 8px; line-height: 1.6; }
+
+    /* =========================================================
+       COMPONENTS (email-safe)
+       - Evita depender de flex/grid/::before para conteúdo essencial
+       ========================================================= */
+
+    /* Alert: recomenda-se montar o HTML com tabela (ícone + texto).
+       Mantemos classes, mas sem flex obrigatório */
+    .alert {
+      border: 1px solid transparent;
+      border-radius: 12px;
+      padding: 16px;
+      margin: 24px 0;
+    }
+    .alert-info    { background-color: #f0f9ff; border-color: #bae6fd; color: #0369a1; }
+    .alert-success { background-color: #f0fdf4; border-color: #bbf7d0; color: #15803d; }
+    .alert-warning { background-color: #fefce8; border-color: #fef08a; color: #a16207; }
+    .alert-error   { background-color: #fef2f2; border-color: #fecaca; color: #dc2626; }
+
+    /* Data box */
+    .data-box {
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      border-radius: 12px;
+      padding: 16px;
+      margin: 24px 0;
+      font-family: Monaco, Consolas, 'SFMono-Regular', 'Roboto Mono', monospace;
+      font-size: 13px;
+      line-height: 1.6;
+      color: #334155;
+      word-break: break-word;
+    }
+
+    /* Button */
+    .button-container { margin: 32px 0; text-align: center; }
+    .button {
+      display: inline-block;
+      padding: 14px 32px;
+      background-color: #6366f1; /* fallback */
+      background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+      color: #ffffff !important;
+      border-radius: 10px;
+      font-weight: 600;
+      font-size: 15px;
+      box-shadow: 0 4px 12px rgba(99,102,241,0.20);
+    }
+    @media screen and (max-width: 600px) {
+      .button { padding: 12px 24px !important; width: 100% !important; box-sizing: border-box; }
+    }
+
+    /* Table */
+    .data-table {
+      width: 100%;
+      border: 1px solid #e2e8f0;
+      border-radius: 12px;
+      overflow: hidden;
+      margin: 24px 0;
+    }
+    .data-table th {
+      background-color: #f1f5f9;
+      padding: 14px 16px;
+      text-align: left;
+      font-weight: 700;
+      color: #1e293b;
+      font-size: 12px;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+      border-bottom: 1px solid #e2e8f0;
+    }
+    .data-table td {
+      padding: 14px 16px;
+      border-bottom: 1px solid #f1f5f9;
+      color: #475569;
+      font-size: 14px;
+    }
+
+    /* Tags (sem flex obrigatório) */
+    .tags { margin: 20px 0; }
+    .tag {
+      display: inline-block;
+      padding: 6px 14px;
+      background-color: #f1f5f9;
+      border: 1px solid #e2e8f0;
+      border-radius: 20px;
+      font-size: 13px;
+      color: #475569;
+      font-weight: 500;
+      margin: 0 8px 8px 0;
+    }
+
+    /* Meta: evita grid -> use tabela no conteúdo */
+    .meta {
+      margin-top: 40px;
+      padding-top: 24px;
+      border-top: 1px solid #f1f5f9;
+    }
+    .meta-item {
+      padding: 12px;
+      background: #f8fafc;
+      border-radius: 8px;
+      border-left: 3px solid #6366f1;
+    }
+    .meta-label {
+      display: block;
+      font-size: 12px;
+      color: #64748b;
+      font-weight: 700;
+      margin-bottom: 4px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .meta-value {
+      display: block;
+      color: #334155;
+      font-size: 14px;
+      font-weight: 500;
+    }
+
+    /* =========================================================
+       FOOTER
+       ========================================================= */
+    .footer {
+      background: #f8fafc;
+      padding: 40px;
+      text-align: center;
+      border-top: 1px solid #e2e8f0;
+    }
+    @media screen and (max-width: 600px) {
+      .footer { padding: 30px 24px !important; }
+    }
+
+    .footer-link {
+      display: inline-block;
+      margin: 0 12px 8px 12px;
+      color: #64748b !important;
+      font-size: 14px;
+      font-weight: 600;
+    }
+
+    .copyright {
+      color: #94a3b8;
+      font-size: 13px;
+      line-height: 1.6;
+      margin-top: 16px;
+    }
+    .copyright strong { color: #64748b; }
+  </style>
+</head>
+
+<body>
+  <!-- Preheader (texto de preview no inbox) -->
+  <div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent;">
+    {{preheader}}
+  </div>
+
+  <div class="email-wrapper">
+    <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
+      <tr>
+        <td align="center">
+
+          <table class="email-container" role="presentation" cellspacing="0" cellpadding="0" border="0" width="600" style="width:600px; max-width:600px;">
+            <!-- Top bar (substitui ::before) -->
+            <tr>
+              <td class="top-bar">&nbsp;</td>
+            </tr>
+
+            <!-- Header -->
+            <tr>
+              <td class="header">
+                <div class="logo">🤖</div>
+                <h1>AutoTarefas</h1>
+                <div class="subtitle">Sistema de Automação Inteligente</div>
+              </td>
+            </tr>
+
+            <!-- Content -->
+            <tr>
+              <td class="content">
+                {{content}}
+              </td>
+            </tr>
+
+            <!-- Footer -->
+            <tr>
+              <td class="footer">
+                <!-- Use placeholders reais (melhor que href="#") -->
+                <div>
+                  <a href="{{settings_url}}" class="footer-link">Configurações</a>
+                  <a href="{{support_url}}" class="footer-link">Suporte</a>
+                  <a href="{{docs_url}}" class="footer-link">Documentação</a>
+                  <a href="{{status_url}}" class="footer-link">Status</a>
+                </div>
+
+                <div class="copyright">
+                  Este email foi enviado automaticamente pelo <strong>AutoTarefas</strong>.<br />
+                  © {{year}} AutoTarefas. Todos os direitos reservados.
+                </div>
+              </td>
+            </tr>
+          </table>
+
+        </td>
+      </tr>
+    </table>
+  </div>
+</body>
+</html>

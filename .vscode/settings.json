@@ -1,0 +1,43 @@
+{
+    // === PYTHON ===
+    "python.defaultInterpreterPath": "${workspaceFolder}/venv/bin/python",
+
+    // === FORMATAÇÃO E LINTING ===
+    // Ruff como formatter e linter (substitui Black + Flake8 + isort)
+    "[python]": {
+        "editor.defaultFormatter": "charliermarsh.ruff",
+        "editor.formatOnSave": true,
+        "editor.codeActionsOnSave": {
+            "source.fixAll": "explicit",
+            "source.organizeImports": "explicit"
+        }
+    },
+
+    // === MYPY (Type Checking) ===
+    "python.analysis.typeCheckingMode": "basic",
+    "mypy-type-checker.args": ["--config-file=pyproject.toml"],
+
+    // === PYTEST ===
+    "python.testing.pytestEnabled": true,
+    "python.testing.pytestArgs": ["tests"],
+    "python.testing.unittestEnabled": false,
+
+    // === EDITOR ===
+    "editor.rulers": [100],
+    "editor.tabSize": 4,
+    "files.trimTrailingWhitespace": true,
+    "files.insertFinalNewline": true,
+
+    // === EXCLUSÕES ===
+    "files.exclude": {
+        "**/__pycache__": true,
+        "**/*.pyc": true,
+        "**/.pytest_cache": true,
+        "**/.mypy_cache": true,
+        "**/.ruff_cache": true,
+        "**/venv": true,
+        "**/*.egg-info": true
+    },
+
+    "cSpell.enabled": false
+}

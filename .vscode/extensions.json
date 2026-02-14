@@ -1,0 +1,23 @@
+{
+    "recommendations": [
+        // Python essencial
+        "ms-python.python",
+        "ms-python.vscode-pylance",
+
+        // Linting e formatação
+        "charliermarsh.ruff",
+        "ms-python.mypy-type-checker",
+
+        // Testes
+        "ms-python.pytest",
+
+        // Git
+        "eamodio.gitlens",
+
+        // Outros úteis
+        "usernamehw.errorlens",           // Mostra erros inline
+        "gruntfuggly.todo-tree",          // Lista TODOs
+        "yzhang.markdown-all-in-one",     // Preview de Markdown
+        "tamasfe.even-better-toml"        // Syntax highlight para TOML
+    ]
+}

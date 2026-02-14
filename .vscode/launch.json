@@ -1,0 +1,49 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Python: CLI",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "autotarefas.cli.main",
+            "args": ["--help"],
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}",
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}/src"
+            }
+        },
+        {
+            "name": "Python: CLI - Monitor Status",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "autotarefas.cli.main",
+            "args": ["monitor", "status"],
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}",
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}/src"
+            }
+        },
+        {
+            "name": "Python: Arquivo Atual",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${file}",
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}",
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}/src"
+            }
+        },
+        {
+            "name": "Python: Testes (pytest)",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "pytest",
+            "args": ["-v", "tests/"],
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}"
+        }
+    ]
+}

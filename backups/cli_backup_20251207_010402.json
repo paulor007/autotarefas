@@ -1,0 +1,21 @@
+{
+  "backup_id": "72038fa2-ac4b-4693-aacd-c28d602f55dc",
+  "timestamp": "2025-12-07T01:04:02.593196",
+  "source_paths": [
+    "C:\\Users\\paulo\\OneDrive\\Projetos\\autotarefas\\examples\\output\\cleaning_reports\\report.csv"
+  ],
+  "backup_path": "C:\\Users\\paulo\\OneDrive\\Projetos\\autotarefas\\backups\\cli_backup_20251207_010402.zip",
+  "compression": "ZIP",
+  "mode": "FULL",
+  "file_count": 1,
+  "total_size": 1118,
+  "compressed_size": 363,
+  "checksum": "daa0195e8fc808c23ebc4489913b1323cb2712ba24babc283fb859eddb28f30f",
+  "files": {
+    "report.csv": {
+      "size": 1118,
+      "mtime": "2025-12-01T00:10:20",
+      "hash": "4263acf867e86ca2b4e91fbbd83c4ed2"
+    }
+  }
+}

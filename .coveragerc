@@ -1,0 +1,143 @@
+# ============================================
+# AUTOTAREFAS - Configuração do Coverage.py
+# ============================================
+#
+# NOTA: A configuração principal está em pyproject.toml
+# Este arquivo existe para compatibilidade com ferramentas
+# que não leem pyproject.toml automaticamente.
+#
+# Para rodar com cobertura:
+#   pytest --cov=src/autotarefas --cov-report=term-missing
+#   pytest --cov=src/autotarefas --cov-report=html
+#
+# ============================================
+
+[run]
+# Diretório fonte
+source = src/autotarefas
+
+# Cobertura de branches (if/else)
+branch = True
+
+# Suporte a execução paralela
+parallel = True
+
+# Usar paths relativos
+relative_files = True
+
+# Arquivos a ignorar
+omit =
+    */tests/*
+    */__pycache__/*
+    */.venv/*
+    */venv/*
+    */__init__.py
+    */conftest.py
+
+# Contexto dinâmico (identifica qual teste cobriu cada linha)
+dynamic_context = test_function
+
+# Arquivo de dados
+data_file = .coverage
+
+[paths]
+# Mapeamento de paths (útil para CI com múltiplos ambientes)
+source =
+    src/autotarefas
+    */site-packages/autotarefas
+
+[report]
+# Cobertura mínima exigida (%)
+fail_under = 80
+
+# Mostrar linhas não cobertas
+show_missing = True
+
+# Precisão das porcentagens
+precision = 2
+
+# Ordenar por nome
+sort = Name
+
+# Ignorar arquivos vazios
+skip_empty = True
+
+# Ignorar erros de arquivos não encontrados
+ignore_errors = True
+
+# Linhas a excluir da cobertura
+exclude_lines =
+    # Pragmas padrão
+    pragma: no cover
+    pragma: nocover
+
+    # Métodos de debug/representação
+    def __repr__
+    def __str__
+
+    # Código defensivo
+    raise AssertionError
+    raise NotImplementedError
+    raise TypeError
+
+    # Type checking (não executado em runtime)
+    if TYPE_CHECKING:
+    if typing.TYPE_CHECKING:
+    @overload
+
+    # Guard de execução direta
+    if __name__ == .__main__.:
+
+    # Métodos abstratos
+    @abstractmethod
+    @abc.abstractmethod
+
+    # Ellipsis em stubs
+    \.\.\.
+
+    # Imports condicionais
+    except ImportError
+    except ModuleNotFoundError
+
+# Excluir arquivos específicos do relatório
+exclude_also =
+    # Código que só roda em debug
+    if settings.debug:
+    if DEBUG:
+
+[html]
+# Diretório do relatório HTML
+directory = htmlcov
+
+# Título do relatório
+title = AutoTarefas - Cobertura de Testes
+
+# Mostrar contextos
+show_contexts = True
+
+# Pular arquivos cobertos 100%
+skip_covered = False
+
+# Pular arquivos vazios
+skip_empty = True
+
+[xml]
+# Arquivo XML (para CI/CD - Codecov, SonarQube, etc)
+output = coverage.xml
+
+# Versão do pacote no XML
+package_depth = 2
+
+[json]
+# Arquivo JSON
+output = coverage.json
+
+# Incluir contextos no JSON
+show_contexts = True
+
+# Pretty print
+pretty_print = True
+
+[lcov]
+# Arquivo LCOV (para algumas ferramentas de CI)
+output = coverage.lcov

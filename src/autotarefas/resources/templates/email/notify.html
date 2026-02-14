@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1.0">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <title>{{title}} - AutoTarefas</title>
+
+  <style type="text/css">
+    /* Reset / base */
+    body, table, td, p, a { margin:0; padding:0; border:0; }
+    body{
+      width:100% !important;
+      height:100% !important;
+      background:#f4f4f7;
+      font-family:-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      font-size:16px;
+      line-height:1.6;
+      color:#333333;
+      -webkit-text-size-adjust:100%;
+      -ms-text-size-adjust:100%;
+    }
+    table{ border-collapse:collapse; }
+    a{ text-decoration:none; }
+    .container{ width:100%; max-width:600px; background:#ffffff; }
+
+    /* Header por nível (usa {{level}} em MAIÚSCULO) */
+    .header{ padding:30px 40px; text-align:center; }
+    .header-DEBUG{ background:linear-gradient(135deg,#6c757d 0%,#495057 100%); }
+    .header-INFO{ background:linear-gradient(135deg,#0dcaf0 0%,#0aa2c0 100%); }
+    .header-SUCCESS{ background:linear-gradient(135deg,#198754 0%,#146c43 100%); }
+    .header-WARNING{ background:linear-gradient(135deg,#ffc107 0%,#e0a800 100%); }
+    .header-ERROR{ background:linear-gradient(135deg,#dc3545 0%,#bb2d3b 100%); }
+    .header-CRITICAL{ background:linear-gradient(135deg,#dc3545 0%,#8b0000 100%); }
+
+    .emoji{ font-size:44px; line-height:1; margin:0 0 8px 0; }
+    .title{
+      margin:0;
+      color:#ffffff;
+      font-size:24px;
+      font-weight:700;
+      letter-spacing:0.2px;
+    }
+    .badge{
+      display:inline-block;
+      margin-top:10px;
+      padding:4px 12px;
+      background:rgba(255,255,255,0.18);
+      border:1px solid rgba(255,255,255,0.25);
+      border-radius:999px;
+      color:#ffffff;
+      font-size:12px;
+      text-transform:uppercase;
+      letter-spacing:1px;
+    }
+
+    /* Content */
+    .content{ padding:32px 40px; }
+
+    .card{
+      background:#f8f9fa;
+      border-radius:10px;
+      overflow:hidden;
+    }
+    .card-inner{ padding:20px 20px; }
+    .accent{ border-left:4px solid {{level_color}}; }
+    .message{
+      margin:0;
+      font-size:16px;
+      color:#333333;
+      line-height:1.7;
+    }
+
+    .section{ margin-top:18px; }
+    .section-title{
+      font-size:13px;
+      font-weight:700;
+      color:#666666;
+      text-transform:uppercase;
+      letter-spacing:0.6px;
+      margin:0 0 8px 0;
+    }
+
+    .codebox{
+      background:#1e1e1e;
+      border-radius:8px;
+      padding:16px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      font-size:13px;
+      color:#d4d4d4;
+      white-space:pre-wrap;
+      word-break:break-word;
+    }
+
+    .divider{
+      height:1px;
+      background:#e9ecef;
+      margin:22px 0;
+    }
+
+    /* Meta (tabela — compatível com Outlook) */
+    .meta{
+      width:100%;
+      background:#f8f9fa;
+      border-radius:10px;
+    }
+    .meta td{
+      padding:10px 12px;
+      border-bottom:1px solid #e9ecef;
+      font-size:13px;
+    }
+    .meta tr:last-child td{ border-bottom:none; }
+    .meta-label{ color:#666666; width:38%; }
+    .meta-value{ color:#333333; font-weight:600; text-align:right; }
+
+    .timestamp{
+      margin-top:18px;
+      text-align:center;
+      font-size:13px;
+      color:#888888;
+    }
+
+    /* Footer */
+    .footer{
+      background:#f4f4f7;
+      padding:22px 30px;
+      text-align:center;
+    }
+    .footer p{
+      margin:0;
+      color:#888888;
+      font-size:13px;
+      line-height:1.6;
+    }
+
+    /* Responsivo */
+    @media screen and (max-width: 600px){
+      .header{ padding:22px 18px; }
+      .content{ padding:22px 18px; }
+      .title{ font-size:20px; }
+      .emoji{ font-size:36px; }
+      .meta-label{ width:46%; }
+    }
+  </style>
+</head>
+
+<body>
+  <!-- Preheader -->
+  <div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent;">
+    {{level}} • {{title}} • {{source}} • {{timestamp}}
+  </div>
+
+  <center>
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background:#f4f4f7;">
+      <tr>
+        <td style="padding:20px 0;">
+          <table role="presentation" class="container" width="600" cellspacing="0" cellpadding="0" border="0" align="center" style="margin:0 auto;">
+            <!-- Header -->
+            <tr>
+              <td class="header header-{{level}}">
+                <div class="emoji">{{level_emoji}}</div>
+                <h1 class="title">{{title}}</h1>
+                <div class="badge">{{level}}</div>
+              </td>
+            </tr>
+
+            <!-- Content -->
+            <tr>
+              <td class="content">
+                <!-- Message -->
+                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" class="card accent">
+                  <tr>
+                    <td class="card-inner">
+                      <p class="message">{{message}}</p>
+                    </td>
+                  </tr>
+                </table>
+
+                <!-- Data -->
+                <div class="section">
+                  <p class="section-title">📦 Dados adicionais</p>
+                  <div class="codebox">{{data}}</div>
+                </div>
+
+                <div class="divider"></div>
+
+                <!-- Meta -->
+                <table role="presentation" class="meta" cellspacing="0" cellpadding="0" border="0">
+                  <tr>
+                    <td class="meta-label">🏷️ Origem</td>
+                    <td class="meta-value">{{source}}</td>
+                  </tr>
+                  <tr>
+                    <td class="meta-label">📅 Data/Hora</td>
+                    <td class="meta-value">{{timestamp}}</td>
+                  </tr>
+                  <tr>
+                    <td class="meta-label">🔔 Nível</td>
+                    <td class="meta-value" style="color: {{level_color}};">{{level}}</td>
+                  </tr>
+                  <tr>
+                    <td class="meta-label">🔖 Tags</td>
+                    <td class="meta-value">{{tags}}</td>
+                  </tr>
+                </table>
+
+                <div class="timestamp">
+                  Notificação enviada em {{timestamp}}
+                </div>
+              </td>
+            </tr>
+
+            <!-- Footer -->
+            <tr>
+              <td class="footer">
+                <p>
+                  Enviado automaticamente pelo <strong>AutoTarefas</strong>.<br>
+                  Se você não reconhece esta mensagem, verifique as configurações do seu ambiente.
+                </p>
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+  </center>
+</body>
+</html>
