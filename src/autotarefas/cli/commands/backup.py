@@ -91,9 +91,15 @@ def backup(ctx: click.Context) -> None:
     "source",
     type=click.Path(exists=True, path_type=Path, file_okay=True, dir_okay=True),
 )
+@click.argument(
+    "dest",
+    required=False,
+    type=click.Path(path_type=Path, file_okay=False, dir_okay=True),
+)
 @click.option(
     "-d",
     "--dest",
+    "dest_opt",
     type=click.Path(path_type=Path, file_okay=False, dir_okay=True),
     default=None,
     help=f"Diretório de destino (default: {settings.backup.path})",
@@ -117,6 +123,7 @@ def backup_run(
     ctx: click.Context,
     source: Path,
     dest: Path | None,
+    dest_opt: Path | None,
     compression: str,
     exclude: tuple[str, ...],
 ) -> None:
@@ -136,7 +143,7 @@ def backup_run(
     _print_header(console, "Backup")
 
     source_path = safe_path(source)
-    dest_path = safe_path(dest or settings.backup.path)
+    dest_path = safe_path(dest_opt or dest or settings.backup.path)
     exclude_patterns = _normalize_excludes(exclude)
 
     # Validação amigável de compressão (evita traceback).
@@ -398,10 +405,15 @@ def backup_restore(
 
 
 @backup.command("cleanup")
+@click.argument(
+    "backup_dir",
+    required=False,
+    type=click.Path(exists=True, path_type=Path, file_okay=False, dir_okay=True),
+)
 @click.option(
     "-d",
     "--dir",
-    "backup_dir",
+    "backup_dir_opt",
     type=click.Path(exists=True, path_type=Path, file_okay=False, dir_okay=True),
     default=None,
     help="Diretório de backups",
@@ -430,6 +442,7 @@ def backup_restore(
 def backup_cleanup(
     ctx: click.Context,
     backup_dir: Path | None,
+    backup_dir_opt: Path | None,
     name: str | None,
     keep: int | None,
     yes: bool,
@@ -453,7 +466,7 @@ def backup_cleanup(
         keep if (keep is not None and keep >= 0) else settings.backup.max_versions
     )
 
-    backup_dir_path = safe_path(backup_dir or settings.backup.path)
+    backup_dir_path = safe_path(backup_dir_opt or backup_dir or settings.backup.path)
     manager = BackupManager(
         backup_dir_path,
         max_versions=max_versions,

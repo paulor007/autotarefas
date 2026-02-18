@@ -96,7 +96,7 @@ class TestBackupHelp:
         result = cli_invoke("backup", "list", "--help")
 
         assert result.exit_code == 0
-        assert "--dir" in result.output or "-d" in result.output
+        assert "BACKUP_DIR" in result.output or "backup_dir" in result.output.lower()
 
     def test_backup_restore_help(self, cli_invoke: Callable[..., Result]) -> None:
         """backup restore --help deve mostrar opções."""
@@ -123,9 +123,7 @@ class TestBackupHelp:
 class TestBackupRun:
     """Testes do comando backup run."""
 
-    def test_backup_run_requires_source(
-        self, cli_invoke: Callable[..., Result]
-    ) -> None:
+    def test_backup_run_requires_source(self, cli_invoke: Callable[..., Result]) -> None:
         """backup run deve exigir SOURCE."""
         result = cli_invoke("backup", "run")
 
@@ -172,7 +170,6 @@ class TestBackupRun:
             "backup",
             "run",
             str(sample_source_dir),
-            "-d",
             str(dest),
         )
 
@@ -194,7 +191,6 @@ class TestBackupRun:
             "backup",
             "run",
             str(sample_source_dir),
-            "-d",
             str(dest),
             "-c",
             "zip",
@@ -217,7 +213,6 @@ class TestBackupRun:
             "backup",
             "run",
             str(sample_source_dir),
-            "-d",
             str(dest),
             "-e",
             "*.tmp",
@@ -247,16 +242,11 @@ class TestBackupList:
         result = cli_invoke(
             "backup",
             "list",
-            "-d",
             str(empty_dir),
         )
 
         # Não deve dar erro, apenas informar que não há backups
-        assert (
-            result.exit_code == 0
-            or "nenhum" in result.output.lower()
-            or "no backup" in result.output.lower()
-        )
+        assert result.exit_code == 0 or "nenhum" in result.output.lower() or "no backup" in result.output.lower()
 
     def test_backup_list_with_limit(
         self,
@@ -267,7 +257,6 @@ class TestBackupList:
         result = cli_invoke(
             "backup",
             "list",
-            "-d",
             str(e2e_env["backups"]),
             "-l",
             "5",
@@ -285,7 +274,6 @@ class TestBackupList:
         result = cli_invoke(
             "backup",
             "list",
-            "-d",
             str(e2e_env["backups"]),
             "-n",
             "documents",
@@ -303,17 +291,13 @@ class TestBackupList:
 class TestBackupRestore:
     """Testes do comando backup restore."""
 
-    def test_backup_restore_requires_file(
-        self, cli_invoke: Callable[..., Result]
-    ) -> None:
+    def test_backup_restore_requires_file(self, cli_invoke: Callable[..., Result]) -> None:
         """backup restore deve exigir BACKUP_FILE."""
         result = cli_invoke("backup", "restore")
 
         assert result.exit_code != 0
 
-    def test_backup_restore_invalid_file(
-        self, cli_invoke: Callable[..., Result]
-    ) -> None:
+    def test_backup_restore_invalid_file(self, cli_invoke: Callable[..., Result]) -> None:
         """backup restore deve falhar com arquivo inexistente."""
         result = cli_invoke("backup", "restore", "/arquivo/que/nao/existe.zip")
 
@@ -357,7 +341,6 @@ class TestBackupCleanup:
         result = cli_invoke(
             "backup",
             "cleanup",
-            "-d",
             str(e2e_env["backups"]),
             "-y",  # Não pedir confirmação
         )
@@ -374,7 +357,6 @@ class TestBackupCleanup:
         result = cli_invoke(
             "backup",
             "cleanup",
-            "-d",
             str(e2e_env["backups"]),
             "-k",
             "3",
@@ -394,7 +376,6 @@ class TestBackupCleanup:
             "--dry-run",
             "backup",
             "cleanup",
-            "-d",
             str(e2e_env["backups"]),
         )
 
@@ -428,7 +409,6 @@ class TestBackupWorkflow:
             "backup",
             "run",
             str(sample_source_dir),
-            "-d",
             str(dest),
         )
         assert result1.exit_code == 0
@@ -437,7 +417,6 @@ class TestBackupWorkflow:
         result2 = cli_invoke(
             "backup",
             "list",
-            "-d",
             str(dest),
         )
         assert result2.exit_code == 0 or "nenhum" in result2.output.lower()
@@ -447,7 +426,6 @@ class TestBackupWorkflow:
             "--dry-run",
             "backup",
             "cleanup",
-            "-d",
             str(dest),
         )
         assert result3.exit_code == 0
@@ -475,7 +453,6 @@ class TestBackupCompression:
             "backup",
             "run",
             str(sample_source_dir),
-            "-d",
             str(e2e_env["backups"]),
             "-c",
             compression,
@@ -543,7 +520,6 @@ class TestBackupMessages:
             "backup",
             "run",
             str(sample_source_dir),
-            "-d",
             str(dest),
         )
 
@@ -576,7 +552,6 @@ class TestBackupEdgeCases:
                 "backup",
                 "run",
                 str(single_file),
-                "-d",
                 str(e2e_env["backups"]),
             )
 
@@ -598,7 +573,6 @@ class TestBackupEdgeCases:
             "backup",
             "run",
             str(unicode_dir),
-            "-d",
             str(e2e_env["backups"]),
         )
 
@@ -616,7 +590,6 @@ class TestBackupEdgeCases:
             "backup",
             "run",
             str(sample_source_dir),
-            "-d",
             str(e2e_env["backups"]),
             "-e",
             "*.tmp",

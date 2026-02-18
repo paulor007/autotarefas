@@ -710,11 +710,26 @@ class Scheduler:
             result = task_instance.run()
 
             # Verifica resultado
-            if hasattr(result, "success"):
+            # Verifica resultado (suporta DummyResult com atributo `success` e TaskResult do core.base)
+            try:
+                from autotarefas.core.base import TaskResult  # import local evita ciclos
+            except Exception:
+                TaskResult = None  # type: ignore
+
+            if TaskResult is not None and isinstance(result, TaskResult):
+                # TaskResult usa status (SUCCESS/FAILED/etc.)
+                success = bool(getattr(result, "status", None) and result.status.is_success)
+                if not success:
+                    # Prioriza mensagem e depois a exceção
+                    msg = getattr(result, "message", "") or ""
+                    err = getattr(result, "error", None)
+                    error_msg = msg.strip() or (str(err) if err else "task failed")
+            elif hasattr(result, "success"):
                 success = bool(result.success)
                 if not success and hasattr(result, "error"):
                     error_msg = str(result.error)
             else:
+                # Se não tem um formato de resultado conhecido, considera sucesso
                 success = True
 
             logger.info(
