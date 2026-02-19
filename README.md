@@ -335,8 +335,8 @@ Acesse: **http://localhost:8000**
 ### Funcionalidades
 
 - **Métricas em tempo real** - CPU, memória, disco, rede
-- **Lista de Tasks** - Visualização das tasks disponíveis
-- **Execução de Tasks** - Execute tasks diretamente pelo dashboard
+- **Lista de Tarefas** - Visualização das tarefas disponíveis
+- **Execução de Tarefas** - Execute tarefas diretamente pelo dashboard
 - **Top Processos** - Monitore os processos que mais consomem recursos
 - **WebSocket** - Atualizações a cada 2 segundos
 
