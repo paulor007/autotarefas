@@ -1,4 +1,4 @@
-# 🤖 AutoTarefas
+# AutoTarefas
 
 <p align="center">
   <img src="https://img.shields.io/badge/python-3.12+-blue.svg" alt="Python 3.12+">
@@ -25,19 +25,19 @@
 
 ---
 
-## 📋 Sobre o Projeto
+## Sobre o Projeto
 
 O **AutoTarefas** é uma ferramenta CLI modular e extensível para automação de tarefas do dia-a-dia. Desenvolvido em Python com foco em qualidade de código, testes e documentação, oferece funcionalidades como backup, limpeza, organização de arquivos, monitoramento do sistema, agendamento de tarefas, notificações por email, integrações com cloud e muito mais.
 
-### ✨ Destaques
+### Destaques
 
-- 📦 **7 módulos principais** de automação
-- ☁️ **3 provedores cloud** integrados (Google Drive, Dropbox, AWS S3)
-- 🌐 **Dashboard web** com métricas em tempo real
-- 🔌 **Sistema de plugins** extensível
-- 🧪 **986 testes** automatizados
-- 📊 **98% de cobertura** de código
-- 📚 **Documentação completa** com MkDocs
+- **7 módulos principais** de automação
+- **3 provedores cloud** integrados (Google Drive, Dropbox, AWS S3)
+- **Dashboard web** com métricas em tempo real
+- **Sistema de plugins** extensível
+- **986 testes** automatizados
+- **98% de cobertura** de código
+- **Documentação completa** com MkDocs
 
 ---
 
@@ -47,25 +47,25 @@ O **AutoTarefas** é uma ferramenta CLI modular e extensível para automação d
 
 | Módulo | Descrição | Comandos |
 |--------|-----------|----------|
-| 📦 **Backup** | Backup automático com compressão (ZIP, TAR, TAR.GZ) | `backup run`, `backup list`, `backup restore` |
-| 🧹 **Cleaner** | Limpeza inteligente de arquivos temporários | `clean run`, `clean preview`, `clean profiles` |
-| 🗂️ **Organizer** | Organização automática por tipo (102 extensões) | `organize run`, `organize preview`, `organize stats` |
-| 📊 **Monitor** | Monitoramento de CPU, RAM, disco em tempo real | `monitor status`, `monitor live` |
-| ⏰ **Scheduler** | Agendamento de tarefas com persistência | `schedule add`, `schedule list`, `schedule start` |
-| 📧 **Email** | Notificações por email via SMTP | `email send`, `email test`, `email notify` |
-| 📋 **Reporter** | Geração de relatórios em múltiplos formatos | `report generate`, `report templates` |
+| **Backup** | Backup automático com compressão (ZIP, TAR, TAR.GZ) | `backup run`, `backup list`, `backup restore` |
+| **Cleaner** | Limpeza inteligente de arquivos temporários | `clean run`, `clean preview`, `clean profiles` |
+| **Organizer** | Organização automática por tipo (102 extensões) | `organize run`, `organize preview`, `organize stats` |
+| **Monitor** | Monitoramento de CPU, RAM, disco em tempo real | `monitor status`, `monitor live` |
+| **Scheduler** | Agendamento de tarefas com persistência | `schedule add`, `schedule list`, `schedule start` |
+| **Email** | Notificações por email via SMTP | `email send`, `email test`, `email notify` |
+| **Reporter** | Geração de relatórios em múltiplos formatos | `report generate`, `report templates` |
 
 ### Integrações Avançadas
 
 | Módulo | Descrição | Recursos |
 |--------|-----------|----------|
-| ☁️ **Cloud Storage** | Upload/download para nuvem | Google Drive, Dropbox, AWS S3 |
-| 🌐 **Dashboard Web** | Interface web para monitoramento | FastAPI, React, WebSocket |
-| 🔌 **Plugins** | Sistema extensível de plugins | Hooks, Registry, Entry Points |
+| **Cloud Storage** | Upload/download para nuvem | Google Drive, Dropbox, AWS S3 |
+| **Dashboard Web** | Interface web para monitoramento | FastAPI, React, WebSocket |
+| **Plugins** | Sistema extensível de plugins | Hooks, Registry, Entry Points |
 
 ---
 
-## 🚀 Instalação
+## Instalação
 
 ### Requisitos
 
@@ -117,7 +117,7 @@ autotarefas --version
 
 ---
 
-## 📖 Uso Rápido
+## Uso Rápido
 
 ### Ver ajuda
 
@@ -155,7 +155,7 @@ autotarefas monitor status --json
 ╰──────────────────────────────────────────────────────────────────╯
 ```
 
-### 📦 Backup
+### Backup
 
 ```bash
 # Criar backup
@@ -174,7 +174,7 @@ autotarefas backup restore ~/backups/backup_20260210.zip -d ~/restored
 autotarefas backup run ~/Documents --cloud google_drive --cloud-path /backups
 ```
 
-### 🗂️ Organizar Arquivos
+### Organizar Arquivos
 
 ```bash
 # Ver preview (não move arquivos)
@@ -195,7 +195,7 @@ autotarefas organize run ~/Downloads --recursive
 
 **Exemplo de preview:**
 ```
-                    📋 12 arquivos seriam organizados
+                    12 arquivos seriam organizados
 ┏━━━━━━━━━━━━━━━━┳━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
 ┃ Destino        ┃ Arquivos ┃ Exemplos                              ┃
 ┡━━━━━━━━━━━━━━━━╇━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┩
@@ -206,7 +206,7 @@ autotarefas organize run ~/Downloads --recursive
 └────────────────┴──────────┴───────────────────────────────────────┘
 ```
 
-### 🧹 Limpeza
+### Limpeza
 
 ```bash
 # Ver perfis disponíveis
@@ -225,7 +225,7 @@ autotarefas clean run ~/Downloads --days 30
 autotarefas clean run ~/temp --use-trash
 ```
 
-### ⏰ Agendamento
+### Agendamento
 
 ```bash
 # Ver tarefas disponíveis
@@ -247,7 +247,7 @@ autotarefas schedule status
 autotarefas schedule start
 ```
 
-### 📧 Email
+### Email
 
 ```bash
 # Testar configuração
@@ -262,7 +262,7 @@ autotarefas email notify "Backup concluído com sucesso!" --level success
 
 ---
 
-## ☁️ Cloud Storage
+## Cloud Storage
 
 O AutoTarefas suporta 3 provedores de cloud storage para backup e sincronização.
 
@@ -316,7 +316,7 @@ result = task.run()
 
 ---
 
-## 🌐 Dashboard Web
+## Dashboard Web
 
 Interface web moderna para monitoramento em tempo real.
 
@@ -334,11 +334,11 @@ Acesse: **http://localhost:8000**
 
 ### Funcionalidades
 
-- 📊 **Métricas em tempo real** - CPU, memória, disco, rede
-- 📋 **Lista de Tasks** - Visualização das tasks disponíveis
-- ▶️ **Execução de Tasks** - Execute tasks diretamente pelo dashboard
-- 📈 **Top Processos** - Monitore os processos que mais consomem recursos
-- 🔌 **WebSocket** - Atualizações a cada 2 segundos
+- **Métricas em tempo real** - CPU, memória, disco, rede
+- **Lista de Tasks** - Visualização das tasks disponíveis
+- **Execução de Tasks** - Execute tasks diretamente pelo dashboard
+- **Top Processos** - Monitore os processos que mais consomem recursos
+- **WebSocket** - Atualizações a cada 2 segundos
 
 ### API Endpoints
 
@@ -360,7 +360,7 @@ Acesse: **http://localhost:8000**
 
 ---
 
-## 🔌 Plugins
+## Plugins
 
 Sistema extensível de plugins para adicionar novas funcionalidades.
 
@@ -439,7 +439,7 @@ HookManager.trigger("task.after_run", task_name="backup", result=result)
 
 ---
 
-## ⚙️ Configuração
+## Configuração
 
 ### Arquivo .env
 
@@ -477,7 +477,7 @@ EMAIL_PASSWORD=sua-senha-de-app
 
 ---
 
-## 🧪 Testes
+## Testes
 
 ```bash
 # Rodar todos os testes
@@ -510,7 +510,7 @@ pytest tests/integration/ -v
 
 ---
 
-## 📁 Estrutura do Projeto
+## Estrutura do Projeto
 
 ```
 autotarefas/
@@ -561,7 +561,7 @@ autotarefas/
 
 ---
 
-## 📊 Métricas do Projeto
+## Métricas do Projeto
 
 | Métrica | Valor |
 |---------|-------|
@@ -576,7 +576,7 @@ autotarefas/
 
 ---
 
-## 🤝 Contribuindo
+## Contribuindo
 
 Contribuições são bem-vindas! Por favor, leia o [CONTRIBUTING.md](CONTRIBUTING.md) para detalhes.
 
@@ -596,7 +596,7 @@ Contribuições são bem-vindas! Por favor, leia o [CONTRIBUTING.md](CONTRIBUTIN
 
 ---
 
-## 📋 Roadmap
+## Roadmap
 
 - [x] **v0.1.0** - Módulos principais (Backup, Cleaner, Organizer, Monitor)
 - [x] **v0.2.0** - Scheduler e Email
@@ -609,13 +609,13 @@ Contribuições são bem-vindas! Por favor, leia o [CONTRIBUTING.md](CONTRIBUTIN
 
 ---
 
-## 📝 Licença
+## Licença
 
 Este projeto está sob a licença MIT. Veja o arquivo [LICENSE](LICENSE) para mais detalhes.
 
 ---
 
-## 📬 Suporte
+## Suporte
 
 - **Autor:** [Paulo Lavarini](https://www.linkedin.com/in/paulo-lavarini-20abaa38)
 - **Portfolio:** [paulolavariniportfolio.netlify.app](https://paulolavariniportfolio.netlify.app/)
