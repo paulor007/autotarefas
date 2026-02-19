@@ -127,7 +127,7 @@ autotarefas backup --help
 autotarefas monitor --help
 ```
 
-### 📊 Monitor do Sistema
+### Monitor do Sistema
 
 ```bash
 # Status básico
