@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <b>🚀 Sistema completo de automação de tarefas para desenvolvedores e sysadmins</b>
+  <b>Sistema completo de automação de tarefas para desenvolvedores e sysadmins</b>
 </p>
 
 <p align="center">
@@ -41,7 +41,7 @@ O **AutoTarefas** é uma ferramenta CLI modular e extensível para automação d
 
 ---
 
-## ✨ Funcionalidades
+## Funcionalidades
 
 ### Módulos Principais
 
