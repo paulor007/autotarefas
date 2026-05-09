@@ -1,0 +1,200 @@
+# ============================================
+
+# AUTOTAREFAS - .gitignore
+
+# ============================================
+
+# Arquivos e pastas ignorados pelo git.
+
+# Codificação: UTF-8
+
+# ============================================
+
+# === PYTHON ===
+
+**pycache**/
+_.py[cod]
+_$py.class
+\*.so
+
+# Distribution / packaging
+
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+_.egg-info/
+.installed.cfg
+_.egg
+MANIFEST
+
+# PyInstaller
+
+_.manifest
+_.spec
+
+# Installer logs
+
+pip-log.txt
+pip-delete-this-directory.txt
+
+# === AMBIENTES VIRTUAIS ===
+
+venv/
+ENV/
+env/
+.venv/
+.env/
+
+# === TESTES E COBERTURA ===
+
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage._
+.cache
+nosetests.xml
+coverage.xml
+coverage.json
+coverage.lcov
+_.cover
+\*.py,cover
+.hypothesis/
+.pytest_cache/
+cover/
+
+# === TYPE CHECKING ===
+
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# === LINTING ===
+
+.ruff_cache/
+
+# === SECURITY SCANNERS ===
+
+.secrets.baseline.bak
+
+# === IDEs ===
+
+# VS Code (mantém configs compartilhadas)
+
+.vscode/_
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+_.code-workspace
+
+# PyCharm / IntelliJ
+
+.idea/
+_.iml
+_.ipr
+\*.iws
+
+# Sublime Text
+
+_.sublime-project
+_.sublime-workspace
+
+# Vim
+
+_.swp
+_.swo
+\*~
+
+# === SISTEMA OPERACIONAL ===
+
+# macOS
+
+.DS*Store
+.AppleDouble
+.LSOverride
+.*\*
+
+# Windows
+
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+\*.lnk
+
+# Linux
+
+.fuse_hidden*
+.directory
+.Trash-*
+.nfs\*
+
+# === LOGS E DADOS LOCAIS ===
+
+_.log
+logs/
+_.sqlite
+_.sqlite3
+_.db
+
+# === SECRETS E CONFIGURAÇÕES LOCAIS ===
+
+.env
+.env.local
+.env._.local
+secrets.yaml
+secrets.json
+_.pem
+\*.key
+
+# === ARQUIVOS TEMPORÁRIOS ===
+
+_.tmp
+_.temp
+_.bak
+_.backup
+tmp/
+temp/
+
+# === JUPYTER NOTEBOOKS ===
+
+.ipynb_checkpoints/
+\*.ipynb
+
+# === DOCUMENTAÇÃO ===
+
+site/
+docs/\_build/
+docs/.cache/
+
+# === DADOS DO AUTOTAREFAS (runtime) ===
+
+.autotarefas/
+backups/
+reports/
+data/
+screenshots/
+
+# === PLAYWRIGHT (browsers e cache) ===
+
+.playwright/
+playwright-report/
+test-results/
+
+# === DEPENDÊNCIAS NODE (caso futuras docs/frontend) ===
+
+node_modules/
+package-lock.json
+yarn.lock
