@@ -1,0 +1,95 @@
+# ============================================================
+# AutoTarefas - Pre-commit Hooks
+# ============================================================
+# Hooks que rodam ANTES de cada commit.
+# Se algum falhar, o commit é bloqueado.
+#
+# Para instalar (uma vez por máquina):
+#   pre-commit install
+#
+# Para rodar manualmente em todos arquivos:
+#   pre-commit run --all-files
+#
+# Para pular um commit (NÃO recomendado):
+#   git commit --no-verify
+# ============================================================
+
+default_language_version:
+  python: python3.13
+
+repos:
+  # ============================================================
+  # Hooks básicos do pre-commit
+  # ============================================================
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      # Remove espaços em branco no fim das linhas
+      - id: trailing-whitespace
+      # Garante que arquivo termina com nova linha
+      - id: end-of-file-fixer
+      # Valida sintaxe YAML
+      - id: check-yaml
+      # Valida sintaxe TOML
+      - id: check-toml
+      # Valida sintaxe JSON
+      - id: check-json
+      # Detecta merge conflicts não resolvidos
+      - id: check-merge-conflict
+      # Bloqueia commits de arquivos > 1MB
+      - id: check-added-large-files
+        args: ["--maxkb=1000"]
+      # Detecta chaves SSH/SSL privadas
+      - id: detect-private-key
+      # Padroniza line endings em LF
+      - id: mixed-line-ending
+        args: ["--fix=lf"]
+
+  # ============================================================
+  # Ruff - Linter + Formatter
+  # ============================================================
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.6.9
+    hooks:
+      # Lint (tenta corrigir automaticamente)
+      - id: ruff
+        args: [--fix, --exit-non-zero-on-fix]
+      # Format (estilo de código)
+      - id: ruff-format
+
+  # ============================================================
+  # Mypy - Type checker
+  # ============================================================
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.13.0
+    hooks:
+      - id: mypy
+        additional_dependencies:
+          - pydantic>=2.6.0
+          - pydantic-settings>=2.2.0
+          - types-PyYAML
+        files: ^src/
+
+  # ============================================================
+  # Bandit - Análise de segurança
+  # ============================================================
+  - repo: https://github.com/PyCQA/bandit
+    rev: 1.7.10
+    hooks:
+      - id: bandit
+        args: ["-c", "pyproject.toml", "-r", "src"]
+        additional_dependencies: ["bandit[toml]"]
+
+  # ============================================================
+  # detect-secrets - Detecta credenciais em commits
+  # ============================================================
+  - repo: https://github.com/Yelp/detect-secrets
+    rev: v1.5.0
+    hooks:
+      - id: detect-secrets
+        args: ["--baseline", ".secrets.baseline"]
+        exclude: |
+          (?x)^(
+              \.env\.example|
+              \.secrets\.baseline
+          )$

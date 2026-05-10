@@ -1,0 +1,300 @@
+# ============================================================
+# AutoTarefas - Configuração do Projeto
+# ============================================================
+# Este arquivo é a "carteira de identidade" do projeto Python.
+# Centraliza:
+#   - Metadados (nome, versão, autor)
+#   - Dependências de runtime e desenvolvimento
+#   - Configuração de TODAS as ferramentas (ruff, mypy, pytest, etc)
+#
+# Padrão: PEP 621 + PEP 518
+# Build backend: hatchling (moderno, leve, recomendado pelo PyPA)
+# ============================================================
+
+# ============================================================
+# [build-system] - Como o projeto é "construído" (built)
+# ============================================================
+[build-system]
+requires = ["hatchling>=1.21.0"]
+build-backend = "hatchling.build"
+
+# ============================================================
+# [project] - Metadados do projeto
+# ============================================================
+[project]
+name = "autotarefas"
+version = "0.0.0"
+description = "Robô de Automação Operacional em Python — valida planilhas, organiza arquivos, automatiza cadastros e extrai dados de sistemas web."
+authors = [
+    { name = "Paulo Lavarini", email = "paulo.lavarini@gmail.com" },
+]
+license = { text = "MIT" }
+readme = "README.md"
+requires-python = ">=3.12"
+
+keywords = [
+    "automation",
+    "rpa",
+    "playwright",
+    "spreadsheet",
+    "validation",
+    "backup",
+    "operations",
+    "freelance",
+]
+
+classifiers = [
+    "Development Status :: 2 - Pre-Alpha",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Intended Audience :: System Administrators",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Office/Business",
+    "Topic :: System :: Systems Administration",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
+
+# ------------------------------------------------------------
+# DEPENDÊNCIAS DE RUNTIME (instaladas em produção)
+# ------------------------------------------------------------
+dependencies = [
+    # === CLI e output ===
+    "click>=8.1.7,<9.0.0",          # Framework de linha de comando
+    "rich>=13.7.0,<15.0.0",         # Output bonito (tabelas, painéis, cores)
+
+    # === Logs ===
+    "loguru>=0.7.2,<1.0.0",         # Logging mais simples que o stdlib
+
+    # === Configuração e validação ===
+    "pydantic>=2.6.0,<3.0.0",       # Schemas type-safe (v2 = rápido em C)
+    "pydantic-settings>=2.2.0,<3.0.0",  # Lê .env automaticamente
+
+    # === Manipulação de dados ===
+    "pandas>=2.2.0,<3.0.0",         # CSV/Excel padrão
+    "openpyxl>=3.1.0,<4.0.0",       # Engine pro pandas ler/escrever .xlsx
+
+    # === Configurações em YAML (RPA) ===
+    "PyYAML>=6.0.1,<7.0.0",         # Configs de cada sistema-alvo
+
+    # === Network ===
+    "httpx>=0.27.0,<1.0.0",         # Cliente HTTP moderno (substitui requests)
+
+    # === Resiliência ===
+    "tenacity>=8.2.3,<9.0.0",       # Retry com backoff (Fase 8+)
+
+    # === RPA ===
+    "playwright>=1.42.0,<2.0.0",    # Automação de navegador (Fase 8+)
+
+    # === Sistema demo (Fase 8.0) ===
+    "fastapi>=0.110.0,<1.0.0",      # Sistema-alvo do RPA
+    "uvicorn[standard]>=0.27.0,<1.0.0",  # ASGI server pro FastAPI
+    "jinja2>=3.1.0,<4.0.0",         # Templates HTML do sistema demo
+    "faker>=24.0.0,<26.0.0",        # Dados fictícios pro sistema demo
+
+    # === Segurança / criptografia ===
+    "cryptography>=42.0.0,<44.0.0", # HMAC-SHA256 pro audit trail
+]
+
+# ------------------------------------------------------------
+# DEPENDÊNCIAS OPCIONAIS (grupos)
+# ------------------------------------------------------------
+[project.optional-dependencies]
+
+# Para desenvolvimento (instala com: pip install -e ".[dev]")
+dev = [
+    # === Testing ===
+    "pytest>=8.0.0,<10.0.0",
+    "pytest-cov>=5.0.0,<8.0.0",     # Cobertura de testes
+    "pytest-mock>=3.12.0,<4.0.0",   # Mocking
+    "pytest-asyncio>=0.23.0,<1.0.0",  # Pra Playwright async
+
+    # === Type checking ===
+    "mypy>=1.8.0,<2.0.0",
+    "types-PyYAML>=6.0.12,<7.0.0",  # Stubs do PyYAML
+    "pandas-stubs>=2.2.0,<3.0.0",   # Stubs do pandas
+
+    # === Linting & formatting ===
+    "ruff>=0.3.0,<1.0.0",           # Substitui black + isort + flake8
+
+    # === Security scanners ===
+    "bandit[toml]>=1.7.7,<2.0.0",   # Análise estática de segurança
+    "detect-secrets>=1.4.0,<2.0.0", # Detecta credenciais em commits
+    "safety>=3.0.0,<4.0.0",         # Vulnerabilidades em deps
+
+    # === Pre-commit hooks ===
+    "pre-commit>=3.6.0,<4.0.0",
+]
+
+# Para gerar documentação (instala com: pip install -e ".[docs]")
+docs = [
+    "mkdocs>=1.5.0,<2.0.0",
+    "mkdocs-material>=9.5.0,<10.0.0",
+    "mkdocstrings[python]>=0.24.0,<1.0.0",
+]
+
+# ------------------------------------------------------------
+# COMANDO INSTALADO NO SISTEMA
+# ------------------------------------------------------------
+# Após `pip install -e .`, o comando `autotarefas` fica disponível no PATH.
+# Ele aponta pra função `cli()` em `src/autotarefas/cli/main.py`.
+[project.scripts]
+autotarefas = "autotarefas.cli.main:cli"
+
+# ------------------------------------------------------------
+# URLS DO PROJETO (aparecem na página do PyPI/GitHub)
+# ------------------------------------------------------------
+[project.urls]
+Homepage = "https://github.com/paulor007/autotarefas"
+Repository = "https://github.com/paulor007/autotarefas"
+Issues = "https://github.com/paulor007/autotarefas/issues"
+Changelog = "https://github.com/paulor007/autotarefas/blob/main/CHANGELOG.md"
+
+
+# ============================================================
+# [tool.hatch] - Configuração específica do build backend
+# ============================================================
+# Diz ao hatchling onde está o código.
+[tool.hatch.build.targets.wheel]
+packages = ["src/autotarefas"]
+
+
+# ============================================================
+# [tool.ruff] - Linter + Formatter (substitui black, isort, flake8)
+# ============================================================
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+extend-exclude = ["docs/_build/", "build/", "dist/", "venv/", ".venv/"]
+
+[tool.ruff.lint]
+# Regras ATIVADAS (subconjunto sensato)
+select = [
+    "E",     # pycodestyle errors
+    "W",     # pycodestyle warnings
+    "F",     # pyflakes
+    "I",     # isort (organização de imports)
+    "B",     # bugbear (bugs comuns)
+    "S",     # bandit (segurança básica)
+    "UP",    # pyupgrade (sintaxe moderna)
+    "SIM",   # simplify (código mais simples)
+    "RET",   # return statements
+    "ANN",   # annotations (type hints)
+    "C4",    # comprehensions
+    "PIE",   # diversos
+    "T20",   # no print statements
+    "PT",    # pytest style
+    "RUF",   # ruff-specific
+]
+
+# Regras DESATIVADAS (motivos abaixo)
+ignore = [
+    "ANN101",  # missing type for self (redundante)
+    "ANN102",  # missing type for cls (redundante)
+    "ANN401",  # disallow Any (às vezes preciso)
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Tests podem ser mais relaxados
+"tests/**" = [
+    "S101",   # assert é OK em testes
+    "ANN",    # type hints em testes não são obrigatórios
+    "T20",    # print em testes é OK pra debug
+]
+# CLI pode usar print (faz parte do output)
+"src/autotarefas/cli/**" = [
+    "T20",
+]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+docstring-code-format = true     # Formata snippets dentro de docstrings
+
+
+# ============================================================
+# [tool.mypy] - Type checker estrito
+# ============================================================
+[tool.mypy]
+python_version = "3.12"
+strict = true
+disallow_untyped_decorators = false                     # Ativa TODAS as verificações estritas
+
+# Verificações específicas (todas vêm com strict, mas explicitamos pra clareza)
+warn_unused_ignores = true        # Avisa se "type: ignore" for desnecessário
+warn_return_any = true            # Avisa se função retorna Any sem querer
+disallow_untyped_defs = true      # Toda função precisa de type hints
+disallow_incomplete_defs = true   # Type hints parciais não são aceitos
+no_implicit_optional = true       # `x: int = None` não funciona, precisa `x: int | None`
+warn_redundant_casts = true
+warn_unused_configs = true
+
+# Output
+show_error_codes = true
+show_column_numbers = true
+pretty = true
+
+# Tests podem ter type hints opcionais (pra rapidez)
+[[tool.mypy.overrides]]
+module = "tests.*"
+disallow_untyped_defs = false
+
+# Libs sem stubs disponíveis (ignorar imports)
+[[tool.mypy.overrides]]
+module = ["faker.*", "tenacity.*"]
+ignore_missing_imports = true
+
+
+# ============================================================
+# [tool.pytest] - Test runner
+# ============================================================
+[tool.pytest.ini_options]
+minversion = "8.0"
+testpaths = ["tests"]
+
+addopts = [
+    "--strict-markers",                    # Falha se marker desconhecido
+    "--strict-config",                     # Falha se config inválida
+    "--cov=src/autotarefas",               # Cobertura sobre o código fonte
+    "--cov-report=term-missing",           # Mostra linhas não cobertas no terminal
+    "--cov-report=html",                   # Gera relatório HTML detalhado
+    "--cov-fail-under=85",                 # Falha se cobertura < 85%
+    "-v",                                  # Verboso
+]
+
+markers = [
+    "slow: marca testes lentos (rode com 'pytest -m \"not slow\"' pra pular)",
+    "integration: testes que tocam mais de um módulo",
+    "e2e: testes end-to-end (RPA real, sobem browser, demoram)",
+]
+
+
+# ============================================================
+# [tool.coverage] - Configuração de cobertura
+# ============================================================
+[tool.coverage.run]
+branch = true                         # Cobertura também de branches (if/else)
+source = ["src/autotarefas"]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+    "if TYPE_CHECKING:",
+]
+
+
+# ============================================================
+# [tool.bandit] - Análise estática de segurança
+# ============================================================
+[tool.bandit]
+exclude_dirs = ["tests", "build", "docs"]
+
+# Severidade mínima pra falhar o build:
+# (LOW = informativo, MEDIUM = suspeito, HIGH = crítico)
+# Por padrão captura MEDIUM+, que é o ideal.
