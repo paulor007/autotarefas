@@ -6,16 +6,21 @@ Componentes fundamentais usados por todos os outros módulos:
 - ``exceptions`` — hierarquia de exceções customizadas
 - ``settings`` — configurações via .env (pydantic-settings)
 - ``logger`` — logging com mascaramento automático
+- ``base`` — BaseTask, TaskResult, TaskStatus (abstrações de task)
 
 Uso:
+    from autotarefas.core import BaseTask, TaskResult, TaskStatus
     from autotarefas.core import logger, settings, ValidationError
 
-    logger.info("Iniciando aplicação no ambiente {env}", env=settings.environment)
+    class MyTask(BaseTask):
+        name = "my_task"
+        description = "..."
 
-    if invalid:
-        raise ValidationError("Campo obrigatório faltando", field="email")
+        def execute(self) -> TaskResult:
+            ...
 """
 
+from autotarefas.core.base import BaseTask, TaskResult, TaskStatus
 from autotarefas.core.exceptions import (
     AuditError,
     AutoTarefasError,
@@ -33,6 +38,7 @@ from autotarefas.core.settings import Settings, settings
 __all__ = [
     "AuditError",
     "AutoTarefasError",
+    "BaseTask",
     "ConfigError",
     "LoginError",
     "RPAError",
@@ -40,6 +46,8 @@ __all__ = [
     "SecurityError",
     "SelectorNotFoundError",
     "Settings",
+    "TaskResult",
+    "TaskStatus",
     "ValidationError",
     "configure_logger",
     "logger",
