@@ -198,9 +198,11 @@ ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
-# Tests podem ser mais relaxados
 "tests/**" = [
     "S101",   # assert é OK em testes
+    "S105",   # hardcoded password string em testes é OK
+    "S106",   # hardcoded password como argumento em testes é OK
+    "S108",   # paths /tmp em testes são OK (usamos tmp_path)
     "ANN",    # type hints em testes não são obrigatórios
     "T20",    # print em testes é OK pra debug
 ]

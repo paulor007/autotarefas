@@ -7,19 +7,19 @@ Componentes fundamentais usados por todos os outros módulos:
 - ``settings`` — configurações via .env (pydantic-settings)
 - ``logger`` — logging com mascaramento automático
 - ``base`` — BaseTask, TaskResult, TaskStatus (abstrações de task)
+- ``audit`` — sistema de audit trail SQLite
+- ``security`` — helpers de segurança (safe_path, validate_url, hash_string)
 
 Uso:
-    from autotarefas.core import BaseTask, TaskResult, TaskStatus
-    from autotarefas.core import logger, settings, ValidationError
-
-    class MyTask(BaseTask):
-        name = "my_task"
-        description = "..."
-
-        def execute(self) -> TaskResult:
-            ...
+    from autotarefas.core import (
+        BaseTask, TaskResult, TaskStatus,
+        logger, settings, audit,
+        safe_path, validate_url,
+        ValidationError,
+    )
 """
 
+from autotarefas.core.audit import AuditTrail, audit
 from autotarefas.core.base import BaseTask, TaskResult, TaskStatus
 from autotarefas.core.exceptions import (
     AuditError,
@@ -33,10 +33,12 @@ from autotarefas.core.exceptions import (
     ValidationError,
 )
 from autotarefas.core.logger import configure_logger, logger, mask_sensitive
+from autotarefas.core.security import hash_string, safe_path, validate_url
 from autotarefas.core.settings import Settings, settings
 
 __all__ = [
     "AuditError",
+    "AuditTrail",
     "AutoTarefasError",
     "BaseTask",
     "ConfigError",
@@ -49,8 +51,12 @@ __all__ = [
     "TaskResult",
     "TaskStatus",
     "ValidationError",
+    "audit",
     "configure_logger",
+    "hash_string",
     "logger",
     "mask_sensitive",
+    "safe_path",
     "settings",
+    "validate_url",
 ]
