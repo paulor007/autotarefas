@@ -1,138 +1,155 @@
 # AutoTarefas
 
-<p align="center">
-  <img src="https://img.shields.io/badge/python-3.12+-blue.svg" alt="Python 3.12+">
-  <img src="https://img.shields.io/badge/license-MIT-yellow.svg" alt="License: MIT">
-  <img src="https://img.shields.io/badge/code%20style-ruff-000000.svg" alt="Code style: ruff">
-  <img src="https://img.shields.io/badge/status-em%20desenvolvimento-orange.svg" alt="Status">
-  <img src="https://img.shields.io/badge/version-0.0.0-blue.svg" alt="Version">
-</p>
+[![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+[![Coverage](https://img.shields.io/badge/coverage-98%25-brightgreen.svg)]()
+[![mypy: strict](https://img.shields.io/badge/mypy-strict-blue.svg)](http://mypy-lang.org/)
+[![Ruff](https://img.shields.io/badge/ruff-checked-orange.svg)](https://github.com/astral-sh/ruff)
 
-<p align="center">
-  <b>Robô de Automação Operacional em Python</b>
-</p>
+Robô de automação operacional para tarefas em planilhas (CSV, Excel) e
+sistemas web (RPA). Projeto Python moderno com foco em **segurança**,
+**rastreabilidade** (audit trail) e **robustez**.
 
-<p align="center">
-  Reduz tarefas manuais repetitivas em empresas e profissionais autônomos:<br>
-  validação de planilhas, organização de arquivos, backups,<br>
-  cadastro automático em sistemas web, extração de dados e sincronização.
-</p>
+> ⚠️ **Status atual: v0.1.0 (pré-release).** A fundação está pronta, mas
+> os módulos de negócio (validador, backup, RPA) ainda estão em
+> desenvolvimento. Veja o [roadmap](#-roadmap) abaixo.
 
 ---
 
-## Sobre o projeto
+## ✨ Destaques
 
-O **AutoTarefas** é uma ferramenta CLI desenvolvida em Python para automatizar rotinas operacionais que consomem tempo e geram erros quando feitas manualmente:
-
-- **Validação de planilhas Excel/CSV** antes de processar — evita cadastrar dados ruins
-- **Organização automática de arquivos** por tipo, data ou regra customizada
-- **Backup compactado** com retenção e verificação de integridade
-- **Robô de cadastro web (RPA)** — lê planilha e cadastra em sistemas via Playwright
-- **Extração de dados** — coleta informações de sistemas (via API ou navegador) para Excel
-- **Comparação e sincronização** entre planilha e sistema, com confirmação humana
-
-> **Exemplo prático:** uma empresa precisa migrar 300 produtos de uma planilha Excel para o sistema interno. Sem o AutoTarefas, isso levaria 2 dias de digitação manual. Com ele, executa em ~15 minutos com relatório completo de sucessos e erros.
-
----
-
-## Status
-
-**Em desenvolvimento ativo** — versão 0.0.0 (pré-release).
-
-Acompanhe as releases:
-
-- [Roadmap completo](docs/ROADMAP.md) _(em breve)_
-- [Releases](https://github.com/paulor007/autotarefas/releases)
-- [Changelog](CHANGELOG.md)
+- **Audit trail completo** — toda execução fica registrada em SQLite
+  append-only com HMAC-SHA256
+- **Mascaramento automático** — CPFs, CNPJs, senhas e tokens nunca
+  vazam em logs
+- **Dry-run em tudo** — simula operações antes de fazer mudanças reais
+- **Confirmação em massa** — operações destrutivas exigem escrita
+  explícita do número de itens
+- **Type-safe** — mypy strict, 0 erros
+- **98% de cobertura de testes**
 
 ---
 
-## Stack
-
-| Camada        | Tecnologia                  |
-| ------------- | --------------------------- |
-| **Linguagem** | Python 3.12+                |
-| **CLI**       | Click + Rich                |
-| **Validação** | Pydantic v2                 |
-| **Dados**     | pandas + openpyxl           |
-| **RPA**       | Playwright                  |
-| **HTTP**      | httpx                       |
-| **Configs**   | PyYAML                      |
-| **Logs**      | Loguru                      |
-| **Testes**    | pytest + pytest-cov         |
-| **Qualidade** | Ruff + Mypy strict + Bandit |
-
----
-
-## Instalação
-
-> Em desenvolvimento — ainda não publicado no PyPI.
-
-Para desenvolvedores que querem contribuir ou testar:
+## 🚀 Instalação
 
 ```bash
-# Clone
+# Clone o repositorio
 git clone https://github.com/paulor007/autotarefas.git
 cd autotarefas
 
-# Ambiente virtual
+# Cria virtual env (recomendado)
 python -m venv venv
-.\venv\Scripts\Activate.ps1   # Windows
-source venv/bin/activate       # Linux/macOS
+source venv/bin/activate         # Linux/Mac
+# .\venv\Scripts\Activate.ps1    # Windows PowerShell
 
-# Instala em modo editable + dependências de dev
+# Instala em modo desenvolvimento com todas as deps
 pip install -e ".[dev]"
-
-# Verifica
-autotarefas --version
 ```
+
+**Pré-requisitos**: Python 3.12+, Git.
 
 ---
 
-## Visão da CLI (em construção)
+## 🎯 Quick Start
 
 ```bash
-# Validar planilha antes de processar
-autotarefas validate run produtos.xlsx -c codigo,nome,preco
+# 1. Inicializa a estrutura em ~/.autotarefas/
+autotarefas init
 
-# Organizar arquivos
-autotarefas organize run ~/Downloads --profile by_type
+# 2. Edita o .env gerado (configuracoes locais)
 
-# Backup
-autotarefas backup run ~/dados -d ~/backups --keep 10
-
-# Robô de cadastro web
-autotarefas rpa cadastrar --arquivo produtos.xlsx --config sistema.yml
+# 3. Verifica o sistema
+autotarefas info
 ```
 
 ---
 
-## Contribuindo
+## 📋 Comandos (v0.1.0)
 
-Este projeto está em fase inicial — feedback é muito bem-vindo:
+### Opções globais
 
-- [Issues](https://github.com/paulor007/autotarefas/issues) para bugs e sugestões
-- [Discussões](https://github.com/paulor007/autotarefas/discussions) para perguntas
+| Flag            | Descrição                                 |
+| --------------- | ----------------------------------------- |
+| `--verbose, -v` | Aumenta verbosidade (`-v`, `-vv`, `-vvv`) |
+| `--quiet, -q`   | Diminui verbosidade (`-q`, `-qq`)         |
+| `--dry-run`     | Simula sem fazer mudanças reais           |
+| `--yes, -y`     | Assume "sim" em todas as confirmações     |
+| `--version`     | Mostra a versão                           |
+| `--help, -h`    | Mostra ajuda                              |
+
+### Subcomandos
+
+```bash
+autotarefas init     # cria estrutura ~/.autotarefas/
+autotarefas info     # mostra info do sistema
+```
+
+### Exemplos
+
+```bash
+autotarefas --dry-run -vv init       # simula, com debug
+autotarefas init --data-dir ./custom # dir custom
+python -m autotarefas info           # equivalente
+```
 
 ---
 
-## Licença
+## 🛣️ Roadmap
 
-[MIT](LICENSE) — Paulo Lavarini, 2026.
-
----
-
-## Autor
-
-**Paulo Lavarini**
-
-- Portfolio: [paulolavarini-portfolio.netlify.app](https://paulolavarini-portfolio.netlify.app/)
-- LinkedIn: [paulo-lavarini](https://www.linkedin.com/in/paulo-lavarini-20abaa38)
-- Email: paulo.lavarini@gmail.com
-- GitHub: [@paulor007](https://github.com/paulor007)
+- ✅ **v0.0.0** — Setup (Fase 0)
+- ✅ **v0.1.0** — Core + CLI base _(atual)_
+- ⏳ **v0.2.0** — Validador de planilhas (CSV/Excel)
+- ⏳ **v0.3.0** — Backup + Organizador de arquivos
+- ⏳ **v0.4.0** — Base operacional estável
+- ⏳ **v0.5.0** — Sistema demo + RPA Cadastro Web
+- ⏳ **v0.6.0** — Extração (API + Browser)
+- ⏳ **v0.7.0** — Sincronização assistida
+- ⏳ **v0.8.0** — Dashboard web (opcional)
+- ⏳ **v1.0.0** — Versão estável com CI/CD + docs completas
 
 ---
 
-<p align="center">
-  <sub>⭐ Se este projeto te ajudou, deixa uma estrela!</sub>
-</p>
+## 🛡️ Princípios de Segurança
+
+Este projeto adere a **13 princípios** documentados, entre eles:
+
+- **Audit trail imutável** (append-only, HMAC-SHA256)
+- **Confirmação contextualizada em massa** (escrita do número exato)
+- **HTTPS obrigatório em produção**
+- **Mascaramento automático** de dados sensíveis em logs
+- **Path traversal protection**
+- **Ambiente demo obrigatório para RPA**
+
+---
+
+## 🧑‍💻 Desenvolvimento
+
+```bash
+pip install -e ".[dev]"
+pre-commit install
+
+# Validadores
+ruff check src/ tests/      # linter
+ruff format src/ tests/     # formatter
+mypy src/ tests/             # type checker
+pytest tests/ -v             # testes
+pytest tests/ --cov         # cobertura
+pre-commit run --all-files  # tudo de uma vez
+```
+
+### Stack
+
+- **Python 3.12+**
+- **Click** + **Rich** — CLI moderna
+- **pydantic-settings** — config type-safe
+- **loguru** — logging com mascaramento
+- **SQLite** — audit trail local
+- **pandas** + **openpyxl** — planilhas
+- **playwright** — RPA web (futuras fases)
+- **pytest** + **mypy strict** + **ruff** + **bandit**
+
+---
+
+## 📄 Licença
+
+[MIT](LICENSE) © 2026 Paulo Lavarini

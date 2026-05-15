@@ -1,19 +1,19 @@
 """
-AutoTarefas — Robô de Automação Operacional em Python.
+AutoTarefas — Robo de automacao operacional.
 
-Solução modular para automatizar tarefas operacionais repetitivas:
-- Validação de planilhas Excel/CSV
-- Organização de arquivos
-- Backups com retenção e integridade
-- Cadastro automático em sistemas web (RPA)
-- Extração de dados (via API ou navegador)
-- Comparação e sincronização planilha vs sistema
-
-Para uso via CLI:
-    autotarefas --help
+Pacote raiz que expoe metadados (versao, autor, licenca).
 """
 
-__version__ = "0.0.0"
+from __future__ import annotations
+
+__version__ = "0.1.0"
 __author__ = "Paulo Lavarini"
 __email__ = "paulo.lavarini@gmail.com"
 __license__ = "MIT"
+
+__all__ = [
+    "__author__",
+    "__email__",
+    "__license__",
+    "__version__",
+]
