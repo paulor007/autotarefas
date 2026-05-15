@@ -1,15 +1,4 @@
-"""
-Comando ``init``: inicializa a estrutura do AutoTarefas.
-
-Cria as pastas necessárias em ``~/.autotarefas/`` e gera um template
-``.env`` para configuração inicial.
-
-Uso:
-    autotarefas init                          # cria em ~/.autotarefas/
-    autotarefas init --force                  # sobrescreve .env existente
-    autotarefas init --data-dir ./meu-dir     # diretorio custom
-    autotarefas init --dry-run                # mostra sem fazer
-"""
+"""Subcomandos da CLI do AutoTarefas."""
 
 from __future__ import annotations
 
@@ -55,23 +44,6 @@ LOG_LEVEL=INFO
 """
 
 
-def _resolve_base_dir(data_dir: str | None) -> Path:
-    """
-    Determina o diretorio base do AutoTarefas.
-
-    Args:
-        data_dir: Caminho custom (do --data-dir). Se None, usa default.
-
-    Returns:
-        Path do diretorio base (ex: ~/.autotarefas/).
-    """
-    if data_dir:
-        return Path(data_dir).expanduser()
-    # ``settings.logs_dir`` aponta pra ``~/.autotarefas/logs/``
-    # Pegamos o pai pra ter ``~/.autotarefas/``
-    return settings.logs_dir.parent
-
-
 @click.command(name="init")
 @click.option(
     "--data-dir",
@@ -91,7 +63,8 @@ def init(ctx: CLIContext, data_dir: str | None, force: bool) -> None:
     console = Console(ctx)
     started_at = datetime.now(UTC)
 
-    base_dir = _resolve_base_dir(data_dir)
+    # Define base_dir (do parâmetro ou settings)
+    base_dir = Path(data_dir).expanduser() if data_dir else settings.logs_dir.parent
 
     console.info(f"Inicializando AutoTarefas em: {base_dir}")
     console.info("")
@@ -133,6 +106,7 @@ def init(ctx: CLIContext, data_dir: str | None, force: bool) -> None:
             action = "Sobrescreveria" if env_path.exists() else "Criaria"
             console.warning(f"  [DRY-RUN] {action} .env")
         else:
+            # Garante que o diretorio pai existe
             env_path.parent.mkdir(parents=True, exist_ok=True)
             env_path.write_text(ENV_TEMPLATE, encoding="utf-8")
             action = "Sobrescrito" if force and env_path.exists() else "Criado"
@@ -151,7 +125,7 @@ def init(ctx: CLIContext, data_dir: str | None, force: bool) -> None:
         console.info("")
         console.info(f"Proximo passo: edite {env_path} pra configurar.")
 
-    # Registra no audit (best-effort, nao propaga erros)
+    # Registra no audit (best-effort)
     duration_ms = int((datetime.now(UTC) - started_at).total_seconds() * 1000)
     audit.record(
         task_name="init",

@@ -10,11 +10,16 @@ subcomandos:
 - ``--yes, -y`` (assume "sim" em confirmações)
 - ``--version``
 
+Subcomandos:
+- ``info`` — mostra informações do sistema
+- ``init`` — inicializa estrutura em ~/.autotarefas/
+
 Uso:
     autotarefas --version
     autotarefas info
-    autotarefas --dry-run --verbose info
-    python -m autotarefas info
+    autotarefas init
+    autotarefas --dry-run init
+    python -m autotarefas init
 """
 
 from __future__ import annotations
@@ -23,6 +28,7 @@ import click
 
 from autotarefas import __version__
 from autotarefas.cli.commands.info import info
+from autotarefas.cli.commands.init import init
 from autotarefas.cli.context import CLIContext
 
 
@@ -76,6 +82,7 @@ def cli(
 
 # Registra os subcomandos
 cli.add_command(info)
+cli.add_command(init)
 
 
 if __name__ == "__main__":
