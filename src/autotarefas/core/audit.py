@@ -37,6 +37,7 @@ import hmac
 import json
 import os
 import sqlite3
+from contextlib import closing
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -121,6 +122,9 @@ class AuditTrail:
     - **Falhas não propagam**: erros gravam warning no log, não interrompem
       a task que estava sendo auditada.
     - **Sem dados sensíveis**: só hash HMAC-SHA256 do input.
+    - **Conexões fechadas corretamente**: usa ``contextlib.closing()`` em
+      todos os ``sqlite3.connect()`` (o ``with`` do sqlite3 NÃO fecha
+      automaticamente — só faz commit/rollback).
 
     Pra uso normal, importe a instância global ``audit``:
 
@@ -143,7 +147,7 @@ class AuditTrail:
         """Cria tabela e índices se ainda não existirem."""
         try:
             self.db_path.parent.mkdir(parents=True, exist_ok=True)
-            with sqlite3.connect(self.db_path) as conn:
+            with closing(sqlite3.connect(self.db_path)) as conn:
                 conn.executescript(CREATE_AUDIT_TABLE_SQL)
                 conn.commit()
         except (sqlite3.Error, OSError) as e:
@@ -193,7 +197,7 @@ class AuditTrail:
             secret = settings.audit_secret_key.get_secret_value()
             input_hash = _hash_input(input_data, secret) if input_data else ""
 
-            with sqlite3.connect(self.db_path) as conn:
+            with closing(sqlite3.connect(self.db_path)) as conn:
                 conn.execute(
                     """
                     INSERT INTO audit (
@@ -258,7 +262,7 @@ class AuditTrail:
         params.append(limit)
 
         try:
-            with sqlite3.connect(self.db_path) as conn:
+            with closing(sqlite3.connect(self.db_path)) as conn:
                 conn.row_factory = sqlite3.Row
                 rows = conn.execute(sql, params).fetchall()
                 return [dict(row) for row in rows]
