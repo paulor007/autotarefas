@@ -1,14 +1,15 @@
 """
-Task de validação de planilhas (CSV, TSV, Excel).
+Task de validação de planilhas (CSV, TSV, Excel) — VERSAO PARTE 3.2.
 
-Esta é a **primeira subclasse real** de ``BaseTask`` do projeto.
-Valida arquivos contra um schema YAML, reportando erros por linha/coluna.
+A primeira subclasse real de BaseTask. Valida arquivos contra um schema
+YAML, reportando erros estruturados com linha e coluna.
 
-Parte 3.1 (atual): estrutura base — carregamento e validação de colunas.
-Parte 3.2: validadores específicos (tipo, regex, CPF/CNPJ).
-Parte 3.3: relatório de erros + comando CLI.
+Histórico:
+- Parte 3.1: validacao de estrutura (extensao, encoding, colunas obrigatorias)
+- Parte 3.2 (atual): + validacao de conteudo celula-a-celula
+- Parte 3.3 (proxima): + relatorio JSON/CSV + comando CLI
 
-Uso:
+Uso basico:
     from pathlib import Path
     from autotarefas.tasks.validate import (
         Schema, ColumnSchema, ValidateTask, load_schema
@@ -19,39 +20,78 @@ Uso:
     result = task.run()
 
     if result.is_success:
-        print(f"OK! {result.rows_affected} linhas validadas.")
+        print(f"OK! {result.rows_affected} linhas validas.")
+    else:
+        issues = result.data["issues"]
+        print(f"{len(issues)} problemas encontrados:")
+        for issue in issues:
+            print(f"  Linha {issue['line']}, coluna {issue['column']}: {issue['message']}")
 """
 
 from __future__ import annotations
 
 import csv
+import re
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import ClassVar, Literal
+from typing import Any, ClassVar, Literal
 
 import pandas as pd
 import yaml
 from pydantic import BaseModel, Field
 
 from autotarefas.core import BaseTask, TaskResult, TaskStatus, ValidationError
+from autotarefas.tasks.issues import (
+    IssueCollector,
+    IssueSeverity,
+    ValidationIssue,
+)
+from autotarefas.tasks.validators import (
+    CNPJValidator,
+    CPFValidator,
+    EnumValidator,
+    RangeValidator,
+    RegexValidator,
+    TypeValidator,
+    Validator,
+)
 
 # ============================================================
 # Schema (modelo declarativo das regras de validação)
 # ============================================================
 
-#: Tipos suportados pelas colunas. Será expandido na Parte 3.2.
+#: Tipos suportados pelas colunas.
 ColumnType = Literal["str", "int", "float", "date", "bool"]
+
+#: Validadores brasileiros disponiveis no schema.
+BRValidatorType = Literal["cpf", "cnpj"]
 
 
 class ColumnSchema(BaseModel):
     """
-    Define as regras de validação de uma coluna.
+    Define as regras de validacao de uma coluna.
+
+    Suporta validacoes:
+    - **Estruturais** (nome, required, nullable)
+    - **De tipo** (int, float, date, bool — "str" passa sempre)
+    - **De intervalo numerico** (min_value, max_value)
+    - **De formato** (regex customizada)
+    - **De enumeracao** (lista de valores aceitos)
+    - **Brasileiras** (CPF, CNPJ)
+
+    Combine livremente: ex. `type=int` + `min_value=0` + `max_value=150`.
 
     Attributes:
-        name: Nome da coluna (case-sensitive, deve bater com cabeçalho).
-        required: Se True (default), a coluna deve estar presente no arquivo.
-        type: Tipo esperado dos valores (default "str"). Parte 3.2 valida.
-        nullable: Se True, valores vazios são permitidos (default False).
+        name: Nome da coluna (case-sensitive).
+        required: Se True (default), coluna deve estar no arquivo.
+        type: Tipo esperado dos valores (default "str").
+        nullable: Se True, valores vazios permitidos (default False).
+        min_value: Valor minimo (inclusive). Aplica RangeValidator.
+        max_value: Valor maximo (inclusive). Aplica RangeValidator.
+        regex: Padrao regex. Aplica RegexValidator com `re.fullmatch`.
+        regex_message: Mensagem custom do erro de regex.
+        enum_values: Lista de valores aceitos. Aplica EnumValidator.
+        validator_br: "cpf" ou "cnpj". Aplica validator brasileiro.
     """
 
     name: str = Field(..., min_length=1)
@@ -59,13 +99,74 @@ class ColumnSchema(BaseModel):
     type: ColumnType = "str"
     nullable: bool = False
 
+    # Novos campos da Parte 3.2
+    min_value: float | None = None
+    max_value: float | None = None
+    regex: str | None = None
+    regex_message: str | None = None
+    enum_values: tuple[str, ...] | None = None
+    validator_br: BRValidatorType | None = None
+
+    def get_validators(self) -> list[Validator]:
+        """
+        Cria lista de validators a aplicar nesta coluna.
+
+        Cada campo do schema gera um validator correspondente. Validators
+        sao acumulativos — se a coluna tem type=int e min_value=0, vai ter
+        TypeValidator + RangeValidator.
+
+        Returns:
+            Lista de validators (pode ser vazia se for coluna `type=str`
+            sem mais nada).
+        """
+        validators: list[Validator] = []
+
+        # 1. TypeValidator (exceto 'str' que passa qualquer coisa)
+        # match-case faz type narrowing automatico — mypy reconhece
+        # que self.type ja foi reduzido a ValidatableType.
+        match self.type:
+            case "int" | "float" | "date" | "bool":
+                validators.append(TypeValidator(expected_type=self.type))
+            case "str":
+                pass  # str passa qualquer coisa — sem validador
+
+        # 2. RegexValidator
+        if self.regex is not None:
+            validators.append(
+                RegexValidator(
+                    pattern=re.compile(self.regex),
+                    message=self.regex_message or "Formato invalido",
+                )
+            )
+
+        # 3. RangeValidator (so se min ou max definidos)
+        if self.min_value is not None or self.max_value is not None:
+            validators.append(
+                RangeValidator(
+                    min_value=self.min_value,
+                    max_value=self.max_value,
+                )
+            )
+
+        # 4. EnumValidator
+        if self.enum_values is not None:
+            validators.append(EnumValidator(allowed_values=self.enum_values))
+
+        # 5. CPF/CNPJ
+        if self.validator_br == "cpf":
+            validators.append(CPFValidator())
+        elif self.validator_br == "cnpj":
+            validators.append(CNPJValidator())
+
+        return validators
+
 
 class Schema(BaseModel):
     """
-    Schema completo de validação (carregado de YAML).
+    Schema completo de validacao (carregado de YAML).
 
     Attributes:
-        columns: Lista de definições de coluna (mínimo 1).
+        columns: Lista de definicoes de coluna (minimo 1).
     """
 
     columns: list[ColumnSchema] = Field(..., min_length=1)
@@ -77,11 +178,11 @@ class Schema(BaseModel):
 
     @property
     def required_columns(self) -> list[str]:
-        """Nomes das colunas obrigatórias."""
+        """Nomes das colunas obrigatorias."""
         return [c.name for c in self.columns if c.required]
 
     def get_column(self, name: str) -> ColumnSchema | None:
-        """Busca coluna por nome. Retorna None se não encontrar."""
+        """Busca coluna por nome. Retorna None se nao encontrar."""
         for col in self.columns:
             if col.name == name:
                 return col
@@ -99,7 +200,7 @@ def load_schema(path: Path) -> Schema:
         Schema validado.
 
     Raises:
-        ValidationError: Se o arquivo não existe ou o YAML é inválido.
+        ValidationError: Se o arquivo nao existe ou o YAML e invalido.
     """
     if not path.exists():
         raise ValidationError(f"Schema nao encontrado: {path}", field="schema_path")
@@ -131,26 +232,34 @@ class ValidateTask(BaseTask):
     """
     Valida uma planilha (CSV, TSV ou Excel) contra um Schema.
 
-    **Parte 3.1**: valida apenas estrutura (extensão, decodificação, colunas
-    obrigatórias presentes). Validações de conteúdo vêm na Parte 3.2.
+    Fluxo de validacao:
+    1. Verifica existencia do arquivo
+    2. Verifica extensao suportada
+    3. Carrega o arquivo (com encoding e delimitador auto-detectados)
+    4. Verifica colunas obrigatorias presentes
+    5. **Valida conteudo** (novo na Parte 3.2):
+       - Para cada coluna do schema presente no arquivo
+       - Para cada linha de dados
+       - Aplica validators acumulando issues
+    6. Retorna SUCCESS se sem erros, FAILURE caso contrario
+
+    Warnings nao invalidam (is_valid=True ainda).
     """
 
     name = "validate"
     description = "Valida planilha CSV/Excel contra schema YAML"
 
-    #: Extensões suportadas.
+    #: Extensoes suportadas.
     SUPPORTED_EXTENSIONS: ClassVar[frozenset[str]] = frozenset({".csv", ".tsv", ".xlsx", ".xls"})
 
-    #: Encodings tentados para CSV (em ordem). utf-8-sig lida com BOM
-    #: e funciona como UTF-8 normal quando não há BOM.
+    #: Encodings tentados para CSV (em ordem).
     CSV_ENCODINGS: ClassVar[tuple[str, ...]] = (
-        "utf-8-sig",  # PRIMEIRO: lida com BOM e UTF-8 sem BOM
+        "utf-8-sig",
         "latin-1",
-        "cp1252",  # Windows
+        "cp1252",
     )
 
-    #: Delimitadores possíveis para auto-detecção (csv.Sniffer).
-    #: NÃO inclui letras — evita o bug do pandas sep=None.
+    #: Delimitadores possiveis para auto-deteccao (csv.Sniffer).
     CSV_DELIMITERS: ClassVar[str] = ",;\t|"
 
     def __init__(
@@ -166,17 +275,17 @@ class ValidateTask(BaseTask):
         Args:
             file_path: Caminho da planilha a validar.
             schema: Schema com as regras.
-            dry_run: Se True, não persiste relatório (Parte 3.3).
+            dry_run: Se True, nao persiste relatorio (Parte 3.3).
         """
         super().__init__(dry_run=dry_run)
         self.file_path = file_path
         self.schema = schema
 
     def execute(self) -> TaskResult:
-        """Executa a validação."""
+        """Executa a validacao."""
         started_at = datetime.now(UTC)
 
-        # 1. Existência
+        # 1. Existencia
         if not self.file_path.exists():
             raise ValidationError(
                 f"Arquivo nao encontrado: {self.file_path}",
@@ -184,7 +293,7 @@ class ValidateTask(BaseTask):
                 value=str(self.file_path),
             )
 
-        # 2. Extensão suportada
+        # 2. Extensao suportada
         ext = self.file_path.suffix.lower()
         if ext not in self.SUPPORTED_EXTENSIONS:
             raise ValidationError(
@@ -197,13 +306,13 @@ class ValidateTask(BaseTask):
         # 3. Carrega arquivo
         df = self._load_file(ext)
 
-        # 4. Verifica colunas obrigatórias
+        # 4. Verifica colunas obrigatorias
         missing = self._missing_required_columns(df)
         if missing:
             return self._make_result(
                 status=TaskStatus.FAILURE,
                 started_at=started_at,
-                error_message=(f"Colunas obrigatorias faltando: {missing}"),
+                error_message=f"Colunas obrigatorias faltando: {missing}",
                 error_type="MissingColumnsError",
                 data={
                     "file": str(self.file_path),
@@ -213,16 +322,34 @@ class ValidateTask(BaseTask):
                 },
             )
 
-        # 5. Estrutura OK (validações de conteúdo virão na Parte 3.2)
+        # 5. NOVO: validacao de conteudo
+        collector = self._validate_content(df)
+
+        # 6. Monta resultado final
+        base_data: dict[str, Any] = {
+            "file": str(self.file_path),
+            "rows": len(df),
+            "columns": list(df.columns),
+            "total_issues": len(collector),
+            "total_errors": len(collector.errors),
+            "total_warnings": len(collector.warnings),
+            "issues": [self._issue_to_dict(i) for i in collector.issues],
+        }
+
+        if collector.is_valid:
+            return self._make_result(
+                status=TaskStatus.SUCCESS,
+                started_at=started_at,
+                rows_affected=len(df),
+                data=base_data,
+            )
+
         return self._make_result(
-            status=TaskStatus.SUCCESS,
+            status=TaskStatus.FAILURE,
             started_at=started_at,
-            rows_affected=len(df),
-            data={
-                "file": str(self.file_path),
-                "rows": len(df),
-                "columns": list(df.columns),
-            },
+            error_message=(f"{len(collector.errors)} erro(s) de validacao encontrado(s)"),
+            error_type="ValidationIssuesError",
+            data=base_data,
         )
 
     # ========================================================
@@ -230,27 +357,16 @@ class ValidateTask(BaseTask):
     # ========================================================
 
     def _load_file(self, ext: str) -> pd.DataFrame:
-        """Decide entre CSV/TSV ou Excel baseado na extensão."""
+        """Decide entre CSV/TSV ou Excel baseado na extensao."""
         if ext in {".csv", ".tsv"}:
             return self._load_csv()
-        # ext in {".xlsx", ".xls"} — já validado antes
         return self._load_excel()
 
     def _load_csv(self) -> pd.DataFrame:
-        """
-        Carrega CSV com auto-detecção segura.
-
-        - **Encoding**: tenta ``utf-8-sig`` (lida com BOM) → ``latin-1`` → ``cp1252``.
-        - **Delimitador**: usa ``csv.Sniffer`` restrito a `,`, `;`, `\\t`, `|`
-          (evita o bug do pandas ``sep=None`` que aceita qualquer letra).
-
-        Raises:
-            ValidationError: Se nenhum encoding funcionar.
-        """
+        """Carrega CSV com auto-deteccao de encoding e delimitador."""
         last_error: Exception | None = None
 
         for encoding in self.CSV_ENCODINGS:
-            # Lê amostra pra detectar delimitador
             try:
                 with open(self.file_path, encoding=encoding) as f:
                     sample = f.read(8192)
@@ -285,24 +401,10 @@ class ValidateTask(BaseTask):
 
     @staticmethod
     def _detect_delimiter(sample: str) -> str:
-        """
-        Detecta delimitador do CSV usando csv.Sniffer.
-
-        Restringe aos delimitadores comuns (`,`, `;`, `\\t`, `|`) — evita
-        que o sniffer detecte letras como delimitadores (bug que afeta
-        arquivos com 1 coluna).
-
-        Args:
-            sample: Amostra de texto do arquivo (primeiros KB).
-
-        Returns:
-            Delimitador detectado, ou `,` como fallback.
-        """
+        """Detecta delimitador via csv.Sniffer (restrito a ,;\\t|)."""
         try:
             dialect = csv.Sniffer().sniff(sample, delimiters=",;\t|")
         except csv.Error:
-            # Fallback: vírgula (mais comum). Acontece quando arquivo
-            # tem só 1 coluna (sem delimitadores na amostra).
             return ","
         return dialect.delimiter
 
@@ -318,11 +420,11 @@ class ValidateTask(BaseTask):
             ) from e
 
     # ========================================================
-    # Validações de estrutura
+    # Validacao de estrutura
     # ========================================================
 
     def _missing_required_columns(self, df: pd.DataFrame) -> list[str]:
-        """Retorna lista de colunas obrigatórias faltando no DataFrame."""
+        """Retorna lista de colunas obrigatorias faltando."""
         actual_columns = set(df.columns)
         return [
             col.name
@@ -330,8 +432,111 @@ class ValidateTask(BaseTask):
             if col.required and col.name not in actual_columns
         ]
 
+    # ========================================================
+    # Validacao de conteudo (NOVO na Parte 3.2)
+    # ========================================================
+
+    def _validate_content(self, df: pd.DataFrame) -> IssueCollector:
+        """
+        Aplica validators linha-a-linha, coluna-a-coluna.
+
+        Para cada coluna do schema presente no DataFrame:
+        1. Gera lista de validators (via `col_schema.get_validators()`)
+        2. Para cada celula, converte pra string
+        3. Se `nullable=False` e valor vazio → issue de obrigatoriedade
+        4. Senao, aplica todos os validators
+
+        Args:
+            df: DataFrame ja carregado.
+
+        Returns:
+            IssueCollector com todos os issues encontrados.
+        """
+        collector = IssueCollector()
+
+        for col_schema in self.schema.columns:
+            # Pula colunas opcionais que nao estao no DataFrame
+            if col_schema.name not in df.columns:
+                continue
+
+            validators = col_schema.get_validators()
+            column_series = df[col_schema.name]
+
+            for offset, raw_value in enumerate(column_series):
+                # +2: offset comeca em 0, header esta na linha 1,
+                # primeira linha de dados e a 2.
+                line_number = offset + 2
+                str_value = self._cell_to_str(raw_value)
+
+                # 1. Nullability check
+                if not col_schema.nullable and not str_value.strip():
+                    collector.add(
+                        line=line_number,
+                        column=col_schema.name,
+                        message="Valor obrigatorio nao informado",
+                        severity=IssueSeverity.ERROR,
+                    )
+                    # Se valor obrigatorio falta, nao aplica outros
+                    # validators (evita cascata de erros redundantes)
+                    continue
+
+                # 2. Apply validators (cada um decide ignorar vazio ou nao)
+                for validator in validators:
+                    validator.validate(
+                        value=str_value,
+                        line=line_number,
+                        column=col_schema.name,
+                        collector=collector,
+                    )
+
+        return collector
+
+    @staticmethod
+    def _cell_to_str(value: Any) -> str:
+        """
+        Converte celula do pandas em string.
+
+        Pandas pode retornar varios tipos (int, float, datetime, str, NaN).
+        Padronizamos pra string antes de passar pros validators.
+
+        NaN/None viram string vazia.
+
+        Args:
+            value: Valor bruto da celula (qualquer tipo).
+
+        Returns:
+            String — vazia se NaN/None.
+
+        Nota sobre `# noqa: ANN401`:
+            ANN401 proibe `Any` em parametros, mas aqui e justificavel —
+            pandas retorna `Any` literalmente, e o objetivo desta funcao
+            e exatamente normalizar para `str`.
+        """
+        if pd.isna(value):
+            return ""
+        return str(value)
+
+    @staticmethod
+    def _issue_to_dict(issue: ValidationIssue) -> dict[str, Any]:
+        """
+        Serializa ValidationIssue em dict (para incluir no TaskResult.data).
+
+        Usado para o relatorio JSON/CSV na Parte 3.3.
+
+        IssueSeverity (StrEnum) e convertido via str() para evitar
+        comparacoes ambiguas com strings literais.
+        """
+        return {
+            "line": issue.line,
+            "column": issue.column,
+            "message": issue.message,
+            "severity": str(issue.severity),
+            "value": issue.value,
+        }
+
 
 __all__ = [
+    "BRValidatorType",
     "ColumnSchema",
     "ColumnType",
     "Schema",
