@@ -1,25 +1,13 @@
 """
-CLI principal do AutoTarefas.
+Ponto de entrada da CLI do AutoTarefas.
 
-Define o grupo ``cli`` raiz com opções globais aplicáveis a todos os
-subcomandos:
+Define o grupo raiz ``cli`` com as opcoes globais (verbose, quiet, dry-run,
+yes) e registra todos os subcomandos disponiveis.
 
-- ``--verbose, -v`` (cumulativo: -v, -vv, -vvv)
-- ``--quiet, -q`` (cumulativo: -q, -qq)
-- ``--dry-run`` (simula sem mudanças reais)
-- ``--yes, -y`` (assume "sim" em confirmações)
-- ``--version``
-
-Subcomandos:
-- ``info`` — mostra informações do sistema
-- ``init`` — inicializa estrutura em ~/.autotarefas/
-
-Uso:
-    autotarefas --version
-    autotarefas info
-    autotarefas init
-    autotarefas --dry-run init
-    python -m autotarefas init
+Adicionar um novo comando:
+1. Crie em ``autotarefas/cli/commands/SEU_COMANDO.py``
+2. Importe aqui: ``from autotarefas.cli.commands.SEU_COMANDO import SEU_COMANDO``
+3. Registre: ``cli.add_command(SEU_COMANDO)``
 """
 
 from __future__ import annotations
@@ -29,40 +17,37 @@ import click
 from autotarefas import __version__
 from autotarefas.cli.commands.info import info
 from autotarefas.cli.commands.init import init
+from autotarefas.cli.commands.validate import validate
 from autotarefas.cli.context import CLIContext
 
 
-@click.group(
-    name="autotarefas",
-    help="Robo de automacao operacional para tarefas planilhas/web.",
-    context_settings={"help_option_names": ["-h", "--help"]},
-)
+@click.group(context_settings={"help_option_names": ["-h", "--help"]})
+@click.version_option(version=__version__, prog_name="autotarefas")
 @click.option(
-    "-v",
     "--verbose",
+    "-v",
     count=True,
-    help="Aumenta a verbosidade (-v=info, -vv=debug, -vvv=trace).",
+    help="Aumenta a verbosidade (pode repetir: -v, -vv, -vvv).",
 )
 @click.option(
-    "-q",
     "--quiet",
+    "-q",
     count=True,
-    help="Diminui a verbosidade (-q=warning, -qq=error).",
+    help="Reduz a verbosidade (pode repetir: -q, -qq).",
 )
 @click.option(
     "--dry-run",
     is_flag=True,
     default=False,
-    help="Simula a execucao sem fazer mudancas reais.",
+    help="Simula a operacao sem fazer mudancas reais.",
 )
 @click.option(
-    "-y",
     "--yes",
+    "-y",
     is_flag=True,
     default=False,
-    help="Assume 'sim' em todas as confirmacoes interativas.",
+    help="Assume 'sim' em todas as confirmacoes.",
 )
-@click.version_option(version=__version__, prog_name="autotarefas")
 @click.pass_context
 def cli(
     ctx: click.Context,
@@ -71,7 +56,7 @@ def cli(
     dry_run: bool,
     yes: bool,
 ) -> None:
-    """Robo de automacao operacional do AutoTarefas."""
+    """AutoTarefas - Robo de automacao operacional."""
     ctx.obj = CLIContext(
         verbose=verbose,
         quiet=quiet,
@@ -80,10 +65,13 @@ def cli(
     )
 
 
-# Registra os subcomandos
+# ============================================================
+# Registro dos subcomandos
+# ============================================================
+
 cli.add_command(info)
 cli.add_command(init)
+cli.add_command(validate)  # NOVO — Parte 3.3
 
 
-if __name__ == "__main__":
-    cli()
+__all__ = ["cli"]
