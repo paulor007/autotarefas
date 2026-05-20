@@ -23,7 +23,7 @@ build-backend = "hatchling.build"
 # ============================================================
 [project]
 name = "autotarefas"
-version = "0.1.0"
+version = "0.2.0"
 description = "Robô de Automação Operacional em Python — valida planilhas, organiza arquivos, automatiza cadastros e extrai dados de sistemas web."
 authors = [
     { name = "Paulo Lavarini", email = "paulo.lavarini@gmail.com" },

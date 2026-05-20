@@ -1,12 +1,12 @@
 """
-AutoTarefas — Robo de automacao operacional.
+AutoTarefas - Robo de automacao operacional.
 
 Pacote raiz que expoe metadados (versao, autor, licenca).
 """
 
 from __future__ import annotations
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 __author__ = "Paulo Lavarini"
 __email__ = "paulo.lavarini@gmail.com"
 __license__ = "MIT"
