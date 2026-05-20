@@ -15,6 +15,7 @@ from __future__ import annotations
 import click
 
 from autotarefas import __version__
+from autotarefas.cli.commands.backup import backup
 from autotarefas.cli.commands.info import info
 from autotarefas.cli.commands.init import init
 from autotarefas.cli.commands.validate import validate
@@ -71,7 +72,8 @@ def cli(
 
 cli.add_command(info)
 cli.add_command(init)
-cli.add_command(validate)  # NOVO — Parte 3.3
+cli.add_command(validate)
+cli.add_command(backup)  # NOVO — Fase 4
 
 
 __all__ = ["cli"]
