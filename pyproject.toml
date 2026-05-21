@@ -193,8 +193,6 @@ select = [
 # Regras DESATIVADAS (motivos abaixo)
 ignore = [
     "ANN401",  # disallow Any (às vezes preciso)
-    "D203",
-    "D213",
 ]
 
 [tool.ruff.lint.per-file-ignores]
