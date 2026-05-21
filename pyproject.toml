@@ -192,9 +192,9 @@ select = [
 
 # Regras DESATIVADAS (motivos abaixo)
 ignore = [
-    "ANN101",  # missing type for self (redundante)
-    "ANN102",  # missing type for cls (redundante)
     "ANN401",  # disallow Any (às vezes preciso)
+    "D203",
+    "D213",
 ]
 
 [tool.ruff.lint.per-file-ignores]
