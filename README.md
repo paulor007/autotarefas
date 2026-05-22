@@ -6,12 +6,12 @@
 [![mypy: strict](https://img.shields.io/badge/mypy-strict-blue.svg)](http://mypy-lang.org/)
 [![Ruff](https://img.shields.io/badge/ruff-checked-orange.svg)](https://github.com/astral-sh/ruff)
 
-Robô de automação operacional para tarefas em planilhas (CSV, Excel) e
-sistemas web (RPA). Projeto Python moderno com foco em **segurança**,
-**rastreabilidade** (audit trail) e **robustez**.
+Robô de automação operacional para tarefas em planilhas (CSV, Excel),
+arquivos e sistemas web (RPA). Projeto Python moderno com foco em
+**segurança**, **rastreabilidade** (audit trail) e **robustez**.
 
-> ⚠️ **Status atual: v0.2.0 (pré-release).** Fundação + Validador de
-> planilhas prontos. Próximos releases: backup, organizador, RPA.
+> ⚠️ **Status atual: v0.3.0 (pré-release).** Validador + Backup +
+> Organizador prontos. Próximos releases: RPA, dashboard.
 
 ---
 
@@ -19,12 +19,14 @@ sistemas web (RPA). Projeto Python moderno com foco em **segurança**,
 
 - **Validador de planilhas** com schema declarativo em YAML
 - **Validadores brasileiros**: CPF e CNPJ com algoritmo módulo 11
+- **Backup ZIP** com hash SHA-256 e excludes inteligentes
+- **Organizador de arquivos** com regras YAML (CPF YAML)
 - **Audit trail completo** — toda execução em SQLite append-only com HMAC-SHA256
 - **Mascaramento automático** — CPFs, CNPJs, senhas e tokens nunca vazam em logs
 - **Dry-run em tudo** — simula operações antes de fazer mudanças reais
-- **Confirmação em massa** — operações destrutivas exigem escrita explícita
+- **Confirmação em massa** — operações destrutivas exigem confirmação
 - **Type-safe** — mypy strict, 0 erros
-- **~340 testes**, 98% de cobertura
+- **~485 testes**, 98% de cobertura
 
 ---
 
@@ -56,24 +58,25 @@ autotarefas init
 
 # 2. Verifica o sistema
 autotarefas info
+
+# 3. Lista comandos disponiveis
+autotarefas --help
 ```
 
 ---
 
 ## 📋 Validador de Planilhas (v0.2.0)
 
-O destaque deste release! Valida planilhas CSV/Excel contra schemas
-YAML declarativos.
+Valida planilhas CSV/Excel contra schemas YAML declarativos.
 
-### Exemplo prático
+### Exemplo rápido
 
-**1. Crie um schema** (`schema.yaml`):
+**Schema** (`schema.yaml`):
 
 ```yaml
 columns:
   - name: nome
     type: str
-    nullable: false
 
   - name: idade
     type: int
@@ -83,91 +86,156 @@ columns:
   - name: cpf
     validator_br: cpf
     nullable: true
-
-  - name: uf
-    enum_values: [SP, RJ, MG, ES, BA, PR, RS, SC]
-
-  - name: cep
-    regex: '\d{5}-?\d{3}'
-    regex_message: CEP deve ter 8 digitos
-    nullable: true
 ```
 
-**2. Tenha sua planilha** (`dados.csv`):
-
-```csv
-nome,idade,cpf,uf,cep
-Alice Silva,30,529.982.247-25,SP,01310-100
-Bob Costa,200,111.111.111-11,XX,abc
-,abc,12345,RJ,01000000
-```
-
-**3. Valide**:
+**Validar**:
 
 ```bash
 autotarefas validate dados.csv --schema schema.yaml
-```
 
-**Saída**:
-
-```
-Arquivo:  dados.csv
-Linhas:   3
-Colunas:  5
-
-Encontrados 6 problema(s):
-  - 6 erro(s)
-  - 0 aviso(s)
-
-  [ERROR] Linha 3, coluna 'idade': Valor 200.0 maior que o maximo 150.0
-  [ERROR] Linha 3, coluna 'cpf': CPF invalido: '111.111.111-11'
-  [ERROR] Linha 3, coluna 'uf': Valor 'XX' nao esta entre os aceitos
-  [ERROR] Linha 3, coluna 'cep': CEP deve ter 8 digitos
-  [ERROR] Linha 4, coluna 'nome': Valor obrigatorio nao informado
-  [ERROR] Linha 4, coluna 'idade': Valor 'abc' nao e um int valido
-
-Validacao falhou: 6 erro(s).
-```
-
-### Gerando relatórios
-
-```bash
-# Relatorio JSON (estruturado, para integracoes)
-autotarefas validate dados.csv --schema schema.yaml --report-json rel.json
-
-# Relatorio CSV (Excel-friendly)
-autotarefas validate dados.csv --schema schema.yaml --report-csv rel.csv
-
-# Ambos juntos
+# Com relatorios
 autotarefas validate dados.csv --schema schema.yaml \
     --report-json rel.json --report-csv rel.csv
 ```
 
-### Opções do comando validate
-
-| Flag                 | Descrição                                 |
-| -------------------- | ----------------------------------------- |
-| `--schema, -s PATH`  | (obrigatório) Caminho do schema YAML      |
-| `--report-json PATH` | Salva relatório detalhado em JSON         |
-| `--report-csv PATH`  | Salva relatório compacto em CSV           |
-| `--max-issues, -m N` | Máximo de issues no terminal (default 10) |
-| `--strict-warnings`  | Trata warnings como erros (exit 1)        |
-
-### Tipos de validações suportadas
-
-| Tipo                   | Como declarar                           | Exemplo                 |
-| ---------------------- | --------------------------------------- | ----------------------- |
-| **Tipo de dado**       | `type: int / float / date / bool / str` | `type: int`             |
-| **Obrigatório**        | `nullable: false` (default)             | —                       |
-| **Intervalo numérico** | `min_value: N`, `max_value: N`          | `min_value: 0`          |
-| **Regex (formato)**    | `regex: 'PADRAO'`                       | `regex: '\d{5}'`        |
-| **Lista de valores**   | `enum_values: [A, B]`                   | `enum_values: [SP, RJ]` |
-| **CPF**                | `validator_br: cpf`                     | —                       |
-| **CNPJ**               | `validator_br: cnpj`                    | —                       |
+Validações: tipo, intervalo, regex, enum, CPF, CNPJ.
 
 ---
 
-## 📋 Outros Comandos (v0.1.0)
+## 💾 Backup de Arquivos (v0.3.0 — NOVO)
+
+Compacta arquivos/pastas em ZIP com hash SHA-256 para integridade.
+
+### Uso básico
+
+```bash
+# Backup de uma pasta
+autotarefas backup D:\meu-projeto --output D:\backups\proj.zip
+
+# Multiplas fontes
+autotarefas backup D:\projeto D:\docs --output D:\backups\full.zip
+
+# Excludes customizados
+autotarefas backup D:\projeto --output backup.zip \
+    --exclude "*.log" --exclude "tmp/*"
+
+# Sem excludes padrao (cuidado!)
+autotarefas backup D:\projeto --output backup.zip --no-default-excludes
+```
+
+### Excludes padrão (automáticos)
+
+Por padrão, o backup **ignora** essas pastas/arquivos:
+`__pycache__`, `*.pyc`, `.git`, `node_modules`, `.venv`, `.mypy_cache`,
+`.pytest_cache`, `.ruff_cache`, `.DS_Store`, `Thumbs.db`, `.idea`,
+`.vscode`, e outros.
+
+### Saída
+
+```
+Backup de 1 source -> D:\backups\proj.zip
+
+Backup criado: D:\backups\proj.zip
+Arquivos incluidos: 47
+Arquivos excluidos: 12
+Tamanho: 1.2 MB
+SHA-256: 152f0e7049271c78580cccb05e2a52ba88058226de01ec85ff78ce47e84407f5
+```
+
+O **hash SHA-256** garante integridade — se algo mudar no ZIP depois,
+você consegue detectar comparando o hash.
+
+---
+
+## 🗂️ Organizador de Arquivos (v0.3.0 — NOVO)
+
+Organiza arquivos em sub-pastas conforme regras declarativas em YAML.
+Perfeito para pastas bagunçadas como `Downloads`.
+
+### Exemplo prático
+
+**Regras** (`downloads.yaml`):
+
+```yaml
+# Pasta raiz onde os arquivos serao organizados
+target_root: D:\Downloads-organizado
+
+# O que fazer se arquivo ja existe no destino
+on_conflict: rename # skip | rename | overwrite
+
+# Move (default) ou copy
+action: move
+
+# Lista de regras (primeira que bate ganha)
+rules:
+  - name: Imagens
+    patterns: ["*.jpg", "*.jpeg", "*.png", "*.gif", "*.webp"]
+    destination: imagens/{year}/{month:02d}
+
+  - name: PDFs
+    patterns: ["*.pdf"]
+    destination: documentos/pdfs
+
+  - name: Vídeos
+    patterns: ["*.mp4", "*.mkv", "*.avi", "*.mov"]
+    destination: videos
+
+  - name: Áudio
+    patterns: ["*.mp3", "*.wav", "*.flac"]
+    destination: musicas
+
+  - name: Instaladores
+    patterns: ["*.exe", "*.msi"]
+    destination: instaladores/{year}-{month:02d}
+
+  - name: Compactados
+    patterns: ["*.zip", "*.rar", "*.7z"]
+    destination: compactados
+```
+
+**Uso** (sempre comece com dry-run!):
+
+```bash
+# 1. Veja o que seria feito sem mudar nada
+autotarefas --dry-run organize D:\Downloads --rules downloads.yaml
+
+# 2. Execute de verdade
+autotarefas organize D:\Downloads --rules downloads.yaml
+
+# 3. Em automacao, pula confirmacao
+autotarefas --yes organize D:\Downloads --rules downloads.yaml
+```
+
+### Variáveis no `destination`
+
+| Variável      | Resolvida como                  | Exemplo |
+| ------------- | ------------------------------- | ------- |
+| `{year}`      | Ano (4 dígitos) do mtime        | `2026`  |
+| `{month}`     | Mês (sem padding)               | `5`     |
+| `{month:02d}` | Mês com padding                 | `05`    |
+| `{day}`       | Dia (sem padding)               | `21`    |
+| `{day:02d}`   | Dia com padding                 | `21`    |
+| `{ext}`       | Extensão (lowercase, sem ponto) | `pdf`   |
+
+### Comportamentos de conflito
+
+| `on_conflict`    | O que faz                                    |
+| ---------------- | -------------------------------------------- |
+| `skip` (default) | Não move. Registra como `skipped`            |
+| `rename`         | Tenta `arquivo_1.pdf`, `arquivo_2.pdf`, etc. |
+| `overwrite`      | ⚠️ Sobrescreve sem perguntar                 |
+
+### Proteções automáticas
+
+- **Dry-run sempre recomendado** (mostra o que seria feito)
+- **Confirmação em massa**: se >50 arquivos, pede confirmação `[y/N]`
+- **Default seguro**: apertar Enter sem digitar = cancela
+- **Não recursivo**: só processa arquivos diretos do `source_dir`
+- **Audit completo**: cada arquivo registrado (origem → destino)
+
+---
+
+## 📋 Outros Comandos
 
 ### Opções globais
 
@@ -183,9 +251,11 @@ autotarefas validate dados.csv --schema schema.yaml \
 ### Subcomandos
 
 ```bash
-autotarefas init        # cria estrutura ~/.autotarefas/
 autotarefas info        # mostra info do sistema
-autotarefas validate    # valida planilha CSV/Excel  ← NOVO em v0.2.0
+autotarefas init        # cria estrutura ~/.autotarefas/
+autotarefas validate    # valida planilha CSV/Excel
+autotarefas backup      # compacta arquivos em ZIP    ← NOVO em v0.3.0
+autotarefas organize    # organiza arquivos em pastas ← NOVO em v0.3.0
 ```
 
 ---
@@ -194,9 +264,9 @@ autotarefas validate    # valida planilha CSV/Excel  ← NOVO em v0.2.0
 
 - ✅ **v0.0.0** — Setup (Fase 0)
 - ✅ **v0.1.0** — Core + CLI base
-- ✅ **v0.2.0** — Validador de planilhas _(atual)_
-- ⏳ **v0.3.0** — Backup + Organizador de arquivos
-- ⏳ **v0.4.0** — Base operacional estável
+- ✅ **v0.2.0** — Validador de planilhas
+- ✅ **v0.3.0** — Backup + Organizador _(atual)_
+- ⏳ **v0.4.0** — Segurança transversal + relatórios consolidados
 - ⏳ **v0.5.0** — Sistema demo + RPA Cadastro Web
 - ⏳ **v0.6.0** — Extração (API + Browser)
 - ⏳ **v0.7.0** — Sincronização assistida
@@ -214,6 +284,7 @@ Este projeto adere a **13 princípios** documentados, entre eles:
 - **HTTPS obrigatório em produção**
 - **Mascaramento automático** de dados sensíveis em logs
 - **Path traversal protection**
+- **Dry-run em operações destrutivas**
 - **Ambiente demo obrigatório para RPA**
 
 ---
@@ -241,6 +312,7 @@ pre-commit run --all-files  # tudo de uma vez
 - **loguru** — logging com mascaramento
 - **SQLite** — audit trail local
 - **pandas** + **openpyxl** + **PyYAML** — planilhas e schemas
+- **zipfile** + **hashlib** + **shutil** — backup/organizador (stdlib!)
 - **playwright** — RPA web (futuras fases)
 - **pytest** + **mypy strict** + **ruff** + **bandit**
 
