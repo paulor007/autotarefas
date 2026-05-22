@@ -499,3 +499,39 @@ class TestBackupTaskAtributos:
     def test_default_excludes_e_tupla(self) -> None:
         """DEFAULT_EXCLUDES deve ser imutavel (tupla)."""
         assert isinstance(BackupTask.DEFAULT_EXCLUDES, tuple)
+
+
+# ============================================================
+# Testes de seguranca
+# ============================================================
+
+
+class TestBackupTaskSeguranca:
+    """Validacoes de seguranca aplicadas em construtor."""
+
+    def test_destination_com_char_proibido_falha(
+        self, tmp_path: Path, projeto_simples: Path
+    ) -> None:
+        """destination com '|' (proibido no Windows) e rejeitado."""
+        from autotarefas.core.exceptions import ValidationError
+
+        dest_ruim = tmp_path / "backup|ruim.zip"
+
+        with pytest.raises(ValidationError, match="invalido"):
+            BackupTask(
+                sources=[projeto_simples],
+                destination=dest_ruim,
+            )
+
+    def test_destination_com_nul_byte_falha(self, tmp_path: Path, projeto_simples: Path) -> None:
+        """destination com NUL byte e rejeitado."""
+        from autotarefas.core.exceptions import ValidationError
+
+        # Path com NUL embutido no nome
+        dest_ruim = tmp_path / "backup\x00.zip"
+
+        with pytest.raises(ValidationError, match="invalido"):
+            BackupTask(
+                sources=[projeto_simples],
+                destination=dest_ruim,
+            )

@@ -39,6 +39,8 @@ from pathlib import Path
 from typing import ClassVar
 
 from autotarefas.core import BaseTask, TaskResult, TaskStatus, ValidationError
+from autotarefas.core.exceptions import SecurityError
+from autotarefas.core.security import validate_filename
 
 
 class BackupTask(BaseTask):
@@ -109,6 +111,16 @@ class BackupTask(BaseTask):
         super().__init__(dry_run=dry_run)
         self.sources = sources
         self.destination = destination
+
+        # SEGURANCA: valida que o nome do arquivo de destino e seguro
+        try:
+            validate_filename(destination.name)
+        except SecurityError as e:
+            raise ValidationError(
+                f"Nome de arquivo de destino invalido: {e}",
+                field="destination",
+                value=str(destination),
+            ) from e
 
         # Combina excludes do usuario com defaults (se habilitado)
         excludes = list(exclude_patterns or [])

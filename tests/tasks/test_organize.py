@@ -801,3 +801,98 @@ class TestOrganizeTaskRecursividade:
 
         # Arquivo profundo continua onde estava
         assert (subpasta / "profundo.jpg").exists()
+
+
+# ============================================================
+# Testes de seguranca
+# ============================================================
+
+
+class TestOrganizeTaskSeguranca:
+    """Validacoes de seguranca em rules potencialmente maliciosas."""
+
+    def test_destination_com_path_traversal_bloqueado(
+        self, tmp_path: Path, target_pasta: Path
+    ) -> None:
+        """
+        Rule com destination '../escape' tenta sair de target_root.
+
+        Esperado: bloqueado por safe_path, marcado como 'error' nas operations.
+        """
+        source = tmp_path / "src"
+        source.mkdir()
+        (source / "foto.jpg").write_text("img", encoding="utf-8")
+
+        rules = RuleSet(
+            target_root=target_pasta,
+            rules=[
+                Rule(
+                    name="Mal",
+                    patterns=["*.jpg"],
+                    destination="../../etc",  # path traversal!
+                ),
+            ],
+        )
+
+        result = OrganizeTask(source_dir=source, rules=rules).run()
+
+        # Pelo menos 1 erro registrado
+        assert result.data["error_count"] >= 1
+
+        # Operation tem status="error" com mensagem de seguranca
+        ops = result.data["operations"]
+        assert any(
+            op["status"] == "error"
+            and op["error"]
+            and (
+                "traversal" in op["error"].lower()
+                or "escapa" in op["error"].lower()
+                or "permitido" in op["error"].lower()
+            )
+            for op in ops
+        )
+
+    def test_destination_dot_dot_relativo_bloqueado(
+        self, tmp_path: Path, target_pasta: Path
+    ) -> None:
+        """Destination '..' simples tambem e bloqueado."""
+        source = tmp_path / "src"
+        source.mkdir()
+        (source / "foto.jpg").write_text("img", encoding="utf-8")
+
+        rules = RuleSet(
+            target_root=target_pasta,
+            rules=[
+                Rule(
+                    name="Mal",
+                    patterns=["*.jpg"],
+                    destination="..",  # tenta sair pra parent
+                ),
+            ],
+        )
+
+        result = OrganizeTask(source_dir=source, rules=rules).run()
+        assert result.data["error_count"] >= 1
+
+    def test_destination_normal_funciona_apos_validacao(
+        self, tmp_path: Path, target_pasta: Path
+    ) -> None:
+        """Garante que destinations validos AINDA funcionam (regression test)."""
+        source = tmp_path / "src"
+        source.mkdir()
+        (source / "foto.jpg").write_text("img", encoding="utf-8")
+
+        rules = RuleSet(
+            target_root=target_pasta,
+            rules=[
+                Rule(
+                    name="Imagens",
+                    patterns=["*.jpg"],
+                    destination="imagens/2026",  # valido
+                ),
+            ],
+        )
+
+        result = OrganizeTask(source_dir=source, rules=rules).run()
+        assert result.is_success
+        assert result.data["moved_count"] == 1

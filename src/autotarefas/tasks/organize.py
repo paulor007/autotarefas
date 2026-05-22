@@ -41,6 +41,8 @@ import yaml
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from autotarefas.core import BaseTask, TaskResult, TaskStatus, ValidationError
+from autotarefas.core.exceptions import SecurityError
+from autotarefas.core.security import safe_path
 
 # Tipos literais usados no RuleSet
 ConflictAction = Literal["skip", "rename", "overwrite"]
@@ -337,7 +339,7 @@ class OrganizeTask(BaseTask):
         # 2. Resolve destination
         try:
             dest = self._resolve_destination(file_path, rule)
-        except (KeyError, ValueError, OSError) as e:
+        except (KeyError, ValueError, OSError, SecurityError) as e:
             base_op["status"] = "error"
             base_op["error"] = f"resolucao de destination falhou: {e}"
             return base_op
@@ -427,7 +429,16 @@ class OrganizeTask(BaseTask):
             raise KeyError(f"variavel desconhecida no destination: {e}") from e
 
         # Junta: target_root / destination_resolvido / nome_do_arquivo
-        return self.rules.target_root / relative_dest / file_path.name
+        candidate = self.rules.target_root / relative_dest / file_path.name
+
+        # SEGURANCA: bloqueia path traversal via destination malicioso
+        try:
+            return safe_path(candidate, [self.rules.target_root])
+        except SecurityError as e:
+            raise SecurityError(
+                f"Destination escapa de target_root: {candidate}. "
+                f"Rule '{rule.name}' tem destination suspeito: '{rule.destination}'"
+            ) from e
 
     def _resolve_conflict(self, target: Path) -> Path | None:
         """
