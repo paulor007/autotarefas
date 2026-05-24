@@ -19,6 +19,7 @@ from autotarefas.cli.commands.backup import backup
 from autotarefas.cli.commands.info import info
 from autotarefas.cli.commands.init import init
 from autotarefas.cli.commands.organize import organize
+from autotarefas.cli.commands.report import report
 from autotarefas.cli.commands.validate import validate
 from autotarefas.cli.context import CLIContext
 
@@ -75,7 +76,8 @@ cli.add_command(info)
 cli.add_command(init)
 cli.add_command(validate)
 cli.add_command(backup)
-cli.add_command(organize)  # NOVO — Fase 5
+cli.add_command(organize)
+cli.add_command(report)  # NOVO — Fase 7
 
 
 __all__ = ["cli"]
