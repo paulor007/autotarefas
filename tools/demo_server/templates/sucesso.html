@@ -1,0 +1,26 @@
+{% extends "base.html" %} {% block title %}Cadastro Realizado — AutoTarefas
+Demo{% endblock %} {% block content %}
+<div class="card success">
+  <h2>Cadastro realizado com sucesso!</h2>
+
+  <div class="record-info">
+    <p><strong>ID:</strong> <span id="record-id">{{ record.id }}</span></p>
+    <p><strong>Nome:</strong> {{ record.nome }}</p>
+    <p><strong>Email:</strong> {{ record.email }}</p>
+    <p><strong>CPF:</strong> {{ record.cpf }}</p>
+    {% if record.telefone %}
+    <p><strong>Telefone:</strong> {{ record.telefone }}</p>
+    {% endif %}
+    <p><strong>Criado em:</strong> {{ record.created_at }}</p>
+  </div>
+
+  <div class="actions">
+    <a href="{{ url_for('cadastro_get') }}" class="btn btn-primary">
+      Novo Cadastro
+    </a>
+    <a href="{{ url_for('index') }}" class="btn btn-secondary">
+      Voltar ao Inicio
+    </a>
+  </div>
+</div>
+{% endblock %}

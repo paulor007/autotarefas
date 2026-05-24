@@ -1,0 +1,29 @@
+{% extends "base.html" %} {% block title %}AutoTarefas Demo — Inicio{% endblock
+%} {% block content %}
+<div class="card">
+  <h2>Bem-vindo ao Sistema Demo</h2>
+  <p>
+    Este é um sistema de cadastro <strong>fake</strong>, criado para testar
+    automações de RPA em ambiente seguro.
+  </p>
+  <p>Atualmente há <strong>{{ total }}</strong> cadastro(s) na base.</p>
+
+  <div class="actions">
+    <a href="{{ url_for('cadastro_get') }}" class="btn btn-primary">
+      Novo Cadastro
+    </a>
+    <a href="{{ url_for('cadastros_json') }}" class="btn btn-secondary">
+      Ver Cadastros (JSON)
+    </a>
+  </div>
+</div>
+
+<div class="card info">
+  <h3>Informações Técnicas</h3>
+  <ul>
+    <li><strong>Endpoint health:</strong> <code>/health</code></li>
+    <li><strong>Listar todos:</strong> <code>GET /cadastros</code></li>
+    <li><strong>Limpar base:</strong> <code>POST /limpar</code></li>
+  </ul>
+</div>
+{% endblock %}
