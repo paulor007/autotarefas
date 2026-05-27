@@ -51,7 +51,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, ClassVar, Literal
+from typing import Any, Callable, ClassVar, Literal  # noqa
 
 import httpx
 import pandas as pd
@@ -126,6 +126,7 @@ class RPACadastroTask(BaseTask):
         base_url: str,
         headless: bool = True,
         screenshot_on_error: bool = True,
+        on_progress: Callable[[dict[str, Any]], None] | None = None,
         dry_run: bool = False,
     ) -> None:
         super().__init__(dry_run=dry_run)
@@ -148,6 +149,7 @@ class RPACadastroTask(BaseTask):
         self.base_url = base_url.rstrip("/")
         self.headless = headless
         self.screenshot_on_error = screenshot_on_error
+        self.on_progress = on_progress
 
     # --------------------------------------------------------
     # execute
@@ -332,6 +334,15 @@ class RPACadastroTask(BaseTask):
                 nome=nome,
                 err=op.get("error", ""),
             )
+
+        if self.on_progress is not None:
+            try:
+                self.on_progress(op)
+            except Exception as exc:
+                logger.warning(
+                    "Callback on_progress falhou: {err}",
+                    err=str(exc),
+                )
 
     # --------------------------------------------------------
     # Processamento de linha (real e dry-run)

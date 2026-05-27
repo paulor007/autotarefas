@@ -20,6 +20,7 @@ from autotarefas.cli.commands.info import info
 from autotarefas.cli.commands.init import init
 from autotarefas.cli.commands.organize import organize
 from autotarefas.cli.commands.report import report
+from autotarefas.cli.commands.rpa import rpa
 from autotarefas.cli.commands.validate import validate
 from autotarefas.cli.context import CLIContext
 
@@ -72,12 +73,13 @@ def cli(
 # Registro dos subcomandos
 # ============================================================
 
+cli.add_command(backup)
 cli.add_command(info)
 cli.add_command(init)
-cli.add_command(validate)
-cli.add_command(backup)
 cli.add_command(organize)
-cli.add_command(report)  # NOVO — Fase 7
+cli.add_command(report)
+cli.add_command(rpa)
+cli.add_command(validate)
 
 
 __all__ = ["cli"]

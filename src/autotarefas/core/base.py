@@ -43,6 +43,7 @@ from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Any, ClassVar
 
+from autotarefas.core.audit import audit
 from autotarefas.core.exceptions import AutoTarefasError
 from autotarefas.core.logger import logger
 
@@ -251,12 +252,13 @@ class BaseTask(ABC):
         2. Chama ``pre_execute()``
         3. Chama ``execute()``
         4. Chama ``post_execute(result)``
-        5. Loga fim
-        6. Retorna resultado
+        5. Grava no audit trail
+        6. Loga fim
+        7. Retorna resultado
 
-        Se ocorrer ``AutoTarefasError`` em qualquer passo, captura e retorna
-        ``TaskResult`` com status=FAILURE. Outras exceções (bugs reais)
-        propagam pra cima.
+        Se ocorrer ``AutoTarefasError`` em qualquer passo, captura, registra
+        no audit como FAILURE, e retorna ``TaskResult`` com status=FAILURE.
+        Outras exceções (bugs reais) propagam pra cima.
 
         Returns:
             TaskResult com o desfecho da execução.
@@ -279,12 +281,16 @@ class BaseTask(ABC):
                 name=self.name,
                 error=str(e),
             )
-            return self._make_result(
+            result = self._make_result(
                 status=TaskStatus.FAILURE,
                 started_at=started_at,
                 error_message=str(e),
                 error_type=type(e).__name__,
             )
+            self._record_audit(result)
+            return result
+
+        self._record_audit(result)
 
         logger.info(
             "Task '{name}' concluida: status={status}, duracao={ms}ms, " "afetados={affected}",
@@ -294,6 +300,36 @@ class BaseTask(ABC):
             affected=result.rows_affected,
         )
         return result
+
+    def _record_audit(self, result: TaskResult) -> None:
+        """
+        Grava o resultado no audit trail.
+
+        Erros aqui sao silenciosos (apenas warning no log) - audit
+        nao deve interromper o fluxo da task. Como ``audit.record()``
+        ja captura excecoes internamente, este try/except eh apenas
+        defesa adicional.
+
+        Args:
+            result: TaskResult retornado por execute() ou construido
+                em caso de falha.
+        """
+        try:
+            audit.record(
+                task_name=result.task_name,
+                status=result.status.value,
+                started_at=result.started_at,
+                duration_ms=result.duration_ms,
+                rows_affected=result.rows_affected,
+                rows_failed=result.rows_failed,
+                error_message=result.error_message,
+            )
+        except Exception as exc:
+            logger.warning(
+                "Falha ao gravar audit para task '{name}': {err}",
+                name=result.task_name,
+                err=str(exc),
+            )
 
     # ========================================================
     # Helper pra subclasses
