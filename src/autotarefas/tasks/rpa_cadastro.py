@@ -160,7 +160,7 @@ class RPACadastroTask(BaseTask):
         started_at = datetime.now(UTC)
 
         # 1. Health check
-        if not self._check_health():
+        if not self.dry_run and not self._check_health():
             return self._make_result(
                 status=TaskStatus.SKIPPED,
                 started_at=started_at,
@@ -174,7 +174,7 @@ class RPACadastroTask(BaseTask):
         # 2. Le planilha
         try:
             df = self._read_planilha()
-        except (OSError, ValueError, pd.errors.ParserError) as exc:
+        except (OSError, ValueError, pd.errors.ParserError, ValidationError) as exc:
             return self._make_result(
                 status=TaskStatus.FAILURE,
                 started_at=started_at,
