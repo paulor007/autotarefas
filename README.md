@@ -1,6 +1,7 @@
 # AutoTarefas
 
 [![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/)
+[![Version](https://img.shields.io/badge/version-0.5.0-blue.svg)]()
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Coverage](https://img.shields.io/badge/coverage-98%25-brightgreen.svg)]()
 [![mypy: strict](https://img.shields.io/badge/mypy-strict-blue.svg)](http://mypy-lang.org/)
@@ -10,14 +11,16 @@ Robô de automação operacional para tarefas em planilhas (CSV, Excel),
 arquivos e sistemas web (RPA). Projeto Python moderno com foco em
 **segurança**, **rastreabilidade** (audit trail) e **robustez**.
 
-> ⚠️ **Status atual: v0.4.0 (pré-release).** Validador + Backup +
-> Organizador + Segurança + Relatórios prontos. Próximos releases: RPA,
-> dashboard.
+> ⚠️ **Status atual: v0.5.0 (pré-release).** Validador + Backup +
+> Organizador + Segurança + Relatórios + **RPA Cadastro Web** prontos.
+> Próximos releases: extração de dados, dashboard.
 
 ---
 
-## ✨ Destaques
+## Destaques
 
+- **Automação web (RPA)** — cadastra registros web a partir de planilha, com navegador real (Playwright)
+- **Sistema demo local** — servidor Flask para testar automações com segurança
 - **Validador de planilhas** com schema declarativo em YAML
 - **Validadores brasileiros**: CPF e CNPJ com algoritmo módulo 11
 - **Backup ZIP** com hash SHA-256 e excludes inteligentes
@@ -25,14 +28,14 @@ arquivos e sistemas web (RPA). Projeto Python moderno com foco em
 - **Relatórios consolidados** do audit trail (summary/list/errors)
 - **Segurança transversal documentada** — 13 princípios, threat model
 - **Audit trail completo** — toda execução em SQLite append-only com HMAC-SHA256
-- **Mascaramento automático** — CPFs, CNPJs, senhas e tokens nunca vazam em logs
+- **Mascaramento automático** — CPFs, CNPJs, senhas e tokens nunca vazam em logs nem em screenshots
 - **Dry-run em tudo** — simula operações antes de fazer mudanças reais
 - **Type-safe** — mypy strict, 0 erros
-- **~610 testes**, 98% de cobertura
+- **~720 testes**, ~98% de cobertura
 
 ---
 
-## 🚀 Instalação
+## Instalação
 
 ```bash
 git clone https://github.com/paulor007/autotarefas.git
@@ -47,9 +50,20 @@ pip install -e ".[dev]"
 
 **Pré-requisitos**: Python 3.12+, Git.
 
+### Extras opcionais
+
+```bash
+pip install -e ".[rpa]"          # automação web (Playwright)
+playwright install chromium      # baixa o navegador (~200MB)
+
+pip install -e ".[demo]"         # servidor demo local (Flask)
+
+pip install -e ".[dev,rpa,demo]" # tudo junto
+```
+
 ---
 
-## 🎯 Quick Start
+## Quick Start
 
 ```bash
 autotarefas init                  # Inicializa ~/.autotarefas/
@@ -97,7 +111,101 @@ Variáveis no destination: `{year}`, `{month:02d}`, `{day:02d}`, `{ext}`.
 
 ---
 
-## 📊 Relatórios Consolidados (v0.4.0 — NOVO)
+## Automação Web — RPA (v0.5.0 — NOVO)
+
+Automatiza cadastros web a partir de uma planilha, usando um navegador
+real (Chromium via Playwright). Valida CPF localmente, é tolerante a
+falhas por linha e mascara dados sensíveis em screenshots.
+
+### Instalação
+
+```bash
+pip install -e ".[rpa]"
+playwright install chromium
+```
+
+### Uso
+
+```bash
+autotarefas rpa cadastro --planilha clientes.csv --site http://localhost:5555
+```
+
+### Exemplo de saída
+
+```
+============================================================
+ RPA Cadastro
+============================================================
+Planilha: clientes.csv
+Site:     http://localhost:5555
+Modo:     headless
+
+Processando...
+
+[1/3] Ana Silva Santos    ... [OK] ID: 1
+[2/3] Bruno Costa Lima    ... [OK] ID: 2
+[3/3] Carlos Pereira      ... [SKIP] CPF invalido (modulo 11)
+
+============================================================
+Total:    3 linhas processadas
+Sucesso:  2 cadastros realizados
+Skipped:  1 linhas puladas
+Erros:    0
+Tempo:    3.4s
+============================================================
+```
+
+### Esquema da planilha
+
+| Coluna     | Obrigatório | Validação           |
+| ---------- | ----------- | ------------------- |
+| `nome`     | Sim         | Não vazio           |
+| `email`    | Sim         | Não vazio           |
+| `cpf`      | Sim         | Algoritmo módulo 11 |
+| `telefone` | Não         | —                   |
+
+### Opções
+
+| Flag              | Descrição                                            | Default    |
+| ----------------- | ---------------------------------------------------- | ---------- |
+| `--planilha, -p`  | Caminho da planilha CSV/XLSX                         | —          |
+| `--site, -s`      | URL base do sistema alvo                             | —          |
+| `--show-browser`  | Mostra a janela do navegador                         | headless   |
+| `--no-screenshot` | Desabilita screenshots automáticas em erro           | habilitado |
+| `--allow-remote`  | Permite URLs não-locais (por padrão, só `localhost`) | bloqueado  |
+
+### Comportamento
+
+- **CPF inválido** → linha pulada (`skipped`), não interrompe as demais
+- **CPF duplicado** no sistema → linha pulada (`skipped`)
+- **Erro técnico** (timeout, etc.) → linha marcada como `error` + screenshot mascarada
+- **Servidor offline** → task termina como `skipped` (não tenta nada)
+
+### Dry-run
+
+Simule sem tocar no sistema (não abre navegador):
+
+```bash
+autotarefas --dry-run rpa cadastro --planilha clientes.csv --site http://localhost:5555
+```
+
+### Sistema demo (para testes)
+
+Um servidor demo local está disponível para testar a automação com
+segurança, sem tocar em sistemas reais:
+
+```bash
+pip install -e ".[demo]"
+python -m tools.demo_server
+# Acesse http://localhost:5555
+```
+
+⚠️ Por segurança, a automação só roda contra `localhost`/`127.0.0.1` por
+default. Para sistemas reais, use `--allow-remote` (com responsabilidade).
+
+---
+
+## Relatórios Consolidados (v0.4.0)
 
 Consulta o **audit trail** e gera estatísticas, listas ou apenas falhas.
 Toda execução de qualquer comando é registrada automaticamente em
@@ -139,8 +247,8 @@ Por task:
   - validate     23 ( 49.0%)  22 ok, 1 falha
   - backup        8 ( 17.0%)  8 ok
   - organize      6 ( 12.8%)  5 ok, 1 partial
+  - rpa_cadastro  5 ( 10.6%)  4 ok, 1 partial
   - init          5 ( 10.6%)  5 ok
-  - info          5 ( 10.6%)  5 ok
 
 Por status:
   - success      44 ( 93.6%)
@@ -148,8 +256,9 @@ Por status:
   - dry_run       1 (  2.1%)
 
 Duracao media por task:
-  - backup        550ms
+  - rpa_cadastro 6.80s
   - organize     1.20s
+  - backup        550ms
   - validate     150ms
   - init          27ms
 
@@ -174,7 +283,7 @@ Falhas recentes (ultimas 5):
 
 ---
 
-## 🛡️ Segurança (v0.4.0 — REFORÇADA)
+## Segurança (v0.4.0 — REFORÇADA)
 
 Este projeto adere a **13 princípios documentados** de segurança.
 Consulte [SECURITY.md](SECURITY.md) para detalhes completos.
@@ -186,6 +295,10 @@ Consulte [SECURITY.md](SECURITY.md) para detalhes completos.
 - **Whitelist > blacklist** em extensões e paths
 - **Validação de filename** em 7 camadas (anti `../../etc`, NUL, nomes
   reservados Windows, chars proibidos)
+- **RPA restrito a hosts locais** — automação contra sistema real exige
+  `--allow-remote` explícito (fail-safe default)
+- **Mascaramento em screenshots** — CPF, CNPJ, senha, token e cartão são
+  cobertos automaticamente em capturas de tela
 - **HTTPS obrigatório em produção**
 - **Mascaramento automático** de dados sensíveis em logs e audit
 - **Dry-run em operações destrutivas**
@@ -197,7 +310,7 @@ disclosure**. Não abra issues públicas para questões de segurança.
 
 ---
 
-## 📋 Outros Comandos
+## Outros Comandos
 
 ```bash
 autotarefas info        # mostra info do sistema
@@ -205,7 +318,8 @@ autotarefas init        # cria estrutura ~/.autotarefas/
 autotarefas validate    # valida planilha CSV/Excel
 autotarefas backup      # compacta arquivos em ZIP
 autotarefas organize    # organiza arquivos em pastas
-autotarefas report      # NOVO em v0.4.0 - relatórios do audit
+autotarefas report      # relatórios do audit trail
+autotarefas rpa         # NOVO em v0.5.0 - automação web (RPA)
 ```
 
 ### Opções globais
@@ -221,13 +335,13 @@ autotarefas report      # NOVO em v0.4.0 - relatórios do audit
 
 ---
 
-## 🛣️ Roadmap
+## Roadmap
 
 - ✅ **v0.1.0** — Core + CLI base
 - ✅ **v0.2.0** — Validador de planilhas
 - ✅ **v0.3.0** — Backup + Organizador
-- ✅ **v0.4.0** — Segurança Transversal + Relatórios _(atual)_
-- ⏳ **v0.5.0** — Sistema demo + RPA Cadastro Web
+- ✅ **v0.4.0** — Segurança Transversal + Relatórios
+- ✅ **v0.5.0** — Sistema demo + RPA Cadastro Web _(atual)_
 - ⏳ **v0.6.0** — Extração (API + Browser)
 - ⏳ **v0.7.0** — Sincronização assistida
 - ⏳ **v0.8.0** — Dashboard web (opcional)
@@ -235,7 +349,7 @@ autotarefas report      # NOVO em v0.4.0 - relatórios do audit
 
 ---
 
-## 🧑‍💻 Desenvolvimento
+## Desenvolvimento
 
 ```bash
 pip install -e ".[dev]"
@@ -258,7 +372,9 @@ pre-commit run --all-files
 - **SQLite** — audit trail local
 - **pandas** + **openpyxl** + **PyYAML** — planilhas e schemas
 - **zipfile** + **hashlib** + **shutil** — backup/organizador (stdlib!)
-- **playwright** — RPA web (futuras fases)
+- **Playwright** — automação web (RPA)
+- **Flask** — servidor demo local (desenvolvimento)
+- **httpx** — health check do alvo RPA
 - **pytest** + **mypy strict** + **ruff** + **bandit** + **detect-secrets**
 
 ---
