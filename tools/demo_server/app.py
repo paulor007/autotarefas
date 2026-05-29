@@ -26,6 +26,7 @@ from __future__ import annotations
 import re
 from typing import Any
 
+from faker import Faker
 from flask import Flask, jsonify, redirect, render_template, request, url_for
 from werkzeug.wrappers import Response
 
@@ -37,6 +38,8 @@ from tools.demo_server.storage import Storage
 
 app = Flask(__name__)
 storage = Storage()
+
+fake = Faker("pt_BR")
 
 
 # ============================================================
@@ -165,6 +168,101 @@ def health() -> Response:
             "status": "ok",
             "service": "autotarefas-demo",
             "total_cadastros": len(storage.list_all()),
+        }
+    )
+
+
+def _gerar_cliente_fake() -> dict[str, str]:
+    """Gera dados fake de um cliente usando Faker (locale pt_BR)."""
+    return {
+        "nome": fake.name(),
+        "email": fake.email(),
+        "cpf": fake.cpf(),
+        "telefone": fake.cellphone_number(),
+    }
+
+
+@app.route("/api/clientes")
+def api_clientes() -> Response:
+    """
+    API paginada de clientes (JSON).
+
+    Query params:
+        page: numero da pagina (default 1, minimo 1)
+        per_page: itens por pagina (default 10, max 100)
+
+    Resposta:
+        {
+          "data": [...],
+          "page": N,
+          "per_page": N,
+          "total": N,
+          "total_pages": N,
+          "has_next": bool
+        }
+    """
+    page = request.args.get("page", 1, type=int)
+    per_page = request.args.get("per_page", 10, type=int)
+
+    # Sanitiza
+    if page < 1:
+        page = 1
+    if per_page < 1:
+        per_page = 10
+    if per_page > 100:
+        per_page = 100
+
+    all_records = storage.list_all()
+    total = len(all_records)
+    total_pages = (total + per_page - 1) // per_page  # ceil
+
+    start = (page - 1) * per_page
+    end = start + per_page
+    page_data = all_records[start:end]
+
+    return jsonify(
+        {
+            "data": page_data,
+            "page": page,
+            "per_page": per_page,
+            "total": total,
+            "total_pages": total_pages,
+            "has_next": page < total_pages,
+        }
+    )
+
+
+@app.route("/seed", methods=["POST"])
+def seed() -> Response:
+    """
+    Popula o storage com N clientes fake (Faker).
+
+    Query params:
+        n: quantidade a criar (default 50, max 1000)
+        clear: se "true", limpa tudo antes de popular (default false)
+
+    So usar em desenvolvimento/testes.
+    """
+    n = request.args.get("n", 50, type=int)
+    clear = request.args.get("clear", "false").lower() == "true"
+
+    if n < 1:
+        n = 1
+    if n > 1000:
+        n = 1000
+
+    if clear:
+        storage.clear()
+
+    fakes = [_gerar_cliente_fake() for _ in range(n)]
+    created = storage.create_many(fakes)
+
+    return jsonify(
+        {
+            "status": "ok",
+            "created": created,
+            "cleared": clear,
+            "total": len(storage.list_all()),
         }
     )
 

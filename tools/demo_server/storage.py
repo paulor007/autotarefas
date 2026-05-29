@@ -94,6 +94,44 @@ class Storage:
 
         return record
 
+    def create_many(
+        self,
+        records_data: list[dict[str, Any]],
+    ) -> int:
+        """
+        Cria varios registros de uma vez (1 unica escrita no arquivo).
+
+        Util para popular o storage rapidamente (endpoint /seed).
+        IDs sao auto-incrementados a partir do maior id existente.
+
+        Args:
+            records_data: Lista de dicts com nome, email, cpf, telefone.
+
+        Returns:
+            Quantidade de registros criados.
+        """
+        with self._lock:
+            records = self._read_all()
+            next_id = max([r["id"] for r in records], default=0) + 1
+
+            created = 0
+            for data in records_data:
+                record = {
+                    "id": next_id,
+                    "nome": data["nome"],
+                    "email": data["email"],
+                    "cpf": data["cpf"],
+                    "telefone": data.get("telefone", ""),
+                    "created_at": datetime.now(UTC).isoformat(),
+                }
+                records.append(record)
+                next_id += 1
+                created += 1
+
+            self._write_all(records)
+
+        return created
+
     def clear(self) -> None:
         """Apaga todos os cadastros."""
         with self._lock:
