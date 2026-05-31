@@ -167,28 +167,28 @@ class BrowserSession:
         if self._page is not None:
             try:
                 self._page.close()
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001
                 logger.warning("Erro fechando page: {err}", err=str(exc))
             self._page = None
 
         if self._context is not None:
             try:
                 self._context.close()
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001
                 logger.warning("Erro fechando context: {err}", err=str(exc))
             self._context = None
 
         if self._browser is not None:
             try:
                 self._browser.close()
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001
                 logger.warning("Erro fechando browser: {err}", err=str(exc))
             self._browser = None
 
         if self._playwright is not None:
             try:
                 self._playwright.stop()
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001
                 logger.warning("Erro parando playwright: {err}", err=str(exc))
             self._playwright = None
 
@@ -346,7 +346,7 @@ def verify_playwright_installed() -> dict[str, Any]:
                 "error": None,
                 "browser_executable": executable,
             }
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001
         return {
             "ok": False,
             "error": str(exc),

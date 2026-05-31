@@ -1,26 +1,27 @@
 # AutoTarefas
 
 [![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/)
-[![Version](https://img.shields.io/badge/version-0.5.0-blue.svg)]()
+[![Version](https://img.shields.io/badge/version-0.6.0-blue.svg)]()
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Coverage](https://img.shields.io/badge/coverage-98%25-brightgreen.svg)]()
 [![mypy: strict](https://img.shields.io/badge/mypy-strict-blue.svg)](http://mypy-lang.org/)
 [![Security: documented](https://img.shields.io/badge/security-documented-green.svg)](SECURITY.md)
 
 Robô de automação operacional para tarefas em planilhas (CSV, Excel),
-arquivos e sistemas web (RPA). Projeto Python moderno com foco em
+arquivos, sistemas web (RPA) e APIs. Projeto Python moderno com foco em
 **segurança**, **rastreabilidade** (audit trail) e **robustez**.
 
-> ⚠️ **Status atual: v0.5.0 (pré-release).** Validador + Backup +
-> Organizador + Segurança + Relatórios + **RPA Cadastro Web** prontos.
-> Próximos releases: extração de dados, dashboard.
+> ⚠️ **Status atual: v0.6.0 (pré-release).** Validador + Backup +
+> Organizador + Segurança + Relatórios + RPA Cadastro + **Extração via
+> API** prontos. Próximos releases: web scraping, sincronização, dashboard.
 
 ---
 
-## Destaques
+## ✨ Destaques
 
 - **Automação web (RPA)** — cadastra registros web a partir de planilha, com navegador real (Playwright)
-- **Sistema demo local** — servidor Flask para testar automações com segurança
+- **Extração via API** — consome APIs REST paginadas (com retry e rate limit) e salva em CSV/XLSX/JSON
+- **Sistema demo local** — servidor Flask para testar automações e extrações com segurança
 - **Validador de planilhas** com schema declarativo em YAML
 - **Validadores brasileiros**: CPF e CNPJ com algoritmo módulo 11
 - **Backup ZIP** com hash SHA-256 e excludes inteligentes
@@ -31,11 +32,11 @@ arquivos e sistemas web (RPA). Projeto Python moderno com foco em
 - **Mascaramento automático** — CPFs, CNPJs, senhas e tokens nunca vazam em logs nem em screenshots
 - **Dry-run em tudo** — simula operações antes de fazer mudanças reais
 - **Type-safe** — mypy strict, 0 erros
-- **~720 testes**, ~98% de cobertura
+- **~775 testes**, ~98% de cobertura
 
 ---
 
-## Instalação
+## 🚀 Instalação
 
 ```bash
 git clone https://github.com/paulor007/autotarefas.git
@@ -63,7 +64,7 @@ pip install -e ".[dev,rpa,demo]" # tudo junto
 
 ---
 
-## Quick Start
+## 🎯 Quick Start
 
 ```bash
 autotarefas init                  # Inicializa ~/.autotarefas/
@@ -111,7 +112,7 @@ Variáveis no destination: `{year}`, `{month:02d}`, `{day:02d}`, `{ext}`.
 
 ---
 
-## Automação Web — RPA (v0.5.0 — NOVO)
+## 🤖 Automação Web — RPA (v0.5.0)
 
 Automatiza cadastros web a partir de uma planilha, usando um navegador
 real (Chromium via Playwright). Valida CPF localmente, é tolerante a
@@ -189,23 +190,89 @@ Simule sem tocar no sistema (não abre navegador):
 autotarefas --dry-run rpa cadastro --planilha clientes.csv --site http://localhost:5555
 ```
 
-### Sistema demo (para testes)
-
-Um servidor demo local está disponível para testar a automação com
-segurança, sem tocar em sistemas reais:
-
-```bash
-pip install -e ".[demo]"
-python -m tools.demo_server
-# Acesse http://localhost:5555
-```
-
 ⚠️ Por segurança, a automação só roda contra `localhost`/`127.0.0.1` por
 default. Para sistemas reais, use `--allow-remote` (com responsabilidade).
 
 ---
 
-## Relatórios Consolidados (v0.4.0)
+## 🔌 Extração via API (v0.6.0 — NOVO)
+
+Consome uma API REST paginada e salva os dados em arquivo. Faz paginação
+automática, com retry resiliente e controle de taxa.
+
+### Uso
+
+```bash
+autotarefas extract api --url http://localhost:5555/api/clientes --output clientes.csv
+```
+
+### Exemplo de saída
+
+```
+============================================================
+ Extracao via API
+============================================================
+URL:    http://localhost:5555/api/clientes
+Saida:  clientes.csv
+Modo:   normal
+
+  Pagina 1/5 ... 10 registros (total: 10)
+  Pagina 2/5 ... 10 registros (total: 20)
+  Pagina 3/5 ... 10 registros (total: 30)
+  Pagina 4/5 ... 10 registros (total: 40)
+  Pagina 5/5 ...  7 registros (total: 47)
+
+============================================================
+Extraidos 47 registros -> clientes.csv
+============================================================
+```
+
+### Opções
+
+| Flag            | Descrição                                    | Default |
+| --------------- | -------------------------------------------- | ------- |
+| `--url, -u`     | Endpoint da API paginada                     | —       |
+| `--output, -o`  | Arquivo de saída (.csv/.xlsx/.json)          | —       |
+| `--per-page`    | Itens por página a solicitar                 | `50`    |
+| `--max-pages`   | Limite de páginas (default: todas)           | —       |
+| `--delay`       | Pausa entre páginas em segundos (rate limit) | `0.0`   |
+| `--api-key`     | Chave de API (header `X-API-Key`)            | —       |
+| `--timeout`     | Timeout por request em segundos              | `30.0`  |
+| `--max-retries` | Tentativas por página em erro temporário     | `3`     |
+
+### Recursos
+
+- **Paginação automática** — segue `has_next` até o fim
+- **Retry com backoff** — só em erros temporários (timeout, conexão, HTTP 5xx); 4xx não é retentado
+- **Rate limiting** — `--delay` entre páginas para não sobrecarregar a API
+- **Multi-formato** — a extensão do `--output` decide (CSV/XLSX/JSON)
+- **Autenticação** — `--api-key` vai no header (nunca em log/audit)
+
+### Dry-run
+
+```bash
+autotarefas --dry-run extract api -u http://localhost:5555/api/clientes -o x.csv
+# [dry-run] Extrairia 47 registros em 5 paginas (nao salva)
+```
+
+⚠️ Ao usar `--api-key` sobre `http://` externo (sem TLS), o comando avisa
+que a chave trafegaria sem criptografia. Prefira `https://`.
+
+### Sistema demo (para testes)
+
+O servidor demo expõe uma API paginada para testar a extração:
+
+```bash
+pip install -e ".[demo]"
+python -m tools.demo_server          # http://localhost:5555
+
+# Popular com dados fake (PowerShell):
+# Invoke-RestMethod -Method Post -Uri "http://localhost:5555/seed?n=47&clear=true"
+```
+
+---
+
+## 📊 Relatórios Consolidados (v0.4.0)
 
 Consulta o **audit trail** e gera estatísticas, listas ou apenas falhas.
 Toda execução de qualquer comando é registrada automaticamente em
@@ -246,7 +313,7 @@ Total:    47 execucoes
 Por task:
   - validate     23 ( 49.0%)  22 ok, 1 falha
   - backup        8 ( 17.0%)  8 ok
-  - organize      6 ( 12.8%)  5 ok, 1 partial
+  - extract_api   6 ( 12.8%)  6 ok
   - rpa_cadastro  5 ( 10.6%)  4 ok, 1 partial
   - init          5 ( 10.6%)  5 ok
 
@@ -257,10 +324,10 @@ Por status:
 
 Duracao media por task:
   - rpa_cadastro 6.80s
+  - extract_api  2.10s
   - organize     1.20s
   - backup        550ms
   - validate     150ms
-  - init          27ms
 
 Falhas recentes (ultimas 5):
   X 2026-05-22 13:45  organize  path traversal bloqueado
@@ -283,7 +350,7 @@ Falhas recentes (ultimas 5):
 
 ---
 
-## Segurança (v0.4.0 — REFORÇADA)
+## 🛡️ Segurança (v0.4.0 — REFORÇADA)
 
 Este projeto adere a **13 princípios documentados** de segurança.
 Consulte [SECURITY.md](SECURITY.md) para detalhes completos.
@@ -299,6 +366,8 @@ Consulte [SECURITY.md](SECURITY.md) para detalhes completos.
   `--allow-remote` explícito (fail-safe default)
 - **Mascaramento em screenshots** — CPF, CNPJ, senha, token e cartão são
   cobertos automaticamente em capturas de tela
+- **Credenciais protegidas** — `--api-key` da extração vai só no header
+  (nunca em log/audit); aviso ao enviá-la sobre `http://` externo
 - **HTTPS obrigatório em produção**
 - **Mascaramento automático** de dados sensíveis em logs e audit
 - **Dry-run em operações destrutivas**
@@ -310,7 +379,7 @@ disclosure**. Não abra issues públicas para questões de segurança.
 
 ---
 
-## Outros Comandos
+## 📋 Outros Comandos
 
 ```bash
 autotarefas info        # mostra info do sistema
@@ -319,7 +388,8 @@ autotarefas validate    # valida planilha CSV/Excel
 autotarefas backup      # compacta arquivos em ZIP
 autotarefas organize    # organiza arquivos em pastas
 autotarefas report      # relatórios do audit trail
-autotarefas rpa         # NOVO em v0.5.0 - automação web (RPA)
+autotarefas rpa         # automação web (RPA)
+autotarefas extract     # NOVO em v0.6.0 - extração via API
 ```
 
 ### Opções globais
@@ -335,21 +405,22 @@ autotarefas rpa         # NOVO em v0.5.0 - automação web (RPA)
 
 ---
 
-## Roadmap
+## 🛣️ Roadmap
 
 - ✅ **v0.1.0** — Core + CLI base
 - ✅ **v0.2.0** — Validador de planilhas
 - ✅ **v0.3.0** — Backup + Organizador
 - ✅ **v0.4.0** — Segurança Transversal + Relatórios
-- ✅ **v0.5.0** — Sistema demo + RPA Cadastro Web _(atual)_
-- ⏳ **v0.6.0** — Extração (API + Browser)
+- ✅ **v0.5.0** — Sistema demo + RPA Cadastro Web
+- ✅ **v0.6.0** — Extração via API _(atual)_
+- ⏳ **Web scraping** (`extract web`) — incremental futuro, reusa o BrowserSession
 - ⏳ **v0.7.0** — Sincronização assistida
 - ⏳ **v0.8.0** — Dashboard web (opcional)
 - ⏳ **v1.0.0** — Versão estável com CI/CD + docs completas
 
 ---
 
-## Desenvolvimento
+## 🧑‍💻 Desenvolvimento
 
 ```bash
 pip install -e ".[dev]"
@@ -370,11 +441,12 @@ pre-commit run --all-files
 - **pydantic-settings** — config type-safe
 - **loguru** — logging com mascaramento
 - **SQLite** — audit trail local
-- **pandas** + **openpyxl** + **PyYAML** — planilhas e schemas
+- **pandas** + **openpyxl** + **PyYAML** — planilhas, schemas e output da extração
 - **zipfile** + **hashlib** + **shutil** — backup/organizador (stdlib!)
 - **Playwright** — automação web (RPA)
 - **Flask** — servidor demo local (desenvolvimento)
-- **httpx** — health check do alvo RPA
+- **httpx** — requests HTTP (extração via API, health check do RPA)
+- **tenacity** — retry com backoff exponencial (extração)
 - **pytest** + **mypy strict** + **ruff** + **bandit** + **detect-secrets**
 
 ---

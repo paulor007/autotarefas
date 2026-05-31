@@ -63,7 +63,7 @@ def _validate_cadastro(data: dict[str, Any]) -> list[str]:
     nome = str(data.get("nome", "")).strip()
     if not nome:
         errors.append("Nome e obrigatorio")
-    elif len(nome) < 3:
+    elif len(nome) < 3:  # noqa: PLR2004
         errors.append("Nome deve ter pelo menos 3 caracteres")
 
     # Email
@@ -205,12 +205,10 @@ def api_clientes() -> Response:
     per_page = request.args.get("per_page", 10, type=int)
 
     # Sanitiza
-    if page < 1:
-        page = 1
+    page = max(page, 1)
     if per_page < 1:
         per_page = 10
-    if per_page > 100:
-        per_page = 100
+    per_page = min(per_page, 100)
 
     all_records = storage.list_all()
     total = len(all_records)
@@ -246,10 +244,8 @@ def seed() -> Response:
     n = request.args.get("n", 50, type=int)
     clear = request.args.get("clear", "false").lower() == "true"
 
-    if n < 1:
-        n = 1
-    if n > 1000:
-        n = 1000
+    n = max(n, 1)
+    n = min(n, 1000)
 
     if clear:
         storage.clear()

@@ -9,11 +9,114 @@ e este projeto adere a [Versionamento Semântico](https://semver.org/lang/pt-BR/
 
 ## [Não lançado]
 
-Em desenvolvimento. Próxima fase: extração de dados (API + Browser).
+Em desenvolvimento. Próxima: web scraping (`extract web`).
 
 ---
 
-## [0.5.0] — 2026-05-28
+## [0.6.0] — 2026-05-29
+
+🔌 **Extração de Dados via API!** O complemento natural da Fase 8: se o
+RPA _insere_ dados em sistemas web (cadastro), a extração _lê_ dados de
+fontes externas. O AutoTarefas agora consome **APIs REST paginadas** e
+salva tudo em CSV, XLSX ou JSON — com paginação automática, retry
+resiliente e controle de taxa.
+
+> Escopo desta fase: **somente API**. Web scraping (`extract web`,
+> reaproveitando o `BrowserSession` da Fase 8) fica anotado para uma
+> versão futura.
+
+### Adicionado
+
+#### Extração via API (Fase 9)
+
+- **`autotarefas.tasks.extract_api`** — sexta task real:
+  - `ExtractApiTask(BaseTask)`: consome uma API paginada e salva em arquivo
+  - **Paginação automática**: segue `has_next` até o fim (com limite de
+    segurança de 10.000 páginas contra loop infinito)
+  - **Retry com backoff exponencial** (`tenacity`): só em erros
+    TEMPORÁRIOS (`httpx.TransportError` — timeout/conexão — e HTTP 5xx);
+    **4xx propaga** (não adianta retentar URL errada ou auth inválida)
+  - **Rate limiting**: pausa configurável (`delay_s`) entre páginas
+  - **Output multi-formato**: CSV / XLSX / JSON, decidido pela extensão
+    do arquivo de saída
+  - **Autenticação opcional**: header `X-API-Key` (enviado só no header,
+    nunca no log nem no audit)
+  - **dry-run**: busca apenas a primeira página (preview do total), sem salvar
+  - Callback `on_progress` para acompanhamento página a página
+
+- **Comando `autotarefas extract api`**:
+  - Grupo `extract` (preparado para um futuro subcomando `web`)
+  - Opções: `--url`, `--output`, `--per-page`, `--max-pages`, `--delay`,
+    `--api-key`, `--timeout`, `--max-retries`
+  - Progresso em tempo real + exit codes (`0` sucesso, `1` falha,
+    `2` erro de uso)
+  - Aviso de segurança ao usar `--api-key` sobre `http://` externo (sem TLS)
+
+#### Sistema demo estendido
+
+- **`tools/demo_server`**:
+  - `GET /api/clientes?page=N&per_page=N`: API paginada (JSON com `data`,
+    `page`, `per_page`, `total`, `total_pages`, `has_next`)
+  - `POST /seed?n=N&clear=bool`: popula o storage com clientes fake
+    (**Faker** locale pt_BR) — dados realistas para testar a paginação
+  - `Storage.create_many()`: criação em massa numa única escrita
+
+#### Testes
+
+- ~53 testes novos: `ExtractApiTask` (paginação, formatos, dry-run,
+  retry, `_is_retryable`, auth, progresso) e o comando CLI (validação de
+  URL, exit codes, propagação de flags, aviso de segurança).
+- Estratégia sem rede: `httpx.get` mockado com `httpx.Response` **reais**
+  (raise_for_status/json autênticos) e `tenacity.nap.sleep` mockado para
+  testes de retry instantâneos.
+
+### Segurança
+
+- **API key fora de logs e audit** — enviada exclusivamente no header
+- **Aviso de TLS** — ao mandar `--api-key` sobre `http://` externo, o CLI
+  alerta que a chave trafegaria sem criptografia (mas não bloqueia: a
+  decisão é do operador)
+- **Limite de segurança de páginas** — guarda contra APIs que retornem
+  `has_next: true` indefinidamente (bug do servidor)
+
+### Dependências
+
+- **Nenhuma nova** — `httpx`, `tenacity` e `pandas` já estavam presentes.
+
+### Estatísticas
+
+- **~775 testes** (vs ~720 em v0.5.0)
+- **6 subclasses de BaseTask** (+ `ExtractApi`)
+- **8 comandos CLI** (+ `extract`)
+- **0 erros** em mypy strict, ruff, bandit
+
+### Lições aprendidas notáveis
+
+- **Retry seletivo**: distinguir erro temporário (timeout, 5xx → vale
+  retentar) de erro do cliente (4xx → não adianta) é o que separa um
+  retry útil de um que só multiplica chamadas inúteis.
+- **`tenacity.Retrying` (objeto) > `@retry` (decorator)** quando os
+  parâmetros dependem de `self` (ex.: `max_retries` configurável).
+- **`httpx.Response` real em testes** faz `raise_for_status()` e
+  `.json()` se comportarem como em produção — sem fingir.
+- **`tenacity.nap.sleep` mockado** torna testes de retry instantâneos.
+- **Ativar o grupo `PLR` herda `PLR0913`** (máx. 5 args): tasks de
+  configuração e comandos Click legitimamente têm muitos parâmetros →
+  exceção via `per-file-ignores` ou `# noqa` pontual.
+- **`RUF100`**: um `# noqa` para uma regra que não está no `select`
+  vira "unused noqa" — habilite a regra ou remova o noqa.
+- **`dict[str, object]` > `dict`** no modo estrito do mypy (`type-arg`).
+- **Raw string em docstring** (`r"""..."""`) quando há caminhos
+  Windows/PowerShell, para evitar `W605` (escape inválido como `\P`).
+
+### Anotado para o futuro
+
+- **`extract web`** (web scraping) reaproveitando o `BrowserSession` da
+  Fase 8 — possível v0.6.x incremental ou v0.7.
+
+---
+
+## [0.5.0] — 2026-05-26
 
 🤖 **Automação Web (RPA) + Sistema Demo!** O AutoTarefas deixa de ser
 apenas utilidades de arquivos e vira um **robô de automação web**
@@ -359,7 +462,8 @@ com 2 comandos, ~220 testes.
 
 ---
 
-[Não lançado]: https://github.com/paulor007/autotarefas/compare/v0.5.0...HEAD
+[Não lançado]: https://github.com/paulor007/autotarefas/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/paulor007/autotarefas/releases/tag/v0.6.0
 [0.5.0]: https://github.com/paulor007/autotarefas/releases/tag/v0.5.0
 [0.4.0]: https://github.com/paulor007/autotarefas/releases/tag/v0.4.0
 [0.3.0]: https://github.com/paulor007/autotarefas/releases/tag/v0.3.0

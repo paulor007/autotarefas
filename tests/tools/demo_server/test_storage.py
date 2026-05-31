@@ -255,7 +255,7 @@ class TestConcurrency:
                     }
                 )
                 results.append(rec["id"])
-            except Exception as exc:  # pragma: no cover
+            except Exception as exc:  # pragma: no cover  # noqa: BLE001
                 errors.append(exc)
 
         threads = [threading.Thread(target=create_one, args=(i,)) for i in range(50)]

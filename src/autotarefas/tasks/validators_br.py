@@ -69,7 +69,7 @@ def _calculate_dv(digits: str, weights: list[int]) -> int:
     """
     total = sum(int(d) * w for d, w in zip(digits, weights, strict=True))
     remainder = total % 11
-    if remainder < 2:
+    if remainder < 2:  # noqa: PLR2004
         return 0
     return 11 - remainder
 
@@ -120,7 +120,7 @@ def is_valid_cpf(value: str) -> bool:
     digits = _only_digits(value)
 
     # 1. Tem que ter exatamente 11 digitos
-    if len(digits) != 11:
+    if len(digits) != 11:  # noqa: PLR2004
         return False
 
     # 2. Blacklist: CPFs com todos digitos iguais.
@@ -178,7 +178,7 @@ def is_valid_cnpj(value: str) -> bool:
     """
     digits = _only_digits(value)
 
-    if len(digits) != 14:
+    if len(digits) != 14:  # noqa: PLR2004
         return False
 
     if len(set(digits)) == 1:

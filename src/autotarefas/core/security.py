@@ -258,7 +258,7 @@ def validate_filename(name: str) -> str:
 
     # 5. Chars de controle (0x00 a 0x1F)
     for char in name:
-        if ord(char) < 0x20:
+        if ord(char) < 0x20:  # noqa: PLR2004
             raise SecurityError(f"Nome contem char de controle (0x{ord(char):02x}): {name!r}")
 
     # 6. Chars proibidos

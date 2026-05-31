@@ -119,7 +119,7 @@ class RPACadastroTask(BaseTask):
 
     _HEALTH_TIMEOUT_S: ClassVar[float] = _HEALTH_TIMEOUT_S
 
-    def __init__(
+    def __init__(  # noqa: PLR0913
         self,
         planilha_path: Path,
         *,
@@ -241,7 +241,7 @@ class RPACadastroTask(BaseTask):
             )
             return False
         status_code: int = response.status_code
-        return status_code == 200
+        return status_code == 200  # noqa: PLR2004
 
     # --------------------------------------------------------
     # Leitura / validacao
@@ -338,7 +338,7 @@ class RPACadastroTask(BaseTask):
         if self.on_progress is not None:
             try:
                 self.on_progress(op)
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001
                 logger.warning(
                     "Callback on_progress falhou: {err}",
                     err=str(exc),
@@ -416,7 +416,7 @@ class RPACadastroTask(BaseTask):
         # Tenta cadastrar
         try:
             return self._fill_and_submit(browser, op, data)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001
             op["status"] = "error"
             op["error"] = f"Excecao: {type(exc).__name__}: {exc}"[:200]
 
@@ -459,7 +459,7 @@ class RPACadastroTask(BaseTask):
             op["status"] = "success"
             op["record_id"] = record_id
             return op
-        except Exception:
+        except Exception:  # noqa: BLE001
             # Nao apareceu #record-id; talvez tenha tido erro de validacao
             if browser.is_visible(".errors"):
                 error_text = browser.text(".errors")
@@ -494,7 +494,7 @@ class RPACadastroTask(BaseTask):
             screenshot_name = f"erro-linha-{op['row']}-{nome_safe}"
             path = browser.screenshot_safe(screenshot_name)
             op["screenshot"] = str(path)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001
             logger.warning(
                 "Falha ao tirar screenshot de erro: {err}",
                 err=str(exc),

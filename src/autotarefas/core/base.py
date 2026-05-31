@@ -324,7 +324,7 @@ class BaseTask(ABC):
                 rows_failed=result.rows_failed,
                 error_message=result.error_message,
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001
             logger.warning(
                 "Falha ao gravar audit para task '{name}': {err}",
                 name=result.task_name,
@@ -335,7 +335,7 @@ class BaseTask(ABC):
     # Helper pra subclasses
     # ========================================================
 
-    def _make_result(
+    def _make_result(  # noqa: PLR0913
         self,
         *,
         status: TaskStatus,

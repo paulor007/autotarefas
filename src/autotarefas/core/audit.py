@@ -157,7 +157,7 @@ class AuditTrail:
                 err=str(e),
             )
 
-    def record(
+    def record(  # noqa: PLR0913
         self,
         *,
         task_name: str,
