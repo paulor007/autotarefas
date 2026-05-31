@@ -213,6 +213,7 @@ ignore = [
     "S108",   # paths /tmp em testes são OK (usamos tmp_path)
     "ANN",    # type hints em testes não são obrigatórios
     "T20",    # print em testes é OK pra debug
+    "PLR2004",  # valores literais em asserts de teste são esperados
 ]
 # CLI pode usar print (faz parte do output)
 "src/autotarefas/cli/**" = [
