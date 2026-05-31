@@ -16,6 +16,7 @@ import click
 
 from autotarefas import __version__
 from autotarefas.cli.commands.backup import backup
+from autotarefas.cli.commands.extract import extract
 from autotarefas.cli.commands.info import info
 from autotarefas.cli.commands.init import init
 from autotarefas.cli.commands.organize import organize
@@ -79,6 +80,7 @@ cli.add_command(init)
 cli.add_command(organize)
 cli.add_command(report)
 cli.add_command(rpa)
+cli.add_command(extract)
 cli.add_command(validate)
 
 

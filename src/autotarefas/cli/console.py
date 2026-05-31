@@ -71,7 +71,7 @@ class Console:
 
     def warning(self, msg: str) -> None:
         """Mensagem de aviso em amarelo (suprime com -qq)."""
-        if self._ctx.quiet >= 2:
+        if self._ctx.quiet >= 2:  # noqa: PLR2004
             return
         self._out.print(f"[yellow][AVISO][/yellow] {msg}")
 
@@ -81,7 +81,7 @@ class Console:
 
     def debug(self, msg: str) -> None:
         """Mensagem de debug em cinza (só com -vv ou mais)."""
-        if self._ctx.verbose < 2:
+        if self._ctx.verbose < 2:  # noqa: PLR2004
             return
         self._out.print(f"[dim][DEBUG][/dim] {msg}")
 

@@ -246,7 +246,7 @@ def cadastro(
             progress_state["total"] = len(pd.read_csv(planilha, dtype=str))
         elif suffix in (".xlsx", ".xls"):
             progress_state["total"] = len(pd.read_excel(planilha, dtype=str))
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001
         console.warning(f"Nao foi possivel calcular o total previamente: {exc}")
 
     result = task.run()

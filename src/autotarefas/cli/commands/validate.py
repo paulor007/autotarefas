@@ -89,7 +89,7 @@ from autotarefas.tasks.validate import ValidateTask, load_schema
     help="Trata warnings como erros (exit 1 mesmo so com warnings).",
 )
 @click.pass_obj
-def validate(
+def validate(  # noqa: PLR0912
     ctx: CLIContext,
     arquivo: Path,
     schema: Path,

@@ -217,6 +217,7 @@ ignore = [
 # CLI pode usar print (faz parte do output)
 "src/autotarefas/cli/**" = [
     "T20",
+    "PLR0913",
 ]
 
 # Scripts de exemplo/demo podem usar print e dispensam type hints

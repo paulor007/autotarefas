@@ -112,13 +112,12 @@ def init(ctx: CLIContext, data_dir: str | None, force: bool) -> None:
         if path.exists():
             console.info(f"  [SKIP] {name}/ (ja existe)")
             skipped_count += 1
+        elif ctx.dry_run:
+            console.warning(f"  [DRY-RUN] Criaria {name}/")
         else:
-            if ctx.dry_run:
-                console.warning(f"  [DRY-RUN] Criaria {name}/")
-            else:
-                path.mkdir(parents=True, exist_ok=True)
-                console.success(f"Criado: {name}/")
-                created_count += 1
+            path.mkdir(parents=True, exist_ok=True)
+            console.success(f"Criado: {name}/")
+            created_count += 1
 
     # ============================================================
     # 2. Criar .env (se nao existir ou se --force)
@@ -128,16 +127,15 @@ def init(ctx: CLIContext, data_dir: str | None, force: bool) -> None:
     if env_path.exists() and not force:
         console.info("  [SKIP] .env (ja existe — use --force pra sobrescrever)")
         skipped_count += 1
+    elif ctx.dry_run:
+        action = "Sobrescreveria" if env_path.exists() else "Criaria"
+        console.warning(f"  [DRY-RUN] {action} .env")
     else:
-        if ctx.dry_run:
-            action = "Sobrescreveria" if env_path.exists() else "Criaria"
-            console.warning(f"  [DRY-RUN] {action} .env")
-        else:
-            env_path.parent.mkdir(parents=True, exist_ok=True)
-            env_path.write_text(ENV_TEMPLATE, encoding="utf-8")
-            action = "Sobrescrito" if force and env_path.exists() else "Criado"
-            console.success(f"{action}: .env")
-            created_count += 1
+        env_path.parent.mkdir(parents=True, exist_ok=True)
+        env_path.write_text(ENV_TEMPLATE, encoding="utf-8")
+        action = "Sobrescrito" if force and env_path.exists() else "Criado"
+        console.success(f"{action}: .env")
+        created_count += 1
 
     # ============================================================
     # 3. Resumo + audit

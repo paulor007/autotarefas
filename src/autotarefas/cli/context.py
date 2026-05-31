@@ -55,13 +55,13 @@ class CLIContext:
         Returns:
             String do log level (compatível com loguru).
         """
-        if self.quiet >= 2:
+        if self.quiet >= 2:  # noqa: PLR2004
             return "ERROR"
         if self.quiet == 1:
             return "WARNING"
-        if self.verbose >= 3:
+        if self.verbose >= 3:  # noqa: PLR2004
             return "TRACE"
-        if self.verbose == 2:
+        if self.verbose == 2:  # noqa: PLR2004
             return "DEBUG"
         return "INFO"
 

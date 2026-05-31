@@ -143,7 +143,7 @@ def _mostrar_estatisticas_finais(console: Console, result: TaskResult, action: s
     help="Pula a confirmacao interativa (mesmo acima do threshold).",
 )
 @click.pass_obj
-def organize(
+def organize(  # noqa: PLR0915
     ctx: CLIContext,
     source_dir: Path,
     rules: Path,

@@ -88,7 +88,7 @@ def _calculate_period(
 def _format_size(seconds_or_ms: float, unit: str = "ms") -> str:
     """Formata duração em ms/s humanizado."""
     if unit == "ms":
-        if seconds_or_ms < 1000:
+        if seconds_or_ms < 1000:  # noqa: PLR2004
             return f"{seconds_or_ms:.0f}ms"
         return f"{seconds_or_ms / 1000:.2f}s"
     return f"{seconds_or_ms:.2f}{unit}"
@@ -103,7 +103,7 @@ def _format_timestamp(ts: str) -> str:
         return ts
 
 
-def _format_summary_table(data: dict[str, Any]) -> str:
+def _format_summary_table(data: dict[str, Any]) -> str:  # noqa: PLR0912, PLR0915
     """
     Formata summary como texto pra terminal.
 
@@ -193,7 +193,7 @@ def _format_summary_table(data: dict[str, Any]) -> str:
             task = fail.get("task_name", "?")
             err = fail.get("error_message", "") or ""
             # Truncar mensagem
-            if len(err) > 50:
+            if len(err) > 50:  # noqa: PLR2004
                 err = err[:47] + "..."
             lines.append(f"  X {ts}  {task:12s}  {err}")
         lines.append("")
@@ -341,7 +341,7 @@ def _format_csv(data: dict[str, Any]) -> str:
     help="Caminho interno do audit DB para testes.",
 )
 @click.pass_obj
-def report(
+def report(  # noqa: PLR0912
     ctx: CLIContext,
     task_name: str | None,
     status: str | None,
