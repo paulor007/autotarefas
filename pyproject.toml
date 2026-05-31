@@ -194,6 +194,8 @@ select = [
     "T20",   # no print statements
     "PT",    # pytest style
     "RUF",   # ruff-specific
+    "PLR",   # pylint refactor
+    "BLE",   # blind exception
 ]
 
 # Regras DESATIVADAS (motivos abaixo)
@@ -215,6 +217,18 @@ ignore = [
 # CLI pode usar print (faz parte do output)
 "src/autotarefas/cli/**" = [
     "T20",
+]
+
+# Scripts de exemplo/demo podem usar print e dispensam type hints
+"exemplo_*.py" = [
+    "T20",    # print é o output do script
+    "ANN",    # type hints não são obrigatórios em demos
+]
+
+# Scripts utilitários/ferramentas podem usar print e dispensam type hints
+"tools/**" = [
+    "T20",    # print é o output do script
+    "ANN",    # type hints não são obrigatórios em utilitários
 ]
 
 [tool.ruff.format]

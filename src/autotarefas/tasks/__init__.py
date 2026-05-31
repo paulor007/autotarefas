@@ -11,6 +11,7 @@ Próximas (futuras fases):
 - ``RPACadastroTask`` — RPA de cadastro web
 """
 
+from autotarefas.tasks.extract_api import ExtractApiTask
 from autotarefas.tasks.validate import (
     ColumnSchema,
     ColumnType,
@@ -22,6 +23,7 @@ from autotarefas.tasks.validate import (
 __all__ = [
     "ColumnSchema",
     "ColumnType",
+    "ExtractApiTask",
     "Schema",
     "ValidateTask",
     "load_schema",
