@@ -132,6 +132,17 @@ class Storage:
 
         return created
 
+    def cpf_existe(self, cpf: str) -> bool:
+        """
+        Verifica se ja existe um registro com este CPF.
+
+        Usado pela API (POST /api/clientes) para detectar duplicatas
+        e responder 409 Conflict.
+        """
+        with self._lock:
+            records = self._read_all()
+            return any(r.get("cpf") == cpf for r in records)
+
     def clear(self) -> None:
         """Apaga todos os cadastros."""
         with self._lock:

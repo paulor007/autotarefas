@@ -2,7 +2,7 @@
 Servidor demo do AutoTarefas (Flask).
 
 Mini sistema web simulando um cadastro corporativo. Usado como
-**alvo** das automações RPA durante desenvolvimento.
+**alvo** das automações RPA e de extração/envio durante desenvolvimento.
 
 NÃO usar em produção. Dados são persistidos em JSON local, sem
 autenticação. É apenas pra testes locais.
@@ -16,9 +16,13 @@ Endpoints:
     GET  /              -> landing page
     GET  /cadastro      -> formulario HTML
     POST /cadastro      -> cria registro
+    GET  /sucesso/<id>  -> pagina de sucesso
     GET  /cadastros     -> lista todos (JSON)
     POST /limpar        -> reset (apaga tudo)
     GET  /health        -> health check (JSON)
+    GET  /api/clientes  -> lista paginada (JSON)
+    POST /api/clientes  -> cria cliente via JSON
+    POST /seed          -> popula com clientes fake
 """
 
 from __future__ import annotations
@@ -228,6 +232,44 @@ def api_clientes() -> Response:
             "has_next": page < total_pages,
         }
     )
+
+
+@app.route("/api/clientes", methods=["POST"])
+def api_clientes_create() -> tuple[Response, int]:
+    """
+    Cria um cliente via API (JSON).
+
+    Body esperado:
+        {"nome": ..., "email": ..., "cpf": ..., "telefone": ...}
+
+    Respostas:
+        201: criado          -> {"status": "ok", "data": {...}}
+        400: JSON ausente/invalido
+        422: validacao de campos falhou
+        409: CPF ja cadastrado
+
+    Reaproveita _validate_cadastro() e storage.find_by_cpf().
+    """
+    payload = request.get_json(silent=True)
+    if not isinstance(payload, dict):
+        return jsonify({"error": "JSON invalido ou ausente"}), 400
+
+    data = {
+        "nome": str(payload.get("nome", "")).strip(),
+        "email": str(payload.get("email", "")).strip().lower(),
+        "cpf": str(payload.get("cpf", "")).strip(),
+        "telefone": str(payload.get("telefone", "")).strip(),
+    }
+
+    errors = _validate_cadastro(data)
+    if errors:
+        return jsonify({"error": "Validacao falhou", "detalhes": errors}), 422
+
+    if storage.find_by_cpf(data["cpf"]) is not None:
+        return jsonify({"error": "CPF ja cadastrado", "cpf": data["cpf"]}), 409
+
+    record = storage.create(data)
+    return jsonify({"status": "ok", "data": record}), 201
 
 
 @app.route("/seed", methods=["POST"])
