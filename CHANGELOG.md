@@ -9,7 +9,103 @@ e este projeto adere a [Versionamento Semântico](https://semver.org/lang/pt-BR/
 
 ## [Não lançado]
 
-Em desenvolvimento. Próxima: web scraping (`extract web`).
+Em desenvolvimento. Próxima: notificações por email.
+
+---
+
+## [0.7.0] — 2026-06-02
+
+📤 **Envio de Dados via API!** O complemento da v0.6.0: se a extração
+_le_ dados de uma API, o envio _escreve_ dados em sistemas externos. O
+AutoTarefas agora le uma planilha e faz **POST de cada registro** numa
+API REST — o caminho profissional para cadastro em massa (muito mais
+rapido que automacao via navegador).
+
+Com isso, o projeto fecha o ciclo de **entrada e saida de dados**:
+`extract` (puxar de fora) e `send` (empurrar pra dentro).
+
+### Adicionado
+
+#### Envio via API
+
+- **`autotarefas.tasks.send_api`** — setima task real:
+  - `SendApiTask(BaseTask)`: le uma planilha (CSV/XLSX) e faz POST de
+    cada linha para uma API
+  - **Tolerancia a falhas por linha**: uma linha ruim nao interrompe as
+    demais (igual ao RPA)
+  - **Retry com backoff exponencial** (`tenacity`): so em erros
+    TEMPORARIOS (timeout, conexao, HTTP 5xx). Erros 4xx (400/409/422)
+    NAO sao retentados — sao erros do dado, registrados como falha da linha
+  - **Rate limiting**: pausa configuravel (`delay_s`) entre envios
+  - **Autenticacao opcional**: header `X-API-Key` e/ou Bearer token
+  - **Relatorio opcional** (CSV/XLSX/JSON): resultado de cada linha, com
+    colunas `_resultado` e `_mensagem`
+  - **dry-run**: conta as linhas sem enviar
+  - Status agregado: `SUCCESS` (todas) / `PARTIAL` (algumas) / `FAILURE`
+
+- **Comando `autotarefas send api`**:
+  - Grupo `send` (simetrico ao `extract`)
+  - Opcoes: `--planilha`, `--url`, `--api-key`, `--bearer`, `--delay`,
+    `--timeout`, `--max-retries`, `--report`
+  - Progresso linha a linha colorido (OK/FALHA) + exit codes
+    (`0` success/partial, `1` failure, `2` erro de uso)
+  - Aviso de seguranca ao enviar credencial sobre `http://` externo
+
+#### Sistema demo estendido
+
+- **`tools/demo_server`**: `POST /api/clientes` — cria cliente via JSON,
+  valida os campos, detecta duplicata por CPF. Status semanticos:
+  `201` criado, `400` JSON invalido, `422` validacao, `409` duplicata.
+
+#### Testes
+
+- ~48 testes novos: `SendApiTask` (envio, parcial, falha, retry,
+  relatorio, auth, progresso) e o comando CLI (validacao, exit codes,
+  propagacao de flags, aviso de seguranca). Sem rede: `httpx.post`
+  mockado com `httpx.Response` reais e `tenacity.nap.sleep` mockado.
+
+### Segurança
+
+- **Credenciais fora de logs e audit** — `--api-key`/`--bearer` vao so
+  no header
+- **Aviso de TLS** — alerta ao enviar credencial sobre `http://` externo
+- **Retry seletivo** — 4xx nao e retentado (evita reenvio inutil de
+  dados duplicados/invalidos)
+
+### Dependências
+
+- **Nenhuma nova** — `httpx`, `tenacity` e `pandas` ja presentes.
+
+### Estatísticas
+
+- **~820 testes** (vs ~775 em v0.6.0)
+- **7 subclasses de BaseTask** (+ `SendApi`)
+- **9 comandos CLI** (+ grupo `send`)
+- **3 grupos de comandos**: `rpa`, `extract`, `send`
+- **0 erros** em mypy strict, ruff, bandit
+
+### Lições aprendidas notáveis
+
+- **Retry distingue erro do dado de erro temporario**: 4xx (duplicata,
+  validacao) nao deve ser retentado; 5xx/timeout sim. Isso torna o envio
+  em massa eficiente.
+- **Tolerancia por linha + relatorio**: numa carga de 1000, registrar
+  cada falha (com motivo) num arquivo separado e mais util que abortar
+  tudo no primeiro erro.
+- **PowerShell 5.x nao tem `-SkipHttpErrorCheck`** (so PS 7+): para
+  testar respostas 4xx, usar `try/catch` com
+  `[int]$_.Exception.Response.StatusCode`.
+- **pre-commit `mixed-line-ending`**: colar codigo pode misturar
+  CRLF/LF; o hook corrige sozinho — depois `git add` e recommit. Um
+  `.gitattributes` com `* text=auto eol=lf` previne.
+- **`_is_retryable` duplicado de proposito** entre send e extract: evita
+  acoplar as tasks; poderia virar um helper compartilhado no futuro.
+
+### Anotado para o futuro
+
+- **Notificacoes por Email** (proxima fase, v0.8.0)
+- **Web scraping** (`extract web`), v0.9.0
+- **Mensagens** (SMS/WhatsApp) — dependem de servicos externos
 
 ---
 
@@ -462,7 +558,8 @@ com 2 comandos, ~220 testes.
 
 ---
 
-[Não lançado]: https://github.com/paulor007/autotarefas/compare/v0.6.0...HEAD
+[Não lançado]: https://github.com/paulor007/autotarefas/compare/v0.7.0...HEAD
+[0.7.0]: https://github.com/paulor007/autotarefas/releases/tag/v0.7.0
 [0.6.0]: https://github.com/paulor007/autotarefas/releases/tag/v0.6.0
 [0.5.0]: https://github.com/paulor007/autotarefas/releases/tag/v0.5.0
 [0.4.0]: https://github.com/paulor007/autotarefas/releases/tag/v0.4.0

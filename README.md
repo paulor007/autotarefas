@@ -1,7 +1,7 @@
 # AutoTarefas
 
 [![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/)
-[![Version](https://img.shields.io/badge/version-0.6.0-blue.svg)]()
+[![Version](https://img.shields.io/badge/version-0.7.0-blue.svg)]()
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Coverage](https://img.shields.io/badge/coverage-98%25-brightgreen.svg)]()
 [![mypy: strict](https://img.shields.io/badge/mypy-strict-blue.svg)](http://mypy-lang.org/)
@@ -11,9 +11,9 @@ Robô de automação operacional para tarefas em planilhas (CSV, Excel),
 arquivos, sistemas web (RPA) e APIs. Projeto Python moderno com foco em
 **segurança**, **rastreabilidade** (audit trail) e **robustez**.
 
-> ⚠️ **Status atual: v0.6.0 (pré-release).** Validador + Backup +
-> Organizador + Segurança + Relatórios + RPA Cadastro + **Extração via
-> API** prontos. Próximos releases: web scraping, sincronização, dashboard.
+> ⚠️ **Status atual: v0.7.0 (pré-release).** Validador + Backup +
+> Organizador + Segurança + Relatórios + RPA Cadastro + Extração via
+> API + **Envio via API** prontos. Próximos releases: email, web scraping.
 
 ---
 
@@ -21,6 +21,7 @@ arquivos, sistemas web (RPA) e APIs. Projeto Python moderno com foco em
 
 - **Automação web (RPA)** — cadastra registros web a partir de planilha, com navegador real (Playwright)
 - **Extração via API** — consome APIs REST paginadas (com retry e rate limit) e salva em CSV/XLSX/JSON
+- **Envio via API** — cadastro em massa: lê planilha e faz POST de cada linha (retry, rate limit, relatório)
 - **Sistema demo local** — servidor Flask para testar automações e extrações com segurança
 - **Validador de planilhas** com schema declarativo em YAML
 - **Validadores brasileiros**: CPF e CNPJ com algoritmo módulo 11
@@ -32,7 +33,7 @@ arquivos, sistemas web (RPA) e APIs. Projeto Python moderno com foco em
 - **Mascaramento automático** — CPFs, CNPJs, senhas e tokens nunca vazam em logs nem em screenshots
 - **Dry-run em tudo** — simula operações antes de fazer mudanças reais
 - **Type-safe** — mypy strict, 0 erros
-- **~775 testes**, ~98% de cobertura
+- **~820 testes**, ~98% de cobertura
 
 ---
 
@@ -272,6 +273,73 @@ python -m tools.demo_server          # http://localhost:5555
 
 ---
 
+## 📤 Envio via API (v0.7.0 — NOVO)
+
+Lê uma planilha e envia cada linha para uma API (POST). É o caminho
+profissional para **cadastro em massa** num sistema que exponha API REST
+— muito mais rápido que automação via navegador.
+
+### Uso
+
+```bash
+autotarefas send api --planilha clientes.csv --url https://sistema.empresa.com/api/clientes --report resultado.csv
+```
+
+### Exemplo de saída
+
+```
+============================================================
+ Envio via API
+============================================================
+Planilha: clientes.csv
+URL:      https://sistema.empresa.com/api/clientes
+Modo:     normal
+
+  [1/1000] [OK] criado
+  [2/1000] [OK] criado
+  [847/1000] [FALHA] HTTP 422: Validacao falhou: email invalido
+  ...
+
+============================================================
+Total:    1000
+Enviados: 998
+Falhas:   2
+Relatorio: resultado.csv
+============================================================
+```
+
+### Opções
+
+| Flag             | Descrição                                   | Default |
+| ---------------- | ------------------------------------------- | ------- |
+| `--planilha, -p` | Planilha CSV/XLSX com os registros          | —       |
+| `--url, -u`      | Endpoint da API (recebe POST por linha)     | —       |
+| `--api-key`      | Chave de API (header X-API-Key)             | —       |
+| `--bearer`       | Token Bearer (Authorization)                | —       |
+| `--delay`        | Pausa entre envios em segundos (rate limit) | `0.0`   |
+| `--timeout`      | Timeout por request em segundos             | `30.0`  |
+| `--max-retries`  | Tentativas por linha em erro temporário     | `3`     |
+| `--report, -r`   | Relatório por linha (.csv/.xlsx/.json)      | —       |
+
+### Recursos
+
+- **Tolerância por linha** — uma linha ruim não interrompe as demais
+- **Retry inteligente** — só em erros temporários (timeout, 5xx); 4xx (duplicata/validação) não é retentado
+- **Rate limiting** — `--delay` entre envios
+- **Relatório** — `--report` salva quem foi e quem falhou (e por quê)
+- **Autenticação** — `--api-key` e/ou `--bearer`
+
+### Status do envio
+
+- **SUCCESS** — todas as linhas enviadas
+- **PARTIAL** — algumas falharam (exit 0, com aviso e relatório)
+- **FAILURE** — nenhuma enviada (exit 1)
+
+⚠️ Ao enviar `--api-key`/`--bearer` sobre `http://` externo (sem TLS), o
+comando avisa que a credencial trafegaria sem criptografia.
+
+---
+
 ## 📊 Relatórios Consolidados (v0.4.0)
 
 Consulta o **audit trail** e gera estatísticas, listas ou apenas falhas.
@@ -389,7 +457,8 @@ autotarefas backup      # compacta arquivos em ZIP
 autotarefas organize    # organiza arquivos em pastas
 autotarefas report      # relatórios do audit trail
 autotarefas rpa         # automação web (RPA)
-autotarefas extract     # NOVO em v0.6.0 - extração via API
+autotarefas extract     # extração via API
+autotarefas send        # NOVO em v0.7.0 - envio via API (cadastro em massa)
 ```
 
 ### Opções globais
@@ -412,11 +481,12 @@ autotarefas extract     # NOVO em v0.6.0 - extração via API
 - ✅ **v0.3.0** — Backup + Organizador
 - ✅ **v0.4.0** — Segurança Transversal + Relatórios
 - ✅ **v0.5.0** — Sistema demo + RPA Cadastro Web
-- ✅ **v0.6.0** — Extração via API _(atual)_
-- ⏳ **Web scraping** (`extract web`) — incremental futuro, reusa o BrowserSession
-- ⏳ **v0.7.0** — Sincronização assistida
-- ⏳ **v0.8.0** — Dashboard web (opcional)
-- ⏳ **v1.0.0** — Versão estável com CI/CD + docs completas
+- ✅ **v0.6.0** — Extração via API
+- ✅ **v0.7.0** — Envio via API (cadastro em massa) _(atual)_
+- ⏳ **v0.8.0** — Notificações por Email
+- ⏳ **v0.9.0** — Web scraping (`extract web`)
+- ⏳ **v1.0.0** — Versão estável: CI/CD + docs (+ sincronização)
+- ⏳ **futuro** — Mensagens (SMS/WhatsApp)
 
 ---
 
@@ -445,8 +515,8 @@ pre-commit run --all-files
 - **zipfile** + **hashlib** + **shutil** — backup/organizador (stdlib!)
 - **Playwright** — automação web (RPA)
 - **Flask** — servidor demo local (desenvolvimento)
-- **httpx** — requests HTTP (extração via API, health check do RPA)
-- **tenacity** — retry com backoff exponencial (extração)
+- **httpx** — requests HTTP (extração e envio via API, health check do RPA)
+- **tenacity** — retry com backoff exponencial (extração e envio)
 - **pytest** + **mypy strict** + **ruff** + **bandit** + **detect-secrets**
 
 ---
