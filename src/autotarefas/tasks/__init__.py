@@ -12,6 +12,8 @@ Próximas (futuras fases):
 """
 
 from autotarefas.tasks.extract_api import ExtractApiTask
+from autotarefas.tasks.send_api import SendApiTask
+from autotarefas.tasks.send_email import SendEmailTask, SmtpConfig
 from autotarefas.tasks.validate import (
     ColumnSchema,
     ColumnType,
@@ -25,6 +27,9 @@ __all__ = [
     "ColumnType",
     "ExtractApiTask",
     "Schema",
+    "SendApiTask",
+    "SendEmailTask",
+    "SmtpConfig",
     "ValidateTask",
     "load_schema",
 ]
