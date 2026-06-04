@@ -1,7 +1,7 @@
 # AutoTarefas
 
 [![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/)
-[![Version](https://img.shields.io/badge/version-0.7.0-blue.svg)]()
+[![Version](https://img.shields.io/badge/version-0.8.0-blue.svg)]()
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Coverage](https://img.shields.io/badge/coverage-98%25-brightgreen.svg)]()
 [![mypy: strict](https://img.shields.io/badge/mypy-strict-blue.svg)](http://mypy-lang.org/)
@@ -11,9 +11,10 @@ Robô de automação operacional para tarefas em planilhas (CSV, Excel),
 arquivos, sistemas web (RPA) e APIs. Projeto Python moderno com foco em
 **segurança**, **rastreabilidade** (audit trail) e **robustez**.
 
-> ⚠️ **Status atual: v0.7.0 (pré-release).** Validador + Backup +
+> ⚠️ **Status atual: v0.8.0 (pré-release).** Validador + Backup +
 > Organizador + Segurança + Relatórios + RPA Cadastro + Extração via
-> API + **Envio via API** prontos. Próximos releases: email, web scraping.
+> API + Envio via API + **Notificações por Email** prontos. Próximo
+> release: web scraping.
 
 ---
 
@@ -22,6 +23,7 @@ arquivos, sistemas web (RPA) e APIs. Projeto Python moderno com foco em
 - **Automação web (RPA)** — cadastra registros web a partir de planilha, com navegador real (Playwright)
 - **Extração via API** — consome APIs REST paginadas (com retry e rate limit) e salva em CSV/XLSX/JSON
 - **Envio via API** — cadastro em massa: lê planilha e faz POST de cada linha (retry, rate limit, relatório)
+- **Notificações por Email** — envia emails em massa de uma planilha, com template `{coluna}` e senha protegida
 - **Sistema demo local** — servidor Flask para testar automações e extrações com segurança
 - **Validador de planilhas** com schema declarativo em YAML
 - **Validadores brasileiros**: CPF e CNPJ com algoritmo módulo 11
@@ -33,7 +35,7 @@ arquivos, sistemas web (RPA) e APIs. Projeto Python moderno com foco em
 - **Mascaramento automático** — CPFs, CNPJs, senhas e tokens nunca vazam em logs nem em screenshots
 - **Dry-run em tudo** — simula operações antes de fazer mudanças reais
 - **Type-safe** — mypy strict, 0 erros
-- **~820 testes**, ~98% de cobertura
+- **~870 testes**, ~98% de cobertura
 
 ---
 
@@ -340,6 +342,72 @@ comando avisa que a credencial trafegaria sem criptografia.
 
 ---
 
+## 📧 Notificações por Email (v0.8.0 — NOVO)
+
+Lê uma planilha de destinatários e envia um email **personalizado por
+linha**, via SMTP. O assunto e o corpo aceitam `{coluna}`: trechos como
+`{nome}` são trocados pelos valores da linha.
+
+### Uso
+
+```bash
+autotarefas send email --planilha contatos.csv --smtp-host smtp.gmail.com --smtp-port 587 \
+  --from voce@empresa.com --subject "Olá {nome}!" --body-file corpo.txt --user voce@empresa.com -r resultado.csv
+```
+
+### Segurança da senha 🔐
+
+A senha SMTP **nunca** é passada na linha de comando. Ela vem de:
+
+1. variável de ambiente `AUTOTAREFAS_SMTP_PASSWORD` (ideal para automação), ou
+2. um **prompt oculto** (`getpass`) quando você informa `--user`.
+
+Assim a senha não vaza no histórico do shell nem em logs de processo, e
+nunca é gravada no audit ou no relatório.
+
+### Opções
+
+| Flag             | Descrição                              | Default |
+| ---------------- | -------------------------------------- | ------- |
+| `--planilha, -p` | Planilha CSV/XLSX com os destinatários | —       |
+| `--smtp-host`    | Servidor SMTP                          | —       |
+| `--smtp-port`    | Porta do servidor                      | `587`   |
+| `--from`         | Endereço do remetente                  | —       |
+| `--subject`      | Assunto (aceita `{coluna}`)            | —       |
+| `--body`         | Corpo (aceita `{coluna}`)              | —       |
+| `--body-file`    | Arquivo com o corpo (precede `--body`) | —       |
+| `--email-column` | Coluna com o email do destinatário     | `email` |
+| `--user`         | Usuário SMTP (login)                   | —       |
+| `--html`         | Envia o corpo como HTML                | `off`   |
+| `--no-tls`       | Desativa STARTTLS (ex: servidor local) | `off`   |
+| `--delay`        | Pausa entre envios em segundos         | `0.0`   |
+| `--report, -r`   | Relatório por linha (.csv/.xlsx/.json) | —       |
+
+### Recursos
+
+- **Templates** `{coluna}` no assunto e no corpo
+- **Tolerância por linha** — um email ruim não interrompe os demais
+- **Rate limiting** — `--delay` entre envios
+- **Relatório** — `--report` salva o resultado de cada linha (`_resultado`/`_mensagem`)
+- **Corpo texto ou HTML** — `--html`
+- **dry-run** — mostra o que enviaria, sem conectar
+
+### Servidor SMTP de debug (para testes)
+
+Um servidor SMTP local que recebe os emails sem enviá-los para a
+internet — ideal para testar com segurança:
+
+```bash
+pip install -e ".[demo]"
+python -m tools.smtp_debug          # localhost:8025
+
+# aponte a EmailTask para localhost:8025 com --no-tls
+```
+
+Os emails recebidos são mostrados no console e salvos em `.eml`.
+
+---
+
 ## 📊 Relatórios Consolidados (v0.4.0)
 
 Consulta o **audit trail** e gera estatísticas, listas ou apenas falhas.
@@ -458,7 +526,7 @@ autotarefas organize    # organiza arquivos em pastas
 autotarefas report      # relatórios do audit trail
 autotarefas rpa         # automação web (RPA)
 autotarefas extract     # extração via API
-autotarefas send        # NOVO em v0.7.0 - envio via API (cadastro em massa)
+autotarefas send        # envio via API (send api) e email (send email)
 ```
 
 ### Opções globais
@@ -482,8 +550,8 @@ autotarefas send        # NOVO em v0.7.0 - envio via API (cadastro em massa)
 - ✅ **v0.4.0** — Segurança Transversal + Relatórios
 - ✅ **v0.5.0** — Sistema demo + RPA Cadastro Web
 - ✅ **v0.6.0** — Extração via API
-- ✅ **v0.7.0** — Envio via API (cadastro em massa) _(atual)_
-- ⏳ **v0.8.0** — Notificações por Email
+- ✅ **v0.7.0** — Envio via API (cadastro em massa)
+- ✅ **v0.8.0** — Notificações por Email _(atual)_
 - ⏳ **v0.9.0** — Web scraping (`extract web`)
 - ⏳ **v1.0.0** — Versão estável: CI/CD + docs (+ sincronização)
 - ⏳ **futuro** — Mensagens (SMS/WhatsApp)
@@ -517,6 +585,8 @@ pre-commit run --all-files
 - **Flask** — servidor demo local (desenvolvimento)
 - **httpx** — requests HTTP (extração e envio via API, health check do RPA)
 - **tenacity** — retry com backoff exponencial (extração e envio)
+- **smtplib** + **email** — envio de emails (stdlib!)
+- **aiosmtpd** — servidor SMTP de debug (desenvolvimento)
 - **pytest** + **mypy strict** + **ruff** + **bandit** + **detect-secrets**
 
 ---

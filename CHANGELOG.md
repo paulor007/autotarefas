@@ -9,7 +9,97 @@ e este projeto adere a [Versionamento Semântico](https://semver.org/lang/pt-BR/
 
 ## [Não lançado]
 
-Em desenvolvimento. Próxima: notificações por email.
+Em desenvolvimento. Próxima: web scraping (`extract web`).
+
+---
+
+## [0.8.0] — 2026-06-03
+
+📧 **Notificacoes por Email!** O AutoTarefas agora le uma planilha de
+destinatarios e envia um email **personalizado por linha**, via SMTP. O
+assunto e o corpo aceitam {coluna}: trechos como {nome} sao trocados
+pelos valores da linha.
+
+Com isso o robo cobre tambem a comunicacao: alem de cadastrar, extrair e
+enviar dados, ele **notifica** pessoas a partir de uma planilha.
+
+### Adicionado
+
+#### Notificacoes por Email
+
+- **`autotarefas.tasks.send_email`** — oitava task real:
+  - `SmtpConfig` (dataclass): host, port, usuario, senha, usar_tls
+  - `SendEmailTask(BaseTask)`: le uma planilha e envia 1 email por linha
+    via `smtplib` + `email.message` (ambos da stdlib)
+  - **Templates** {coluna} no assunto e no corpo (faltante -> "")
+  - **Conexao reaproveitada**: um login para todos os envios
+  - **Tolerancia a falhas por linha**: um email ruim nao interrompe os
+    demais; erro de conexao/login = falha geral
+  - **Rate limiting** (`delay_s`), STARTTLS e autenticacao opcionais
+  - **Corpo texto ou HTML** (`is_html`)
+  - **Relatorio opcional** (CSV/XLSX/JSON) com `_resultado`/`_mensagem`
+  - **dry-run**: nao conecta; mostra um preview dos emails
+  - Status agregado: `SUCCESS` / `PARTIAL` / `FAILURE`
+
+- **Comando `autotarefas send email`**:
+  - Subcomando do grupo `send` (ao lado de `send api`)
+  - Opcoes SMTP (`--smtp-host`, `--smtp-port`, `--from`, `--user`,
+    `--no-tls`), conteudo (`--subject`, `--body`/`--body-file`,
+    `--email-column`, `--html`), `--delay`, `--timeout`, `--report`
+  - Progresso linha a linha colorido (OK/FALHA) + exit codes
+    (`0` success/partial, `1` failure, `2` erro de uso)
+
+#### Ambiente de teste
+
+- **`tools/smtp_debug.py`** — servidor SMTP de debug local (via
+  `aiosmtpd`): recebe emails sem envia-los para a internet, mostra no
+  console e salva como `.eml`. Alvo de teste para a `SendEmailTask`.
+
+#### Testes
+
+- ~51 testes novos: `SendEmailTask` (envio, template, parcial, falha de
+  conexao, dry-run, relatorio, HTML) e o comando CLI (corpo, exit codes,
+  flags). `smtplib.SMTP` trocado por um fake que captura emails e simula
+  falhas; senha testada via env var e via prompt mockados.
+
+### Segurança
+
+- **Senha SMTP nunca na linha de comando** — vem da env var
+  `AUTOTAREFAS_SMTP_PASSWORD` ou de um prompt oculto (`getpass`)
+- **Senha fora de logs/audit/relatorio** — transita apenas pela conexao
+- **Aviso de TLS** — alerta ao logar sem TLS em host externo
+
+### Dependências
+
+- **Core sem novas dependencias** — `smtplib` e `email` sao da stdlib.
+- **`aiosmtpd`** adicionado ao extra `demo` (apenas para o servidor de
+  teste local; nao e usado pelo codigo de envio).
+
+### Estatísticas
+
+- **~870 testes** (vs ~820 em v0.7.0)
+- **8 subclasses de BaseTask** (+ `SendEmail`)
+- **Grupo `send`** com 2 subcomandos: `api` e `email`
+- **0 erros** em mypy strict, ruff, bandit
+
+### Lições aprendidas notáveis
+
+- **`message_from_bytes()` retorna `Message`, nao `EmailMessage`**: para
+  usar `.get_body()`/`.get_content()` sem erro de mypy, usar
+  `BytesParser(policy=...).parsebytes()` + `cast(EmailMessage, ...)`.
+- **`aiosmtpd` nao tem stubs**: `ignore_missing_imports = true` nos
+  overrides do mypy.
+- **Conexao SMTP stateful**: ao contrario do POST por linha (HTTP), no
+  email abre-se uma conexao e reaproveita-se para todos os envios.
+- **Senha via env var/prompt, nunca CLI**: argumento de linha de comando
+  vaza no historico do shell e em logs de processo.
+- **`mypy` strict do projeto cobre `tools/` tambem** (nao so `src/`).
+
+### Anotado para o futuro
+
+- **Web scraping** (`extract web`), v0.9.0
+- **Sincronizacao** (extract + send combinados), rumo a v1.0.0
+- **Mensagens** (SMS/WhatsApp) — dependem de servicos externos
 
 ---
 
@@ -558,7 +648,8 @@ com 2 comandos, ~220 testes.
 
 ---
 
-[Não lançado]: https://github.com/paulor007/autotarefas/compare/v0.7.0...HEAD
+[Não lançado]: https://github.com/paulor007/autotarefas/compare/v0.8.0...HEAD
+[0.8.0]: https://github.com/paulor007/autotarefas/releases/tag/v0.8.0
 [0.7.0]: https://github.com/paulor007/autotarefas/releases/tag/v0.7.0
 [0.6.0]: https://github.com/paulor007/autotarefas/releases/tag/v0.6.0
 [0.5.0]: https://github.com/paulor007/autotarefas/releases/tag/v0.5.0
