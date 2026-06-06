@@ -23,7 +23,7 @@ build-backend = "hatchling.build"
 # ============================================================
 [project]
 name = "autotarefas"
-version = "0.4.0"
+dynamic = ["version"]
 description = "Robô de Automação Operacional em Python — valida planilhas, organiza arquivos, automatiza cadastros e extrai dados de sistemas web."
 authors = [
     { name = "Paulo Lavarini", email = "paulo.lavarini@gmail.com" },
@@ -165,6 +165,9 @@ Changelog = "https://github.com/paulor007/autotarefas/blob/main/CHANGELOG.md"
 # [tool.hatch] - Configuração específica do build backend
 # ============================================================
 # Diz ao hatchling onde está o código.
+[tool.hatch.version]
+path = "src/autotarefas/__init__.py"
+
 [tool.hatch.build.targets.wheel]
 packages = ["src/autotarefas"]
 

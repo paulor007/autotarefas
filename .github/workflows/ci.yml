@@ -1,0 +1,70 @@
+# ============================================================
+# AutoTarefas - CI (Integração Contínua)
+# ============================================================
+# Roda a cada push e pull request na branch main:
+#   ruff (lint) -> ruff (formato) -> mypy -> bandit -> pytest
+#
+# Tudo no GitHub Actions (gratuito e ilimitado para repos públicos).
+# Os testes mockam o navegador (Playwright), então NÃO baixamos os
+# browsers — o CI fica rápido.
+#
+# Destino deste arquivo:
+#   .github/workflows/ci.yml
+# ============================================================
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# Cancela execuções antigas do mesmo branch/PR quando chega um push novo
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  quality:
+    name: Qualidade (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.12", "3.13"]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configurar Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Instalar dependências
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev,demo]"
+
+      - name: Ruff (lint)
+        run: ruff check .
+
+      - name: Ruff (formatação)
+        run: ruff format --check .
+
+      - name: Mypy (tipos)
+        run: mypy src/
+
+      - name: Bandit (segurança)
+        run: bandit -c pyproject.toml -r src
+
+      - name: Pytest (testes + cobertura)
+        run: pytest
