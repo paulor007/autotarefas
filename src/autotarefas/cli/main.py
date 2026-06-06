@@ -23,6 +23,7 @@ from autotarefas.cli.commands.organize import organize
 from autotarefas.cli.commands.report import report
 from autotarefas.cli.commands.rpa import rpa
 from autotarefas.cli.commands.send import send
+from autotarefas.cli.commands.sync import sync
 from autotarefas.cli.commands.validate import validate
 from autotarefas.cli.context import CLIContext
 
@@ -83,6 +84,7 @@ cli.add_command(report)
 cli.add_command(rpa)
 cli.add_command(extract)
 cli.add_command(send)
+cli.add_command(sync)
 cli.add_command(validate)
 
 
