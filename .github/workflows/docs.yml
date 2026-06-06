@@ -1,0 +1,76 @@
+# ============================================================
+# AutoTarefas - Deploy da documentacao no GitHub Pages
+# ============================================================
+# Builda a doc (MkDocs Material) e publica no GitHub Pages a cada
+# push na main que toque docs/, mkdocs.yml ou src/ (a referencia de
+# API e gerada do codigo).
+#
+# Usa o modo moderno do Pages (Source = GitHub Actions), sem branch
+# gh-pages. Tudo gratuito para repositorios publicos.
+#
+# Destino deste arquivo:
+#   .github/workflows/docs.yml
+# ============================================================
+
+name: Docs
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "docs/**"
+      - "mkdocs.yml"
+      - "src/**"
+      - ".github/workflows/docs.yml"
+  workflow_dispatch: {} # permite rodar manualmente pela aba Actions
+
+# Permissoes exigidas pelo deploy do Pages
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Garante um deploy de Pages por vez
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build (mkdocs)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configurar Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Instalar dependencias
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[docs]"
+
+      - name: Build da documentacao
+        run: mkdocs build --strict
+
+      - name: Upload do artefato do Pages
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  deploy:
+    name: Deploy (GitHub Pages)
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: "github-pages"
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Publicar no GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
