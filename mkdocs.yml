@@ -1,0 +1,87 @@
+# Configuracao do MkDocs Material para o AutoTarefas.
+#
+# Local (na raiz do projeto):  mkdocs serve   ->  http://127.0.0.1:8000
+# Build estatico:              mkdocs build   ->  site/
+#
+# Destino deste arquivo: mkdocs.yml (raiz do projeto)
+
+site_name: AutoTarefas
+site_description: Robô de automação operacional em Python — planilhas, arquivos, RPA web, APIs e email.
+site_author: Paulo Lavarini
+repo_url: https://github.com/paulor007/autotarefas
+repo_name: paulor007/autotarefas
+copyright: Copyright &copy; Paulo Lavarini — MIT License
+
+theme:
+  name: material
+  language: pt-BR
+  icon:
+    repo: fontawesome/brands/github
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: teal
+      accent: teal
+      toggle:
+        icon: material/weather-night
+        name: Mudar para o modo escuro
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: teal
+      accent: teal
+      toggle:
+        icon: material/weather-sunny
+        name: Mudar para o modo claro
+  features:
+    - navigation.instant
+    - navigation.tracking
+    - navigation.sections
+    - navigation.top
+    - navigation.footer
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+    - content.code.annotate
+    - toc.follow
+
+nav:
+  - Início: index.md
+  - Comandos: comandos.md
+  - Arquitetura: arquitetura.md
+  - Desenvolvimento: desenvolvimento.md
+  - Referência (API): referencia.md
+
+plugins:
+  - search:
+      lang: pt
+  - mkdocstrings:
+      handlers:
+        python:
+          paths: [src]
+          options:
+            docstring_style: google
+            show_root_heading: true
+            show_source: true
+            members_order: source
+            separate_signature: true
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/paulor007/autotarefas
