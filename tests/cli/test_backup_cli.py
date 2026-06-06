@@ -628,7 +628,7 @@ class TestBackupCliOutput:
             [str(projeto_simples), "--output", str(dest)],
             obj=cli_ctx,
         )
-        assert "meu_backup_unico.zip" in result.output
+        assert "meu_backup_unico.zip" in result.output.replace("\n", "")
 
     def test_skipped_count_zero_nao_polui_output(
         self,
