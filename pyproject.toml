@@ -118,7 +118,7 @@ dev = [
     "pandas-stubs>=3.0.0.260204,<4.0.0",   # Stubs do pandas
 
     # === Linting & formatting ===
-    "ruff>=0.15.14,<1.0.0",           # Substitui black + isort + flake8
+    "ruff==0.15.14",           # Substitui black + isort + flake8
 
     # === Security scanners ===
     "bandit[toml]>=1.9.4,<2.0.0",   # Análise estática de segurança
