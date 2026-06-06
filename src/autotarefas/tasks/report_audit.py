@@ -324,14 +324,14 @@ class ReportAuditTask(BaseTask):
 
     def _sum_rows_affected(self, conn: sqlite3.Connection) -> int:
         """Soma total de rows_affected (linhas processadas com sucesso)."""
-        sql = "SELECT COALESCE(SUM(rows_affected), 0) AS total " "FROM audit WHERE 1=1"
+        sql = "SELECT COALESCE(SUM(rows_affected), 0) AS total FROM audit WHERE 1=1"
         sql, params = self._apply_filters(sql, [])
         row = conn.execute(sql, params).fetchone()
         return int(row["total"])
 
     def _sum_rows_failed(self, conn: sqlite3.Connection) -> int:
         """Soma total de rows_failed."""
-        sql = "SELECT COALESCE(SUM(rows_failed), 0) AS total " "FROM audit WHERE 1=1"
+        sql = "SELECT COALESCE(SUM(rows_failed), 0) AS total FROM audit WHERE 1=1"
         sql, params = self._apply_filters(sql, [])
         row = conn.execute(sql, params).fetchone()
         return int(row["total"])

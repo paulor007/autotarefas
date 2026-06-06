@@ -176,9 +176,7 @@ def validate(  # noqa: PLR0912
     if result.is_success and total_warnings > 0:
         # Tem warnings mas nao errors
         if strict_warnings:
-            console.error(
-                f"Validacao falhou: {total_warnings} aviso(s) " "(strict-warnings ativo)."
-            )
+            console.error(f"Validacao falhou: {total_warnings} aviso(s) (strict-warnings ativo).")
             raise click.exceptions.Exit(1)
 
         console.warning(f"Validacao OK com {total_warnings} aviso(s).")

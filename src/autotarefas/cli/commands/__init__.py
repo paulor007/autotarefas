@@ -142,7 +142,7 @@ def init(ctx: CLIContext, data_dir: str | None, force: bool) -> None:
     # ============================================================
     console.info("")
     console.success(
-        f"Inicializacao concluida: {created_count} criados, " f"{skipped_count} ja existiam."
+        f"Inicializacao concluida: {created_count} criados, {skipped_count} ja existiam."
     )
 
     if not ctx.dry_run and created_count > 0:

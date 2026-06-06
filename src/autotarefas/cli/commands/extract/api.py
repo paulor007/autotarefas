@@ -180,8 +180,7 @@ def api_command(
             )
         elif result.data.get("saved"):
             click.secho(
-                f"Extraidos {result.rows_affected} registros -> "
-                f"{result.data.get('output_path')}",
+                f"Extraidos {result.rows_affected} registros -> {result.data.get('output_path')}",
                 fg="green",
             )
         else:

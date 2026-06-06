@@ -317,9 +317,7 @@ def safe_extension(filename: str, allowed_extensions: list[str]) -> str:
     allowed_lower = [ext.lower() for ext in allowed_extensions]
 
     if actual not in allowed_lower:
-        raise SecurityError(
-            f"Extensao '{actual}' nao permitida. " f"Permitidas: {allowed_extensions}"
-        )
+        raise SecurityError(f"Extensao '{actual}' nao permitida. Permitidas: {allowed_extensions}")
 
     return actual
 

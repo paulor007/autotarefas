@@ -165,7 +165,7 @@ class TestValidateCommandSuccess:
         """Schema rico (cpf, enum) com dados validos: exit 0."""
         csv_path = tmp_path / "completo.csv"
         csv_path.write_text(
-            "nome,idade,cpf,uf\n" "Alice,30,529.982.247-25,SP\n",
+            "nome,idade,cpf,uf\nAlice,30,529.982.247-25,SP\n",
             encoding="utf-8",
         )
 
@@ -567,7 +567,7 @@ class TestValidateOutput:
         # CSV com varias linhas problematicas
         csv_path = tmp_path / "muitos.csv"
         csv_path.write_text(
-            "nome,idade\n" "A,abc\n" "B,xyz\n" "C,foo\n" "D,bar\n",
+            "nome,idade\nA,abc\nB,xyz\nC,foo\nD,bar\n",
             encoding="utf-8",
         )
 

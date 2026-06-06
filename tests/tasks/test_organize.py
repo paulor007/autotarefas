@@ -208,7 +208,7 @@ class TestLoadRules:
         """YAML valido mas sem target_root."""
         path = tmp_path / "x.yaml"
         path.write_text(
-            "rules:\n" "  - name: X\n" "    patterns: ['*.jpg']\n" "    destination: docs\n",
+            "rules:\n  - name: X\n    patterns: ['*.jpg']\n    destination: docs\n",
             encoding="utf-8",
         )
 

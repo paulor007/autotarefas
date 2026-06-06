@@ -297,8 +297,7 @@ class ValidateTask(BaseTask):
         ext = self.file_path.suffix.lower()
         if ext not in self.SUPPORTED_EXTENSIONS:
             raise ValidationError(
-                f"Extensao nao suportada: '{ext}'. Suportadas: "
-                f"{sorted(self.SUPPORTED_EXTENSIONS)}",
+                f"Extensao nao suportada: '{ext}'. Suportadas: {sorted(self.SUPPORTED_EXTENSIONS)}",
                 field="file_path",
                 value=str(self.file_path),
             )

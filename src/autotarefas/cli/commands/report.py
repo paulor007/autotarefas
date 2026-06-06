@@ -243,8 +243,7 @@ def _format_csv(data: dict[str, Any]) -> str:
     """
     if "executions" not in data:
         return (
-            "# CSV nao disponivel pra report_type='summary'\n"
-            "# Use --type list ou --type errors\n"
+            "# CSV nao disponivel pra report_type='summary'\n# Use --type list ou --type errors\n"
         )
 
     executions = data["executions"]
@@ -413,9 +412,7 @@ def report(  # noqa: PLR0912
     if report_type in ("list", "errors"):
         executions = result.data.get("executions", [])
         if len(executions) >= limit:
-            console.warning(
-                f"Resultado truncado em {limit} linhas. " f"Use --limit N para ajustar."
-            )
+            console.warning(f"Resultado truncado em {limit} linhas. Use --limit N para ajustar.")
 
     # 7. Formata
     if output_format == "table":

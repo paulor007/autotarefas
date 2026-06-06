@@ -179,12 +179,11 @@ class BaseTask(ABC):
 
         if not cls.name:
             raise TypeError(
-                f"{cls.__name__} precisa definir atributo de classe " f"'name' (snake_case, único)."
+                f"{cls.__name__} precisa definir atributo de classe 'name' (snake_case, único)."
             )
         if not cls.description:
             raise TypeError(
-                f"{cls.__name__} precisa definir atributo de classe "
-                f"'description' (texto curto)."
+                f"{cls.__name__} precisa definir atributo de classe 'description' (texto curto)."
             )
 
     def __init__(self, *, dry_run: bool = False) -> None:
@@ -293,7 +292,7 @@ class BaseTask(ABC):
         self._record_audit(result)
 
         logger.info(
-            "Task '{name}' concluida: status={status}, duracao={ms}ms, " "afetados={affected}",
+            "Task '{name}' concluida: status={status}, duracao={ms}ms, afetados={affected}",
             name=self.name,
             status=result.status.value,
             ms=result.duration_ms,

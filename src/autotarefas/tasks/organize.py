@@ -468,7 +468,7 @@ class OrganizeTask(BaseTask):
                 return candidate
 
         raise ValidationError(
-            f"Muitos conflitos para {target} " f"(tentou ate _{self._MAX_RENAME_ATTEMPTS})",
+            f"Muitos conflitos para {target} (tentou ate _{self._MAX_RENAME_ATTEMPTS})",
             field="destination",
             value=str(target),
         )

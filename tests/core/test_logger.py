@@ -117,7 +117,7 @@ class TestMaskSensitiveCombinado:
 
     def test_mascara_cpf_email_e_token(self) -> None:
         result = mask_sensitive(
-            "Cliente CPF 123.456.789-00, " "email paulo@gmail.com, " "token=abc123xyz"
+            "Cliente CPF 123.456.789-00, email paulo@gmail.com, token=abc123xyz"
         )
         assert "123.456.789-00" not in result
         assert "paulo@gmail.com" not in result

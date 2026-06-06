@@ -137,9 +137,7 @@ def configure_logger() -> None:
     logger.add(
         str(log_file),
         level=settings.log_level,
-        format=(
-            "{time:YYYY-MM-DD HH:mm:ss} | " "{level:8} | " "{name}:{function}:{line} - " "{message}"
-        ),
+        format=("{time:YYYY-MM-DD HH:mm:ss} | {level:8} | {name}:{function}:{line} - {message}"),
         rotation="00:00",  # Rotaciona à meia-noite
         retention="30 days",  # Mantém 30 dias de logs
         compression="zip",  # Compacta logs antigos

@@ -402,9 +402,7 @@ class TestExecuteReal:
         """1 sucesso + 1 erro = PARTIAL."""
         csv = tmp_path / "dois.csv"
         csv.write_text(
-            "nome,email,cpf,telefone\n"
-            f"Ana,ana@x.com,{CPF_ANA},\n"
-            f"Bruno,bruno@x.com,{CPF_BRUNO},\n",
+            f"nome,email,cpf,telefone\nAna,ana@x.com,{CPF_ANA},\nBruno,bruno@x.com,{CPF_BRUNO},\n",
             encoding="utf-8",
         )
 

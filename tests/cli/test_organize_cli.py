@@ -504,7 +504,7 @@ class TestOrganizeCliFailure:
         bad_yaml = tmp_path / "missing.yaml"
         # falta target_root
         bad_yaml.write_text(
-            "rules:\n" "  - name: X\n" '    patterns: ["*.jpg"]\n' "    destination: docs\n",
+            'rules:\n  - name: X\n    patterns: ["*.jpg"]\n    destination: docs\n',
             encoding="utf-8",
         )
 

@@ -194,16 +194,14 @@ def organize(  # noqa: PLR0915
             raise click.exceptions.Exit(1)
 
         if preview_result.status == TaskStatus.SKIPPED:
-            console.warning(
-                f"Nada para organizar: " f"{preview_result.error_message or 'pasta vazia'}"
-            )
+            console.warning(f"Nada para organizar: {preview_result.error_message or 'pasta vazia'}")
             return  # exit 0
 
         would_affect = preview_result.data["moved_count"]
         total_files = preview_result.data["total_files"]
 
         console.info(
-            f"Arquivos analisados: {total_files} " f"({would_affect} seriam {ruleset.action}-idos)"
+            f"Arquivos analisados: {total_files} ({would_affect} seriam {ruleset.action}-idos)"
         )
 
         # ============================================================
@@ -212,7 +210,7 @@ def organize(  # noqa: PLR0915
         if would_affect > confirm_threshold:
             console.warning("")
             console.warning(
-                f"ATENCAO: Voce esta prestes a {ruleset.action} " f"{would_affect} arquivo(s)."
+                f"ATENCAO: Voce esta prestes a {ruleset.action} {would_affect} arquivo(s)."
             )
 
             if not click.confirm("Continuar?", default=False):
@@ -237,7 +235,7 @@ def organize(  # noqa: PLR0915
 
     # 6a. SKIPPED
     if result.status == TaskStatus.SKIPPED:
-        console.warning(f"Nada para organizar: " f"{result.error_message or 'pasta vazia'}")
+        console.warning(f"Nada para organizar: {result.error_message or 'pasta vazia'}")
         return
 
     # 6b. FAILURE

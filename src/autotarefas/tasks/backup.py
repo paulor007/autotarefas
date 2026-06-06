@@ -144,9 +144,7 @@ class BackupTask(BaseTask):
             return self._make_result(
                 status=TaskStatus.SKIPPED,
                 started_at=started_at,
-                error_message=(
-                    "Nenhum arquivo para fazer backup " f"(skipped={len(files_skipped)})"
-                ),
+                error_message=(f"Nenhum arquivo para fazer backup (skipped={len(files_skipped)})"),
                 data={
                     "sources": [str(s) for s in self.sources],
                     "destination": str(self.destination),

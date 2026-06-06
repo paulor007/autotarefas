@@ -102,7 +102,7 @@ def _resolver_senha(usuario: str | None) -> str | None:
     "--user",
     default=None,
     help=(
-        "Usuario SMTP (login). A senha vem da env var " "AUTOTAREFAS_SMTP_PASSWORD ou de um prompt."
+        "Usuario SMTP (login). A senha vem da env var AUTOTAREFAS_SMTP_PASSWORD ou de um prompt."
     ),
 )
 @click.option("--html", is_flag=True, default=False, help="Envia o corpo como HTML.")
@@ -223,7 +223,7 @@ def email_command(  # noqa: PLR0912, PLR0915
         marca = click.style("OK", fg="green") if info["sucesso"] else click.style("FALHA", fg="red")
         dest = info["para"] or "(sem email)"
         click.echo(
-            f"  [{info['linha']}/{info['total']}] [{marca}] " f"{dest} - {info['mensagem']}",
+            f"  [{info['linha']}/{info['total']}] [{marca}] {dest} - {info['mensagem']}",
         )
 
     # Cria a task (ValidationError -> exit 2)
