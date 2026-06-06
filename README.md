@@ -1,10 +1,11 @@
 # AutoTarefas
 
 [![CI](https://github.com/paulor007/autotarefas/actions/workflows/ci.yml/badge.svg)](https://github.com/paulor007/autotarefas/actions/workflows/ci.yml)
+[![Docs](https://img.shields.io/badge/docs-online-success.svg)](https://paulor007.github.io/autotarefas/)
 [![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/)
-[![Version](https://img.shields.io/badge/version-0.8.0-blue.svg)]()
+[![Version](https://img.shields.io/badge/version-1.0.0-blue.svg)]()
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![Coverage](https://img.shields.io/badge/coverage-98%25-brightgreen.svg)]()
+[![Coverage](https://img.shields.io/badge/coverage-92%25-brightgreen.svg)]()
 [![mypy: strict](https://img.shields.io/badge/mypy-strict-blue.svg)](http://mypy-lang.org/)
 [![Security: documented](https://img.shields.io/badge/security-documented-green.svg)](SECURITY.md)
 
@@ -12,10 +13,12 @@ Robô de automação operacional para tarefas em planilhas (CSV, Excel),
 arquivos, sistemas web (RPA) e APIs. Projeto Python moderno com foco em
 **segurança**, **rastreabilidade** (audit trail) e **robustez**.
 
-> ⚠️ **Status atual: v0.8.0 (pré-release).** Validador + Backup +
-> Organizador + Segurança + Relatórios + RPA Cadastro + Extração via
-> API + Envio via API + **Notificações por Email** prontos. Próximo
-> release: web scraping.
+> 🏆 **v1.0.0 — versão estável.** Validador + Backup + Organizador +
+> Segurança + Relatórios + RPA Cadastro + Extração via API + Envio via
+> API + Notificações por Email + **Sincronização API→API**, com **CI/CD**
+> (GitHub Actions) e **documentação publicada** (GitHub Pages).
+
+📚 **Documentação completa:** <https://paulor007.github.io/autotarefas/>
 
 ---
 
@@ -25,6 +28,7 @@ arquivos, sistemas web (RPA) e APIs. Projeto Python moderno com foco em
 - **Extração via API** — consome APIs REST paginadas (com retry e rate limit) e salva em CSV/XLSX/JSON
 - **Envio via API** — cadastro em massa: lê planilha e faz POST de cada linha (retry, rate limit, relatório)
 - **Notificações por Email** — envia emails em massa de uma planilha, com template `{coluna}` e senha protegida
+- **Sincronização API→API** — extrai de uma API e envia para outra num passo só (composição de tasks)
 - **Sistema demo local** — servidor Flask para testar automações e extrações com segurança
 - **Validador de planilhas** com schema declarativo em YAML
 - **Validadores brasileiros**: CPF e CNPJ com algoritmo módulo 11
@@ -35,8 +39,9 @@ arquivos, sistemas web (RPA) e APIs. Projeto Python moderno com foco em
 - **Audit trail completo** — toda execução em SQLite append-only com HMAC-SHA256
 - **Mascaramento automático** — CPFs, CNPJs, senhas e tokens nunca vazam em logs nem em screenshots
 - **Dry-run em tudo** — simula operações antes de fazer mudanças reais
+- **Integração contínua** — CI no GitHub Actions (Python 3.12 e 3.13)
 - **Type-safe** — mypy strict, 0 erros
-- **~870 testes**, ~98% de cobertura
+- **1032 testes**, ~92% de cobertura
 
 ---
 
@@ -61,9 +66,10 @@ pip install -e ".[dev]"
 pip install -e ".[rpa]"          # automação web (Playwright)
 playwright install chromium      # baixa o navegador (~200MB)
 
-pip install -e ".[demo]"         # servidor demo local (Flask)
+pip install -e ".[demo]"         # servidor demo local (Flask + SMTP)
+pip install -e ".[docs]"         # documentação (MkDocs Material)
 
-pip install -e ".[dev,rpa,demo]" # tudo junto
+pip install -e ".[dev,rpa,demo,docs]"  # tudo junto
 ```
 
 ---
@@ -199,7 +205,7 @@ default. Para sistemas reais, use `--allow-remote` (com responsabilidade).
 
 ---
 
-## 🔌 Extração via API (v0.6.0 — NOVO)
+## 🔌 Extração via API (v0.6.0)
 
 Consome uma API REST paginada e salva os dados em arquivo. Faz paginação
 automática, com retry resiliente e controle de taxa.
@@ -276,7 +282,7 @@ python -m tools.demo_server          # http://localhost:5555
 
 ---
 
-## 📤 Envio via API (v0.7.0 — NOVO)
+## 📤 Envio via API (v0.7.0)
 
 Lê uma planilha e envia cada linha para uma API (POST). É o caminho
 profissional para **cadastro em massa** num sistema que exponha API REST
@@ -343,7 +349,7 @@ comando avisa que a credencial trafegaria sem criptografia.
 
 ---
 
-## 📧 Notificações por Email (v0.8.0 — NOVO)
+## 📧 Notificações por Email (v0.8.0)
 
 Lê uma planilha de destinatários e envia um email **personalizado por
 linha**, via SMTP. O assunto e o corpo aceitam `{coluna}`: trechos como
@@ -406,6 +412,64 @@ python -m tools.smtp_debug          # localhost:8025
 ```
 
 Os emails recebidos são mostrados no console e salvos em `.eml`.
+
+---
+
+## 🔄 Sincronização entre APIs (v1.0.0)
+
+Liga extração e envio num passo só: **extrai de uma API origem e envia
+para uma API destino**. É o caso de uso clássico de migração/replicação
+de dados entre sistemas que expõem APIs REST.
+
+Arquiteturalmente, a `sync api` **compõe** as tasks de extração e envio
+(não reimplementa HTTP nem paginação) — usa um arquivo intermediário
+temporário que é descartado ao final.
+
+### Uso
+
+```bash
+autotarefas sync api \
+  --source-url https://origem.empresa.com/api/clientes \
+  --dest-url   https://destino.empresa.com/api/clientes \
+  --report resultado.csv
+```
+
+### Como funciona
+
+```
+sync api  =  extract (origem)  →  [arquivo temporário]  →  send (destino)
+```
+
+1. Extrai todos os registros da origem (paginação automática)
+2. Envia cada registro ao destino (POST por linha, tolerante a falhas)
+3. Agrega o resultado e descarta o arquivo temporário
+
+Se a extração falha, o envio nem começa (curto-circuito). O status final
+reflete o envio: **SUCCESS** / **PARTIAL** / **FAILURE**.
+
+### Opções
+
+| Flag               | Descrição                                       | Default |
+| ------------------ | ----------------------------------------------- | ------- |
+| `--source-url, -s` | API origem (endpoint paginado, para extrair)    | —       |
+| `--dest-url, -d`   | API destino (recebe POST por registro)          | —       |
+| `--source-api-key` | Chave da API origem (header X-API-Key)          | —       |
+| `--dest-api-key`   | Chave da API destino (header X-API-Key)         | —       |
+| `--dest-bearer`    | Token Bearer da API destino                     | —       |
+| `--per-page`       | Itens por página na extração                    | `50`    |
+| `--max-pages`      | Limite de páginas (default: todas)              | —       |
+| `--delay`          | Pausa entre páginas e entre envios (rate limit) | `0.0`   |
+| `--timeout`        | Timeout por request em segundos                 | `30.0`  |
+| `--max-retries`    | Tentativas por página/linha em erro temporário  | `3`     |
+| `--report, -r`     | Relatório por linha do envio (.csv/.xlsx/.json) | —       |
+| `--format`         | Formato do arquivo intermediário (`csv`/`xlsx`) | `csv`   |
+
+### Dry-run
+
+```bash
+autotarefas --dry-run sync api -s URL_ORIGEM -d URL_DESTINO
+# [dry-run] Origem testada; sincronizacao nao executada.
+```
 
 ---
 
@@ -487,7 +551,7 @@ Falhas recentes (ultimas 5):
 
 ---
 
-## 🛡️ Segurança (v0.4.0 — REFORÇADA)
+## 🛡️ Segurança (v0.4.0)
 
 Este projeto adere a **13 princípios documentados** de segurança.
 Consulte [SECURITY.md](SECURITY.md) para detalhes completos.
@@ -503,8 +567,9 @@ Consulte [SECURITY.md](SECURITY.md) para detalhes completos.
   `--allow-remote` explícito (fail-safe default)
 - **Mascaramento em screenshots** — CPF, CNPJ, senha, token e cartão são
   cobertos automaticamente em capturas de tela
-- **Credenciais protegidas** — `--api-key` da extração vai só no header
-  (nunca em log/audit); aviso ao enviá-la sobre `http://` externo
+- **Credenciais protegidas** — chaves de API vão só no header (nunca em
+  log/audit); senha de email via env/prompt; aviso ao enviá-las sobre
+  `http://` externo
 - **HTTPS obrigatório em produção**
 - **Mascaramento automático** de dados sensíveis em logs e audit
 - **Dry-run em operações destrutivas**
@@ -513,6 +578,24 @@ Consulte [SECURITY.md](SECURITY.md) para detalhes completos.
 
 Veja [SECURITY.md](SECURITY.md) para o processo de **coordinated
 disclosure**. Não abra issues públicas para questões de segurança.
+
+---
+
+## 📚 Documentação
+
+Documentação completa em **MkDocs Material**, publicada no GitHub Pages:
+
+👉 **<https://paulor007.github.io/autotarefas/>**
+
+Inclui guia de comandos, visão de arquitetura e uma **referência de API
+gerada automaticamente das docstrings** (via `mkdocstrings`).
+
+Para rodar localmente:
+
+```bash
+pip install -e ".[docs]"
+mkdocs serve          # http://127.0.0.1:8000
+```
 
 ---
 
@@ -525,9 +608,10 @@ autotarefas validate    # valida planilha CSV/Excel
 autotarefas backup      # compacta arquivos em ZIP
 autotarefas organize    # organiza arquivos em pastas
 autotarefas report      # relatórios do audit trail
-autotarefas rpa         # automação web (RPA)
-autotarefas extract     # extração via API
+autotarefas rpa         # automação web (rpa cadastro)
+autotarefas extract     # extração via API (extract api)
 autotarefas send        # envio via API (send api) e email (send email)
+autotarefas sync        # sincronização API->API (sync api)
 ```
 
 ### Opções globais
@@ -552,9 +636,9 @@ autotarefas send        # envio via API (send api) e email (send email)
 - ✅ **v0.5.0** — Sistema demo + RPA Cadastro Web
 - ✅ **v0.6.0** — Extração via API
 - ✅ **v0.7.0** — Envio via API (cadastro em massa)
-- ✅ **v0.8.0** — Notificações por Email _(atual)_
-- ⏳ **v0.9.0** — Web scraping (`extract web`)
-- ⏳ **v1.0.0** — Versão estável: CI/CD + docs (+ sincronização)
+- ✅ **v0.8.0** — Notificações por Email
+- ✅ **v1.0.0** — Versão estável: CI/CD + documentação + sincronização API→API _(atual)_
+- ⏳ **v1.1.0** — Web scraping (`extract web`)
 - ⏳ **futuro** — Mensagens (SMS/WhatsApp)
 
 ---
@@ -565,13 +649,16 @@ autotarefas send        # envio via API (send api) e email (send email)
 pip install -e ".[dev]"
 pre-commit install
 
-ruff check src/ tests/
-ruff format src/ tests/
-mypy src/ tests/
-pytest tests/ -v
-pytest tests/ --cov
+ruff check .
+ruff format .
+mypy src/
+bandit -c pyproject.toml -r src
+pytest                    # testes + cobertura (mínimo 85%)
 pre-commit run --all-files
 ```
+
+O **CI** (GitHub Actions) roda esses mesmos passos em Python 3.12 e 3.13
+a cada push e pull request.
 
 ### Stack
 
@@ -584,11 +671,13 @@ pre-commit run --all-files
 - **zipfile** + **hashlib** + **shutil** — backup/organizador (stdlib!)
 - **Playwright** — automação web (RPA)
 - **Flask** — servidor demo local (desenvolvimento)
-- **httpx** — requests HTTP (extração e envio via API, health check do RPA)
-- **tenacity** — retry com backoff exponencial (extração e envio)
+- **httpx** — requests HTTP (extração, envio e sincronização via API)
+- **tenacity** — retry com backoff exponencial
 - **smtplib** + **email** — envio de emails (stdlib!)
 - **aiosmtpd** — servidor SMTP de debug (desenvolvimento)
-- **pytest** + **mypy strict** + **ruff** + **bandit** + **detect-secrets**
+- **MkDocs Material** + **mkdocstrings** — documentação
+- **pytest** + **mypy strict** + **ruff** + **bandit** + **detect-secrets** — qualidade
+- **GitHub Actions** — CI/CD (testes, lint, tipos, segurança) e deploy das docs
 
 ---
 
