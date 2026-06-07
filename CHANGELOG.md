@@ -13,6 +13,85 @@ Em desenvolvimento. Próxima: web scraping (`extract web`).
 
 ---
 
+## [1.0.0] — 2026-06-06
+
+🏆 **Versão estável!** O AutoTarefas chega à 1.0.0 com a infraestrutura
+que faltava para um projeto maduro: **sincronização entre APIs**,
+**integração contínua** (CI/CD) e **documentação publicada**. As nove
+tasks agora rodam sob uma suíte de 1032 testes, verificada
+automaticamente a cada push em Python 3.12 e 3.13.
+
+### Adicionado
+
+#### Sincronizacao API->API
+
+- **`autotarefas.tasks.sync_api`** — nona task real:
+  - `SyncApiTask(BaseTask)`: extrai de uma API origem e envia para uma
+    API destino, num passo so
+  - **Composicao**: reaproveita `ExtractApiTask` + `SendApiTask` (nao
+    reimplementa HTTP, paginacao nem retry), ligadas por um arquivo
+    intermediario temporario descartado ao final
+  - **Curto-circuito**: se a extracao falha, o envio nem comeca
+  - Status agregado do envio: `SUCCESS` / `PARTIAL` / `FAILURE`
+  - **dry-run**: testa a origem (pagina 1) sem enviar
+- **Comando `autotarefas sync api`**:
+  - Novo grupo `sync` (ao lado de `extract` e `send`)
+  - `--source-url`/`--dest-url`, autenticacao por lado
+    (`--source-api-key`, `--dest-api-key`, `--dest-bearer`),
+    `--per-page`, `--max-pages`, `--delay`, `--timeout`,
+    `--max-retries`, `--report`, `--format` (csv/xlsx)
+  - Progresso colorido + exit codes (`0`/`1`/`2`); valida ambas as URLs
+
+#### Integracao continua (CI/CD)
+
+- **`.github/workflows/ci.yml`** — pipeline a cada push e pull request:
+  - Matriz Python **3.12** e **3.13**
+  - `ruff check` + `ruff format --check` + `mypy src/` +
+    `bandit -r src` + `pytest` (cobertura minima de 85%)
+  - `concurrency` com cancelamento de execucoes antigas
+- Badge de CI no README
+
+#### Documentacao
+
+- **MkDocs Material** publicado no **GitHub Pages**:
+  <https://paulor007.github.io/autotarefas/>
+  - Paginas: inicio, comandos, arquitetura, desenvolvimento
+  - **Referencia de API gerada das docstrings** (via `mkdocstrings`)
+- **`.github/workflows/docs.yml`** — build (`mkdocs build --strict`) e
+  deploy automatico no Pages (modo GitHub Actions, sem branch `gh-pages`)
+- Badge de Docs no README
+
+#### Testes
+
+- **`conftest.py`** — isola o banco de audit em diretorio temporario por
+  teste; a suite nunca grava no audit real
+- ~50 testes novos da sincronizacao (`SyncApiTask` + comando `sync api`):
+  caminho feliz, curto-circuito, parcial/falha, dry-run, limpeza do
+  arquivo temporario e propagacao de parametros
+
+### Mudado
+
+- **Versao dinamica**: o build (`hatchling`) passa a ler a versao de
+  `src/autotarefas/__init__.py` (`[tool.hatch.version]`) — fonte unica,
+  fim da divergencia entre `pyproject.toml` e o pacote
+- **`ruff` fixado em `0.15.14`** no `pyproject.toml` e no
+  `.pre-commit-config.yaml` — CI e pre-commit usam exatamente a mesma
+  versao (formatacao reproduzivel)
+- README reescrito com badges de CI e Docs, secoes de Sincronizacao e
+  Documentacao, e o roadmap atualizado
+
+### Corrigido
+
+- Teste de CLI do backup tornado tolerante a quebra de linha do Rich
+  (caminhos longos eram quebrados em varias linhas, falhando o `assert`)
+
+### Estatisticas
+
+- **9 comandos** · **9 tasks** (`BaseTask`) · **1032 testes** ·
+  **~92% de cobertura** · **0 erros** em mypy strict / ruff / bandit
+
+---
+
 ## [0.8.0] — 2026-06-03
 
 📧 **Notificacoes por Email!** O AutoTarefas agora le uma planilha de
