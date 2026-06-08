@@ -12,6 +12,7 @@ Próximas (futuras fases):
 """
 
 from autotarefas.tasks.extract_api import ExtractApiTask
+from autotarefas.tasks.extract_web import ExtractWebTask
 from autotarefas.tasks.send_api import SendApiTask
 from autotarefas.tasks.send_email import SendEmailTask, SmtpConfig
 from autotarefas.tasks.sync_api import SyncApiTask
@@ -27,6 +28,7 @@ __all__ = [
     "ColumnSchema",
     "ColumnType",
     "ExtractApiTask",
+    "ExtractWebTask",
     "Schema",
     "SendApiTask",
     "SendEmailTask",
