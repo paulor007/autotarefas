@@ -1,0 +1,46 @@
+{% extends "base.html" %} {% block title %}Catálogo — AutoTarefas Demo{%
+endblock %} {% block content %}
+<h2>Catálogo de produtos</h2>
+<p class="resumo">
+  Página {{ page }} de {{ total_pages }} — {{ total }} produtos no total.
+</p>
+
+<table class="produtos">
+  <thead>
+    <tr>
+      <th>ID</th>
+      <th>Nome</th>
+      <th>Categoria</th>
+      <th>Preço (R$)</th>
+      <th>Estoque</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for p in produtos %}
+    <tr class="produto">
+      <td class="id">{{ p.id }}</td>
+      <td class="nome">{{ p.nome }}</td>
+      <td class="categoria">{{ p.categoria }}</td>
+      <td class="preco">{{ p.preco }}</td>
+      <td class="estoque">{{ p.estoque }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+<nav class="paginacao">
+  {% if has_prev %}
+  <a
+    class="prev"
+    href="{{ url_for('catalogo', page=page - 1, per_page=per_page) }}"
+    >&laquo; Anterior</a
+  >
+  {% endif %} {% if has_next %}
+  <a
+    class="next"
+    href="{{ url_for('catalogo', page=page + 1, per_page=per_page) }}"
+    >Próxima &raquo;</a
+  >
+  {% endif %}
+</nav>
+{% endblock %}

@@ -306,6 +306,101 @@ def seed() -> Response:
 
 
 # ============================================================
+# Catalogo de produtos (alvo de web scraping)
+# ============================================================
+
+_CAT_CATEGORIAS = (
+    "Eletronicos",
+    "Livros",
+    "Casa",
+    "Esporte",
+    "Moda",
+    "Brinquedos",
+)
+_CAT_ADJ = (
+    "Premium",
+    "Classico",
+    "Moderno",
+    "Compacto",
+    "Pro",
+    "Eco",
+    "Ultra",
+    "Smart",
+)
+_CAT_SUBST = (
+    "Cadeira",
+    "Mesa",
+    "Fone",
+    "Teclado",
+    "Caneca",
+    "Mochila",
+    "Lampada",
+    "Relogio",
+)
+
+
+def _build_catalogo(n: int = 48) -> list[dict[str, object]]:
+    """Gera um catalogo fixo de produtos (deterministico, sem random)."""
+    itens: list[dict[str, object]] = []
+    for i in range(1, n + 1):
+        subst = _CAT_SUBST[(i * 3) % len(_CAT_SUBST)]
+        adj = _CAT_ADJ[(i * 7) % len(_CAT_ADJ)]
+        preco_cents = 990 + (i * 1373) % 98000  # 9.90 .. ~989.90
+        itens.append(
+            {
+                "id": i,
+                "nome": f"{subst} {adj} {i:03d}",
+                "categoria": _CAT_CATEGORIAS[(i - 1) % len(_CAT_CATEGORIAS)],
+                "preco": f"{preco_cents / 100:.2f}",
+                "estoque": (i * 37) % 251,
+            },
+        )
+    return itens
+
+
+_CATALOGO: list[dict[str, object]] = _build_catalogo()
+
+
+@app.route("/catalogo")
+def catalogo() -> str:
+    """
+    Pagina HTML com um catalogo de produtos paginado.
+
+    Alvo de teste para web scraping (extract web). HTML estatico, com
+    estrutura previsivel para seletores CSS.
+
+    Query params:
+        page: numero da pagina (default 1, minimo 1)
+        per_page: itens por pagina (default 10, max 100)
+    """
+    page = request.args.get("page", 1, type=int)
+    per_page = request.args.get("per_page", 10, type=int)
+
+    page = max(page, 1)
+    if per_page < 1:
+        per_page = 10
+    per_page = min(per_page, 100)
+
+    total = len(_CATALOGO)
+    total_pages = max((total + per_page - 1) // per_page, 1)  # ceil, min 1
+    page = min(page, total_pages)
+
+    start = (page - 1) * per_page
+    page_itens = _CATALOGO[start : start + per_page]
+
+    return render_template(
+        "catalogo.html",
+        produtos=page_itens,
+        page=page,
+        per_page=per_page,
+        total=total,
+        total_pages=total_pages,
+        has_next=page < total_pages,
+        has_prev=page > 1,
+    )
+
+
+# ============================================================
 # CLI
 # ============================================================
 
