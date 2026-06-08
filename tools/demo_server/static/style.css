@@ -218,3 +218,23 @@ footer a {
 footer a:hover {
   text-decoration: underline;
 }
+
+.produtos {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1rem 0;
+}
+.produtos th,
+.produtos td {
+  border: 1px solid #ddd;
+  padding: 8px 12px;
+  text-align: left;
+}
+.produtos thead {
+  background: #f4f4f4;
+}
+.paginacao {
+  display: flex;
+  gap: 1rem;
+  margin-top: 1rem;
+}
