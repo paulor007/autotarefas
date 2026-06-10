@@ -28,6 +28,7 @@ Endpoints:
 from __future__ import annotations
 
 import re
+import time
 from typing import Any
 
 from faker import Faker
@@ -398,6 +399,80 @@ def catalogo() -> str:
         has_next=page < total_pages,
         has_prev=page > 1,
     )
+
+
+_telegram_inbox: list[dict[str, Any]] = []
+
+
+@app.route("/bot<token>/sendMessage", methods=["POST"])
+def telegram_send_message(token: str) -> tuple[Response, int]:
+    """
+    Mock do endpoint sendMessage da Bot API do Telegram.
+
+    Aceita JSON (ou form) com `chat_id` e `text`. Responde no mesmo
+    formato da Bot API real.
+
+    Respostas:
+        200: {"ok": true, "result": {...}}
+        400: {"ok": false, "error_code": 400, "description": ...}
+        401: {"ok": false, "error_code": 401, "description": ...}
+    """
+    payload = request.get_json(silent=True)
+    if not isinstance(payload, dict):
+        payload = request.form.to_dict()
+
+    chat_id = str(payload.get("chat_id", "")).strip()
+    text = str(payload.get("text", "")).strip()
+
+    if not token.strip():
+        return jsonify(
+            {"ok": False, "error_code": 401, "description": "Unauthorized: token ausente"},
+        ), 401
+    if not chat_id:
+        return jsonify(
+            {"ok": False, "error_code": 400, "description": "Bad Request: chat_id ausente"},
+        ), 400
+    if not text:
+        return jsonify(
+            {"ok": False, "error_code": 400, "description": "Bad Request: message text is empty"},
+        ), 400
+
+    message_id = len(_telegram_inbox) + 1
+    date = int(time.time())
+    _telegram_inbox.append(
+        {
+            "message_id": message_id,
+            "chat_id": chat_id,
+            "text": text,
+            "date": date,
+            "token_prefix": token[:8],
+        },
+    )
+
+    return jsonify(
+        {
+            "ok": True,
+            "result": {
+                "message_id": message_id,
+                "date": date,
+                "chat": {"id": chat_id},
+                "text": text,
+            },
+        },
+    ), 200
+
+
+@app.route("/telegram/mensagens")
+def telegram_inbox() -> Response:
+    """Lista as mensagens recebidas pelo mock (inspeção no teste manual)."""
+    return jsonify({"total": len(_telegram_inbox), "mensagens": _telegram_inbox})
+
+
+@app.route("/telegram/limpar", methods=["POST"])
+def telegram_clear() -> Response:
+    """Limpa a caixa de mensagens do mock."""
+    _telegram_inbox.clear()
+    return jsonify({"status": "ok", "message": "Inbox do Telegram limpa"})
 
 
 # ============================================================
