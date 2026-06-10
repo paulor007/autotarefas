@@ -9,7 +9,58 @@ e este projeto adere a [Versionamento Semântico](https://semver.org/lang/pt-BR/
 
 ## [Não lançado]
 
-Em desenvolvimento. Próxima: web scraping (`extract web`).
+Em desenvolvimento. Próxima: notificações via mensagem (ex: Telegram).
+
+---
+
+## [1.1.0] — 2026-06-10
+
+🕸️ **Web scraping!** Nova capacidade de extracao para sites que NAO
+expoem API: o comando `extract web` raspa paginas HTML por seletores
+CSS, segue a paginacao e salva em CSV/XLSX/JSON — espelhando o
+`extract api`. A decima task do projeto.
+
+### Adicionado
+
+#### Extracao via web scraping
+
+- **`autotarefas.tasks.extract_web`** — decima task:
+  - `ExtractWebTask(BaseTask)`: busca o HTML (httpx), extrai linhas por
+    seletores CSS (BeautifulSoup) e segue a paginacao automaticamente
+  - Campos declarativos: `row_selector` + `fields` ({coluna: seletor})
+  - Paginacao via `next_selector` (resolve hrefs relativos com urljoin;
+    protecao anti-loop)
+  - Saida CSV/XLSX/JSON; retry so em erros temporarios (5xx/timeout);
+    dry-run (1a pagina, sem salvar)
+  - User-Agent honesto; `delay` entre paginas (rate limit)
+- **Comando `autotarefas extract web`**:
+  - Subcomando do grupo `extract` (ao lado de `api`)
+  - `--row-selector`, `--field coluna=seletor` (repetivel),
+    `--next-selector`, `--max-pages`, `--delay`, `--timeout`,
+    `--max-retries`
+  - Exit codes (0/1/2); valida a URL e o formato dos campos
+
+#### Demo
+
+- Pagina **`/catalogo`** no servidor demo: catalogo de produtos paginado
+  (HTML estatico, deterministico) — alvo de teste para o `extract web`
+
+#### Testes
+
+- ~49 testes novos (catalogo + ExtractWebTask + comando extract web):
+  parsing por seletores, paginacao (segue/limita/anti-loop), dry-run,
+  0 itens, retry e o parse de `--field` na CLI
+
+### Mudado
+
+- **Nova dependencia**: `beautifulsoup4` (parser `html.parser` da stdlib,
+  sem `lxml`) — uma dependencia so
+- README e roadmap atualizados com a secao de web scraping
+
+### Estatisticas
+
+- **10 comandos** (incl. `extract web`) · **10 tasks** (`BaseTask`) ·
+  **~1081 testes** · **~92% de cobertura** · **0 erros** em mypy / ruff / bandit
 
 ---
 

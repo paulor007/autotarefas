@@ -3,7 +3,7 @@
 [![CI](https://github.com/paulor007/autotarefas/actions/workflows/ci.yml/badge.svg)](https://github.com/paulor007/autotarefas/actions/workflows/ci.yml)
 [![Docs](https://img.shields.io/badge/docs-online-success.svg)](https://paulor007.github.io/autotarefas/)
 [![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/)
-[![Version](https://img.shields.io/badge/version-1.0.0-blue.svg)]()
+[![Version](https://img.shields.io/badge/version-1.1.0-blue.svg)]()
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Coverage](https://img.shields.io/badge/coverage-92%25-brightgreen.svg)]()
 [![mypy: strict](https://img.shields.io/badge/mypy-strict-blue.svg)](http://mypy-lang.org/)
@@ -13,10 +13,11 @@ Robô de automação operacional para tarefas em planilhas (CSV, Excel),
 arquivos, sistemas web (RPA) e APIs. Projeto Python moderno com foco em
 **segurança**, **rastreabilidade** (audit trail) e **robustez**.
 
-> 🏆 **v1.0.0 — versão estável.** Validador + Backup + Organizador +
-> Segurança + Relatórios + RPA Cadastro + Extração via API + Envio via
-> API + Notificações por Email + **Sincronização API→API**, com **CI/CD**
-> (GitHub Actions) e **documentação publicada** (GitHub Pages).
+> 🏆 **v1.1.0 — estável + web scraping.** Validador + Backup +
+> Organizador + Segurança + Relatórios + RPA Cadastro + Extração via API +
+> **Extração via Web Scraping** + Envio via API + Notificações por Email +
+> Sincronização API→API, com **CI/CD** (GitHub Actions) e **documentação
+> publicada** (GitHub Pages).
 
 📚 **Documentação completa:** <https://paulor007.github.io/autotarefas/>
 
@@ -26,6 +27,7 @@ arquivos, sistemas web (RPA) e APIs. Projeto Python moderno com foco em
 
 - **Automação web (RPA)** — cadastra registros web a partir de planilha, com navegador real (Playwright)
 - **Extração via API** — consome APIs REST paginadas (com retry e rate limit) e salva em CSV/XLSX/JSON
+- **Extração via Web Scraping** — raspa páginas HTML por seletores CSS, segue a paginação e salva em CSV/XLSX/JSON
 - **Envio via API** — cadastro em massa: lê planilha e faz POST de cada linha (retry, rate limit, relatório)
 - **Notificações por Email** — envia emails em massa de uma planilha, com template `{coluna}` e senha protegida
 - **Sincronização API→API** — extrai de uma API e envia para outra num passo só (composição de tasks)
@@ -41,7 +43,7 @@ arquivos, sistemas web (RPA) e APIs. Projeto Python moderno com foco em
 - **Dry-run em tudo** — simula operações antes de fazer mudanças reais
 - **Integração contínua** — CI no GitHub Actions (Python 3.12 e 3.13)
 - **Type-safe** — mypy strict, 0 erros
-- **1032 testes**, ~92% de cobertura
+- **~1081 testes**, ~92% de cobertura
 
 ---
 
@@ -282,6 +284,84 @@ python -m tools.demo_server          # http://localhost:5555
 
 ---
 
+## 🕸️ Extração via Web Scraping (v1.1.0)
+
+Raspa páginas HTML que **não** expõem API. Você descreve o que extrair
+com seletores CSS; o comando percorre as linhas, segue a paginação e
+salva em arquivo — espelhando o `extract api`.
+
+### Uso
+
+```bash
+autotarefas extract web --url http://localhost:5555/catalogo --output produtos.csv \
+  --row-selector "tr.produto" \
+  --field "nome=td.nome" --field "preco=td.preco" \
+  --next-selector "a.next"
+```
+
+### Exemplo de saída
+
+```
+============================================================
+ Extracao via Web (scraping)
+============================================================
+URL:    http://localhost:5555/catalogo
+Saida:  produtos.csv
+Linhas: tr.produto  (5 campos)
+Modo:   normal
+
+  Pagina 1 ... 10 itens (total: 10)
+  Pagina 2 ... 10 itens (total: 20)
+  Pagina 3 ... 10 itens (total: 30)
+  Pagina 4 ... 10 itens (total: 40)
+  Pagina 5 ...  8 itens (total: 48)
+
+============================================================
+Extraidos 48 itens -> produtos.csv
+============================================================
+```
+
+### Opções
+
+| Flag                  | Descrição                                      | Default |
+| --------------------- | ---------------------------------------------- | ------- |
+| `--url, -u`           | URL da página a raspar                         | —       |
+| `--output, -o`        | Arquivo de saída (.csv/.xlsx/.json)            | —       |
+| `--row-selector, -r`  | Seletor CSS de cada linha (ex: `tr.produto`)   | —       |
+| `--field, -f`         | Coluna no formato `coluna=seletor` (repetível) | —       |
+| `--next-selector, -n` | Seletor do link "próxima página"               | —       |
+| `--max-pages`         | Limite de páginas (default: todas)             | —       |
+| `--delay`             | Pausa entre páginas em segundos                | `0.0`   |
+| `--timeout`           | Timeout por request em segundos                | `30.0`  |
+| `--max-retries`       | Tentativas por página em erro temporário       | `3`     |
+
+### Recursos
+
+- **Seletores declarativos** — `--row-selector` define as linhas; cada `--field coluna=seletor` extrai uma coluna
+- **Paginação automática** — segue `--next-selector` (resolve hrefs relativos; proteção anti-loop)
+- **Retry com backoff** — só em erros temporários (timeout, conexão, HTTP 5xx); 4xx não é retentado
+- **Multi-formato** — CSV/XLSX/JSON pela extensão do `--output`
+- **Scraping educado** — User-Agent honesto e `--delay` entre páginas
+- **Parser leve** — `html.parser` da stdlib (sem `lxml`)
+
+### Dry-run
+
+```bash
+autotarefas --dry-run extract web -u http://localhost:5555/catalogo -o x.csv \
+  -r "tr.produto" -f "nome=td.nome" -n "a.next"
+# [dry-run] Extrairia ~10 itens na 1a pagina (tem proxima: sim)
+```
+
+### Sistema demo (para testes)
+
+O servidor demo expõe o `/catalogo` (48 produtos paginados) como alvo:
+
+```bash
+python -m tools.demo_server          # http://localhost:5555/catalogo
+```
+
+---
+
 ## 📤 Envio via API (v0.7.0)
 
 Lê uma planilha e envia cada linha para uma API (POST). É o caminho
@@ -449,20 +529,20 @@ reflete o envio: **SUCCESS** / **PARTIAL** / **FAILURE**.
 
 ### Opções
 
-| Flag               | Descrição                                       | Default |
-| ------------------ | ----------------------------------------------- | ------- |
-| `--source-url, -s` | API origem (endpoint paginado, para extrair)    | —       |
-| `--dest-url, -d`   | API destino (recebe POST por registro)          | —       |
-| `--source-api-key` | Chave da API origem (header X-API-Key)          | —       |
-| `--dest-api-key`   | Chave da API destino (header X-API-Key)         | —       |
-| `--dest-bearer`    | Token Bearer da API destino                     | —       |
-| `--per-page`       | Itens por página na extração                    | `50`    |
-| `--max-pages`      | Limite de páginas (default: todas)              | —       |
-| `--delay`          | Pausa entre páginas e entre envios (rate limit) | `0.0`   |
-| `--timeout`        | Timeout por request em segundos                 | `30.0`  |
-| `--max-retries`    | Tentativas por página/linha em erro temporário  | `3`     |
-| `--report, -r`     | Relatório por linha do envio (.csv/.xlsx/.json) | —       |
-| `--format`         | Formato do arquivo intermediário (`csv`/`xlsx`) | `csv`   |
+| Flag                | Descrição                                       | Default |
+| ------------------- | ----------------------------------------------- | ------- |
+| `--source-url, -s`  | API origem (endpoint paginado, para extrair)    | —       |
+| `--dest-url, -d`    | API destino (recebe POST por registro)          | —       |
+| `--source-api-key`  | Chave da API origem (header X-API-Key)          | —       |
+| `--dest-api-key`    | Chave da API destino (header X-API-Key)         | —       |
+| `--dest-bearer`     | Token Bearer da API destino                     | —       |
+| `--per-page`        | Itens por página na extração                    | `50`    |
+| `--max-pages`       | Limite de páginas (default: todas)              | —       |
+| `--delay`           | Pausa entre páginas e entre envios (rate limit) | `0.0`   |
+| `--timeout`         | Timeout por request em segundos                 | `30.0`  |
+| `--max-retries`     | Tentativas por página/linha em erro temporário  | `3`     |
+| `--report, -r`      | Relatório por linha do envio (.csv/.xlsx/.json) | —       |
+| `--format`          | Formato do arquivo intermediário (`csv`/`xlsx`) | `csv`   |
 
 ### Dry-run
 
@@ -609,7 +689,7 @@ autotarefas backup      # compacta arquivos em ZIP
 autotarefas organize    # organiza arquivos em pastas
 autotarefas report      # relatórios do audit trail
 autotarefas rpa         # automação web (rpa cadastro)
-autotarefas extract     # extração via API (extract api)
+autotarefas extract     # extração via API (extract api) e web scraping (extract web)
 autotarefas send        # envio via API (send api) e email (send email)
 autotarefas sync        # sincronização API->API (sync api)
 ```
@@ -637,8 +717,8 @@ autotarefas sync        # sincronização API->API (sync api)
 - ✅ **v0.6.0** — Extração via API
 - ✅ **v0.7.0** — Envio via API (cadastro em massa)
 - ✅ **v0.8.0** — Notificações por Email
-- ✅ **v1.0.0** — Versão estável: CI/CD + documentação + sincronização API→API _(atual)_
-- ⏳ **v1.1.0** — Web scraping (`extract web`)
+- ✅ **v1.0.0** — Versão estável: CI/CD + documentação + sincronização API→API
+- ✅ **v1.1.0** — Web scraping (`extract web`) _(atual)_
 - ⏳ **futuro** — Mensagens (SMS/WhatsApp)
 
 ---
@@ -672,6 +752,7 @@ a cada push e pull request.
 - **Playwright** — automação web (RPA)
 - **Flask** — servidor demo local (desenvolvimento)
 - **httpx** — requests HTTP (extração, envio e sincronização via API)
+- **BeautifulSoup** — parsing de HTML (web scraping; parser `html.parser` da stdlib)
 - **tenacity** — retry com backoff exponencial
 - **smtplib** + **email** — envio de emails (stdlib!)
 - **aiosmtpd** — servidor SMTP de debug (desenvolvimento)
