@@ -153,6 +153,14 @@ class SendApiTask(BaseTask):
             msg = "delay_s nao pode ser negativo"
             raise ValidationError(msg)
 
+        if timeout_s <= 0:
+            msg = "timeout_s deve ser maior que zero"
+            raise ValidationError(msg)
+
+        if max_retries < 1:
+            msg = "max_retries deve ser >= 1"
+            raise ValidationError(msg)
+
         self.planilha_path = planilha_path
         self.url = url.strip()
         self.api_key = api_key

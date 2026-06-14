@@ -149,6 +149,10 @@ class SendEmailTask(BaseTask):
             msg = "delay_s nao pode ser negativo"
             raise ValidationError(msg)
 
+        if timeout_s <= 0:
+            msg = "timeout_s deve ser maior que zero"
+            raise ValidationError(msg)
+
         self.planilha_path = planilha_path
         self.smtp = smtp
         self.remetente = remetente

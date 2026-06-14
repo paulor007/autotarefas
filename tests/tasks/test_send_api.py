@@ -137,6 +137,18 @@ class TestConstrutor:
         with pytest.raises(ValidationError):
             SendApiTask(planilha_path=csv, url=URL, delay_s=-1.0)
 
+    def test_timeout_invalido(self, tmp_path: Path) -> None:
+        csv = tmp_path / "c.csv"
+        criar_csv(csv, linhas_ok(1))
+        with pytest.raises(ValidationError):
+            SendApiTask(planilha_path=csv, url=URL, timeout_s=0)
+
+    def test_max_retries_invalido(self, tmp_path: Path) -> None:
+        csv = tmp_path / "c.csv"
+        criar_csv(csv, linhas_ok(1))
+        with pytest.raises(ValidationError):
+            SendApiTask(planilha_path=csv, url=URL, max_retries=0)
+
 
 # ============================================================
 # Envio
