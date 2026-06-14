@@ -244,7 +244,8 @@ def telegram_command(  # noqa: PLR0912, PLR0915
         )
         exemplo = result.data.get("exemplo_texto")
         if exemplo:
-            click.echo(f"  exemplo: {exemplo}")
+            click.echo("Exemplo da 1a mensagem (apenas visual; nao enviada nem salva):")
+            click.echo(f"  {exemplo}")
         click.echo(_SEP)
         return
 
