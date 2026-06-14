@@ -12,12 +12,21 @@ o mock local; em producao, para https://api.telegram.org.
 
 Decima primeira task (decima primeira subclasse concreta de BaseTask).
 
-SEGURANCA: o token do bot e sensivel. Ele nunca aparece em logs, no audit
-nem no resultado — so e usado internamente para montar a URL.
+SEGURANCA / PRIVACIDADE:
+- O token do bot e sensivel. Ele nunca aparece em logs, no audit, no
+  resultado nem no relatorio. Mensagens de erro passam por `_redact`, que
+  remove o token caso ele apareca (ex: numa URL dentro de uma excecao).
+- O relatorio por linha NAO inclui o texto enviado (apenas os dados da
+  linha de origem + o destino + o status). Assim o conteudo da mensagem
+  nao e persistido em disco, alinhado a SendApiTask/SendEmailTask.
+- Observacao operacional: como a Bot API exige o token na URL, mantenha o
+  logging de `httpx`/`httpcore` fora do nivel DEBUG em producao (senao a
+  URL completa pode ir para os logs dessas libs).
 """
 
 from __future__ import annotations
 
+import re
 import time
 from collections import defaultdict
 from datetime import UTC, datetime
@@ -54,11 +63,14 @@ _PLANILHA_FORMATS = (".csv", ".xlsx", ".xls")
 _REPORT_FORMATS = (".csv", ".xlsx", ".xls", ".json")
 _VALID_PARSE_MODES = ("MarkdownV2", "Markdown", "HTML")
 
+#: chat_id inteiro que veio como float textual: "111.0", "-100.00", ...
+_FLOAT_INT_RE = re.compile(r"-?\d+\.0+")
+
 ProgressInfo = dict[str, Any]
 
 
 # ============================================================
-# Predicado de retry (igual a SendApiTask)
+# Helpers de modulo (puros, faceis de testar)
 # ============================================================
 
 
@@ -69,6 +81,21 @@ def _is_retryable(exc: BaseException) -> bool:
     if isinstance(exc, httpx.HTTPStatusError):
         return int(exc.response.status_code) >= _HTTP_SERVER_ERROR
     return False
+
+
+def _normalizar_chat_id(valor: object) -> str:
+    """
+    Normaliza um chat_id vindo de qualquer origem (planilha, CLI).
+
+    - tira espacos nas pontas;
+    - converte inteiro-como-float-textual ("111.0" -> "111"), que pode
+      surgir quando a planilha e lida sem dtype=str;
+    - preserva ids negativos (grupos/canais) e @usernames.
+    """
+    texto = str(valor).strip()
+    if _FLOAT_INT_RE.fullmatch(texto):
+        texto = texto.split(".", 1)[0]
+    return texto
 
 
 # ============================================================
@@ -82,7 +109,7 @@ class SendTelegramTask(BaseTask):
     name = "send_telegram"
     description = "Envia mensagens via Telegram (Bot API) a partir de uma planilha"
 
-    def __init__(  # noqa: PLR0913 - task de config com parametros keyword-only
+    def __init__(  # noqa: PLR0913, PLR0912, PLR0915 - construtor valida muitos params de config
         self,
         planilha_path: Path,
         *,
@@ -102,15 +129,15 @@ class SendTelegramTask(BaseTask):
         """
         Args:
             planilha_path: Planilha CSV/XLSX com os dados.
-            token: Token do bot (sensivel; nunca logado).
+            token: Token do bot (sensivel; nunca logado/persistido).
             text_template: Template da mensagem (aceita {coluna}).
             chat_id: Destino fixo (todas as mensagens vao para este chat).
             chat_id_column: OU a coluna da planilha com o chat_id de cada linha.
             base_url: Base da API (default Telegram; mock nos testes).
             parse_mode: Formatacao opcional (MarkdownV2/Markdown/HTML).
             delay_s: Pausa em segundos entre envios (rate limit).
-            timeout_s: Timeout de cada request.
-            max_retries: Tentativas por mensagem em erro temporario.
+            timeout_s: Timeout de cada request (> 0).
+            max_retries: Tentativas por mensagem em erro temporario (>= 1).
             report_path: Se informado, salva relatorio por linha (.csv/.xlsx/.json).
             on_progress: Callback chamado a cada mensagem.
             dry_run: Se True, nao envia nada; so conta as linhas.
@@ -164,10 +191,24 @@ class SendTelegramTask(BaseTask):
             msg = "delay_s nao pode ser negativo"
             raise ValidationError(msg)
 
+        if timeout_s <= 0:
+            msg = "timeout_s deve ser maior que zero"
+            raise ValidationError(msg)
+
+        if max_retries < 1:
+            msg = "max_retries deve ser >= 1"
+            raise ValidationError(msg)
+
+        # chat_id fixo tambem e normalizado (ex: "111.0" -> "111")
+        normalizado = _normalizar_chat_id(chat_id) if chat_id is not None else None
+        if chat_id is not None and not normalizado:
+            msg = "chat_id nao pode ser vazio"
+            raise ValidationError(msg)
+
         self.planilha_path = planilha_path
         self.token = token.strip()
         self.text_template = text_template
-        self.chat_id = chat_id
+        self.chat_id = normalizado
         self.chat_id_column = chat_id_column
         self.base_url = base_url.rstrip("/")
         self.parse_mode = parse_mode
@@ -206,13 +247,23 @@ class SendTelegramTask(BaseTask):
             return template
 
     def _resolve_chat_id(self, row: dict[str, Any]) -> str:
-        """Resolve o chat_id de uma linha (fixo ou da coluna)."""
+        """Resolve o chat_id de uma linha (fixo ou da coluna), normalizado."""
         if self.chat_id is not None:
-            return self.chat_id
+            return self.chat_id  # ja normalizado no __init__
         col = self.chat_id_column
         if col is None:  # pragma: no cover - garantido pelo __init__
             return ""
-        return str(row.get(col, "")).strip()
+        return _normalizar_chat_id(row.get(col, ""))
+
+    # --------------------------------------------------------
+    # Seguranca: redacao do token
+    # --------------------------------------------------------
+
+    def _redact(self, texto: str) -> str:
+        """Remove o token de qualquer texto (defesa em profundidade)."""
+        if self.token and self.token in texto:
+            return texto.replace(self.token, "***")
+        return texto
 
     # --------------------------------------------------------
     # Envio (HTTP) com retry
@@ -244,31 +295,36 @@ class SendTelegramTask(BaseTask):
         return result
 
     def _extrair_erro(self, response: httpx.Response) -> str:
-        """Extrai a 'description' do corpo de erro da Bot API."""
+        """Extrai a 'description' do corpo de erro da Bot API (redacted)."""
         try:
             body = response.json()
         except ValueError:
             error_text: str = response.text
-            return error_text[:_ERROR_TEXT_LIMIT]
+            return self._redact(error_text[:_ERROR_TEXT_LIMIT])
 
         if isinstance(body, dict):
             desc = str(body.get("description", "")).strip()
             if desc:
-                return desc[:_ERROR_TEXT_LIMIT]
+                return self._redact(desc[:_ERROR_TEXT_LIMIT])
 
         fallback_text: str = response.text
-        return fallback_text[:_ERROR_TEXT_LIMIT]
+        return self._redact(fallback_text[:_ERROR_TEXT_LIMIT])
 
-    def _enviar_um(self, chat_id: str, text: str) -> tuple[bool, str]:
+    def _enviar_um(self, chat_id: str, text: str) -> tuple[bool, str]:  # noqa: PLR0911 - caminhos de saida distintos (validacao, erros HTTP, ok=false, sucesso)
         """
         Envia uma mensagem. Retorna (sucesso, mensagem).
 
+        - chat_id/text vazios: (False, motivo) - nao gasta request
         - 2xx e ok=true: (True, "enviado")
         - 4xx: (False, "HTTP 4xx: ...") - nao foi retentado
         - 5xx apos retries / erro de conexao: (False, "...")
+
+        Toda mensagem de erro passa por _redact (nunca expoe o token).
         """
         if not chat_id:
             return False, "chat_id vazio"
+        if not text or not text.strip():
+            return False, "texto vazio"
 
         payload: dict[str, Any] = {"chat_id": chat_id, "text": text}
         if self.parse_mode:
@@ -280,7 +336,7 @@ class SendTelegramTask(BaseTask):
             status = int(exc.response.status_code)
             return False, f"HTTP {status}: {self._extrair_erro(exc.response)}"
         except httpx.HTTPError as exc:
-            return False, f"erro de conexao: {exc}"
+            return False, f"erro de conexao: {self._redact(str(exc))}"
 
         # Bot API pode sinalizar erro tambem no corpo (ok=false)
         try:
@@ -288,7 +344,7 @@ class SendTelegramTask(BaseTask):
         except ValueError:
             return True, "enviado"
         if isinstance(body, dict) and body.get("ok") is False:
-            return False, str(body.get("description", "resposta ok=false"))
+            return False, self._redact(str(body.get("description", "resposta ok=false")))
         return True, "enviado"
 
     # --------------------------------------------------------
@@ -392,7 +448,9 @@ class SendTelegramTask(BaseTask):
                 },
             )
 
-        # Dry-run: nao envia (mostra um exemplo da 1a mensagem)
+        # Dry-run: nao envia. Conta as linhas e devolve um exemplo da 1a
+        # mensagem renderizada. Esse exemplo NAO e persistido (o audit nao
+        # grava `data`); serve so para o chamador exibir efemeramente.
         if self.dry_run:
             exemplo = self._render(self.text_template, rows[0])
             logger.info(f"[dry-run] Enviaria {total} mensagens")
@@ -418,9 +476,10 @@ class SendTelegramTask(BaseTask):
             texto = self._render(self.text_template, row)
             sucesso, mensagem = self._enviar_um(chat, texto)
 
+            # Relatorio: dados da linha + destino + status.
+            # NAO inclui o texto enviado (nao persistir conteudo em disco).
             registro = dict(row)
             registro["_chat_id"] = chat
-            registro["_texto"] = texto
             registro["_resultado"] = "ok" if sucesso else "erro"
             registro["_mensagem"] = mensagem
             resultados.append(registro)
