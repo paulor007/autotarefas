@@ -31,7 +31,7 @@ _EXIT_USAGE = 2
 _EXIT_FAILURE = 1
 
 # Nome da variavel de ambiente que guarda o token (NAO e o token)
-_TELEGRAM_ENV_VAR = "_".join(("AUTOTAREFAS", "TELEGRAM", "TOKEN"))
+_ENV_TOKEN = "AUTOTAREFAS_TELEGRAM_TOKEN"  # noqa: S105  # nosec B105
 
 _DEFAULT_BASE_URL = "https://api.telegram.org"
 _LOCAL_HOSTS = frozenset({"localhost", "127.0.0.1", "::1"})
@@ -45,9 +45,9 @@ def _resolver_token() -> tuple[str, str]:
     Tenta a env var; se ausente, pede num prompt oculto.
     Retorna (token, origem) — a origem e so para exibicao.
     """
-    token = os.environ.get(_TELEGRAM_ENV_VAR)
+    token = os.environ.get(_ENV_TOKEN)
     if token:
-        return token, f"env {_TELEGRAM_ENV_VAR}"
+        return token, f"env {_ENV_TOKEN}"
     return getpass.getpass("Token do bot Telegram: "), "prompt"
 
 

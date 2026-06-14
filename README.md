@@ -30,6 +30,7 @@ arquivos, sistemas web (RPA) e APIs. Projeto Python moderno com foco em
 - **Extração via Web Scraping** — raspa páginas HTML por seletores CSS, segue a paginação e salva em CSV/XLSX/JSON
 - **Envio via API** — cadastro em massa: lê planilha e faz POST de cada linha (retry, rate limit, relatório)
 - **Notificações por Email** — envia emails em massa de uma planilha, com template `{coluna}` e senha protegida
+- **Notificações por Telegram** — envia mensagens pela Bot API de uma planilha (gratuito), com template `{coluna}` e token protegido
 - **Sincronização API→API** — extrai de uma API e envia para outra num passo só (composição de tasks)
 - **Sistema demo local** — servidor Flask para testar automações e extrações com segurança
 - **Validador de planilhas** com schema declarativo em YAML
@@ -43,7 +44,7 @@ arquivos, sistemas web (RPA) e APIs. Projeto Python moderno com foco em
 - **Dry-run em tudo** — simula operações antes de fazer mudanças reais
 - **Integração contínua** — CI no GitHub Actions (Python 3.12 e 3.13)
 - **Type-safe** — mypy strict, 0 erros
-- **~1081 testes**, ~92% de cobertura
+- **1170 testes**, 92% de cobertura
 
 ---
 
@@ -495,6 +496,74 @@ Os emails recebidos são mostrados no console e salvos em `.eml`.
 
 ---
 
+## 📨 Notificações por Telegram (v1.2.0)
+
+Lê uma planilha e envia uma mensagem **personalizada por linha** via
+Telegram (Bot API). O texto aceita `{coluna}`: trechos como `{nome}` são
+trocados pelos valores da linha. Gratuito — sem gateway pago.
+
+### Uso
+
+```bash
+autotarefas send telegram --planilha contatos.csv --text "Olá {nome}!" \
+  --chat-id-column chat_id --parse-mode HTML -r resultado.csv
+```
+
+### Segurança do token 🔐
+
+O token do bot **nunca** é passado na linha de comando. Ele vem de:
+
+1. variável de ambiente `AUTOTAREFAS_TELEGRAM_TOKEN` (ideal para automação), ou
+2. um **prompt oculto** (`getpass`).
+
+Assim o token não vaza no histórico do shell. Além disso, ele é **redigido
+de qualquer mensagem de erro**, e o **texto enviado nunca é persistido** —
+nem no relatório, nem no audit.
+
+### Opções
+
+| Flag               | Descrição                                  | Default                    |
+| ------------------ | ------------------------------------------ | -------------------------- |
+| `--planilha, -p`   | Planilha CSV/XLSX com os dados             | —                          |
+| `--text`           | Template da mensagem (aceita `{coluna}`)   | —                          |
+| `--text-file`      | Arquivo com o template (precede `--text`)  | —                          |
+| `--chat-id`        | Chat de destino fixo                       | —                          |
+| `--chat-id-column` | OU a coluna com o `chat_id` de cada linha  | —                          |
+| `--parse-mode`     | `MarkdownV2` / `Markdown` / `HTML`         | —                          |
+| `--base-url`       | Base da Bot API (use o demo para testar)   | `https://api.telegram.org` |
+| `--delay`          | Pausa entre envios em segundos             | `0.0`                      |
+| `--timeout`        | Timeout por request em segundos            | `30.0`                     |
+| `--max-retries`    | Tentativas por mensagem em erro temporário | `3`                        |
+| `--report, -r`     | Relatório por linha (.csv/.xlsx/.json)     | —                          |
+
+Informe **exatamente um** destino: `--chat-id` (fixo) ou `--chat-id-column` (por linha).
+
+### Recursos
+
+- **Templates** `{coluna}` na mensagem
+- **Destino flexível** — fixo ou por coluna; `chat_id` normalizado (`111.0` → `111`)
+- **Tolerância por linha** — uma mensagem ruim não interrompe as demais
+- **Retry resiliente** — só em erros temporários (5xx/timeout)
+- **Privacidade** — token redigido em erros; texto enviado não é persistido
+- **dry-run** — mostra quantas enviaria + um exemplo (efêmero, não salvo)
+
+### Sistema demo (para testes)
+
+O servidor demo inclui um **mock da Bot API** — teste sem um bot real:
+
+```bash
+pip install -e ".[demo]"
+python -m tools.demo_server          # http://localhost:5555
+
+# token fake serve; aponte com --base-url http://localhost:5555
+autotarefas send telegram -p contatos.csv --text "Oi {nome}!" \
+  --chat-id-column chat_id --base-url http://localhost:5555
+```
+
+As mensagens recebidas ficam em `GET http://localhost:5555/telegram/mensagens`.
+
+---
+
 ## 🔄 Sincronização entre APIs (v1.0.0)
 
 Liga extração e envio num passo só: **extrai de uma API origem e envia
@@ -529,20 +598,20 @@ reflete o envio: **SUCCESS** / **PARTIAL** / **FAILURE**.
 
 ### Opções
 
-| Flag                | Descrição                                       | Default |
-| ------------------- | ----------------------------------------------- | ------- |
-| `--source-url, -s`  | API origem (endpoint paginado, para extrair)    | —       |
-| `--dest-url, -d`    | API destino (recebe POST por registro)          | —       |
-| `--source-api-key`  | Chave da API origem (header X-API-Key)          | —       |
-| `--dest-api-key`    | Chave da API destino (header X-API-Key)         | —       |
-| `--dest-bearer`     | Token Bearer da API destino                     | —       |
-| `--per-page`        | Itens por página na extração                    | `50`    |
-| `--max-pages`       | Limite de páginas (default: todas)              | —       |
-| `--delay`           | Pausa entre páginas e entre envios (rate limit) | `0.0`   |
-| `--timeout`         | Timeout por request em segundos                 | `30.0`  |
-| `--max-retries`     | Tentativas por página/linha em erro temporário  | `3`     |
-| `--report, -r`      | Relatório por linha do envio (.csv/.xlsx/.json) | —       |
-| `--format`          | Formato do arquivo intermediário (`csv`/`xlsx`) | `csv`   |
+| Flag               | Descrição                                       | Default |
+| ------------------ | ----------------------------------------------- | ------- |
+| `--source-url, -s` | API origem (endpoint paginado, para extrair)    | —       |
+| `--dest-url, -d`   | API destino (recebe POST por registro)          | —       |
+| `--source-api-key` | Chave da API origem (header X-API-Key)          | —       |
+| `--dest-api-key`   | Chave da API destino (header X-API-Key)         | —       |
+| `--dest-bearer`    | Token Bearer da API destino                     | —       |
+| `--per-page`       | Itens por página na extração                    | `50`    |
+| `--max-pages`      | Limite de páginas (default: todas)              | —       |
+| `--delay`          | Pausa entre páginas e entre envios (rate limit) | `0.0`   |
+| `--timeout`        | Timeout por request em segundos                 | `30.0`  |
+| `--max-retries`    | Tentativas por página/linha em erro temporário  | `3`     |
+| `--report, -r`     | Relatório por linha do envio (.csv/.xlsx/.json) | —       |
+| `--format`         | Formato do arquivo intermediário (`csv`/`xlsx`) | `csv`   |
 
 ### Dry-run
 
@@ -718,8 +787,9 @@ autotarefas sync        # sincronização API->API (sync api)
 - ✅ **v0.7.0** — Envio via API (cadastro em massa)
 - ✅ **v0.8.0** — Notificações por Email
 - ✅ **v1.0.0** — Versão estável: CI/CD + documentação + sincronização API→API
-- ✅ **v1.1.0** — Web scraping (`extract web`) _(atual)_
-- ⏳ **futuro** — Mensagens (SMS/WhatsApp)
+- ✅ **v1.1.0** — Web scraping (`extract web`)
+- ✅ **v1.2.0** — Notificações por Telegram _(atual)_
+- ⏳ **futuro** — Extração com JavaScript (`extract web --js`)
 
 ---
 

@@ -9,7 +9,69 @@ e este projeto adere a [Versionamento Semântico](https://semver.org/lang/pt-BR/
 
 ## [Não lançado]
 
-Em desenvolvimento. Próxima: notificações via mensagem (ex: Telegram).
+Em desenvolvimento. Próxima: extração com JavaScript (`extract web --js`).
+
+---
+
+## [1.2.0] — 2026-06-14
+
+📨 **Notificações via Telegram!** Nova task de envio que manda mensagens
+pela Bot API a partir de uma planilha — **gratuita** (sem gateway pago,
+diferente de SMS/WhatsApp), com template `{coluna}`, destino fixo ou por
+coluna, e o mesmo retry resiliente do `send api`. A décima primeira task
+do projeto. Privacidade reforçada: o token é redigido de qualquer erro e
+o conteúdo da mensagem nunca é persistido.
+
+### Adicionado
+
+#### Envio via Telegram
+
+- **`autotarefas.tasks.send_telegram`** — décima primeira task:
+  - `SendTelegramTask(BaseTask)`: renderiza uma mensagem por linha
+    ({coluna} -> valor) e envia via Bot API (`sendMessage`)
+  - Destino fixo (`chat_id`) ou por coluna (`chat_id_column`) — exatamente
+    um; `chat_id` normalizado ("111.0" -> "111")
+  - `parse_mode` opcional (MarkdownV2/Markdown/HTML); retry so em erros
+    temporarios (5xx/timeout); dry-run (conta + exemplo efemero)
+  - Relatorio por linha (CSV/XLSX/JSON)
+- **Comando `autotarefas send telegram`**:
+  - Subcomando do grupo `send` (ao lado de `api` e `email`)
+  - Token nunca em argumento: via env `AUTOTAREFAS_TELEGRAM_TOKEN` ou
+    prompt oculto (`getpass`)
+  - `--text`/`--text-file`, `--chat-id`/`--chat-id-column`, `--parse-mode`,
+    `--base-url`, `--delay`, `--timeout`, `--max-retries`, `--report`
+  - Aviso quando `--base-url` usa HTTP sem TLS em host externo
+  - Exit codes (`0`/`1`/`2`)
+
+#### Demo
+
+- **Mock da Bot API** no servidor demo: rota `POST /bot<token>/sendMessage`
+  (imita `{ok, result}` / `{ok: false, ...}`), inbox em
+  `GET /telegram/mensagens` e reset em `POST /telegram/limpar` — alvo de
+  teste sem bot real
+
+#### Testes
+
+- ~89 testes novos (mock da Bot API + `SendTelegramTask` + comando
+  `send telegram` + validacoes de config): normalizacao de `chat_id`,
+  template, destino fixo/coluna, recusa local de texto vazio, retry
+  (5xx/4xx), **redacao do token em erros**, dry-run, relatorio, e a CLI
+  (token via env/prompt, exit codes, propagacao de flags)
+
+### Mudado
+
+- **Privacidade/seguranca da `SendTelegramTask`**: o relatorio NAO persiste
+  o texto enviado (alinhado a `send_api`/`send_email`); o token e redigido
+  de qualquer mensagem de erro (defesa em profundidade)
+- **Validacao de configuracao consistente**: `send_api` e `send_telegram`
+  rejeitam `timeout_s <= 0` e `max_retries < 1`; `send_email` rejeita
+  `timeout_s <= 0` (SMTP nao tem retry) — as tres tasks de envio alinhadas
+- README e roadmap atualizados com a secao de Telegram
+
+### Estatisticas
+
+- **11 comandos** (incl. `send telegram`) · **11 tasks** (`BaseTask`) ·
+  **1170 testes** · **92% de cobertura** · **0 erros** em mypy / ruff / bandit
 
 ---
 
