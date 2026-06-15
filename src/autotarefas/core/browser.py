@@ -258,6 +258,12 @@ class BrowserSession:
         url: str = page.url
         return url
 
+    def content(self) -> str:
+        """Retorna o HTML renderizado da pagina inteira (apos o JavaScript)."""
+        page = self._ensure_page()
+        html: str = page.content()
+        return html
+
     def screenshot(self, name: str) -> Path:
         """
         Tira screenshot sem mascaramento.

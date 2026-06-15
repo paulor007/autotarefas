@@ -331,6 +331,16 @@ class TestInspection:
         with BrowserSession(screenshot_dir=screenshot_dir) as s:
             assert s.current_url() == "http://localhost:5555/sucesso/42"
 
+    def test_content_retorna_html_renderizado(
+        self,
+        mocks: dict[str, Any],
+        screenshot_dir: Path,
+    ) -> None:
+        html = "<html><body><table><tr><td>Ana</td></tr></table></body></html>"
+        mocks["page"].content.return_value = html
+        with BrowserSession(screenshot_dir=screenshot_dir) as s:
+            assert s.content() == html
+
 
 # ============================================================
 # Testes de screenshots
@@ -434,6 +444,14 @@ class TestEnsurePage:
         session = BrowserSession(screenshot_dir=screenshot_dir)
         with pytest.raises(RuntimeError, match="nao foi iniciada"):
             session.go_to("http://x.com")
+
+    def test_content_fora_de_with_levanta(
+        self,
+        screenshot_dir: Path,
+    ) -> None:
+        session = BrowserSession(screenshot_dir=screenshot_dir)
+        with pytest.raises(RuntimeError, match="nao foi iniciada"):
+            session.content()
 
 
 # ============================================================
