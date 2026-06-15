@@ -271,3 +271,55 @@ class TestFields:
         assert kw["row_selector"] == "tr.produto"
         assert kw["next_selector"] == "a.next"
         assert kw["max_pages"] == 3
+
+
+class TestModoJS:
+    def test_help_menciona_js(self, runner: CliRunner) -> None:
+        result = runner.invoke(cli, ["extract", "web", "--help"])
+        assert "--js" in result.output
+        assert "--wait-for" in result.output
+
+    def test_js_flag_propaga(self, runner: CliRunner, mock_task: dict[str, Any]) -> None:
+        runner.invoke(cli, [*base_args(), "--js"])
+        assert mock_task["init_kwargs"]["use_js"] is True
+
+    def test_sem_js_use_js_false(
+        self,
+        runner: CliRunner,
+        mock_task: dict[str, Any],
+    ) -> None:
+        runner.invoke(cli, base_args())
+        assert mock_task["init_kwargs"]["use_js"] is False
+
+    def test_wait_for_propaga(
+        self,
+        runner: CliRunner,
+        mock_task: dict[str, Any],
+    ) -> None:
+        runner.invoke(cli, [*base_args(), "--js", "--wait-for", "table.produtos"])
+        assert mock_task["init_kwargs"]["wait_for"] == "table.produtos"
+
+    def test_wait_for_sem_js_exit_2(
+        self,
+        runner: CliRunner,
+        mock_task: dict[str, Any],
+    ) -> None:
+        result = runner.invoke(cli, [*base_args(), "--wait-for", "table.produtos"])
+        assert result.exit_code == 2
+        # validacao do CLI barra antes de criar a task
+        assert mock_task["init_kwargs"] is None
+
+    def test_navegador_nao_instalado_exit_1(
+        self,
+        runner: CliRunner,
+        mock_task: dict[str, Any],
+    ) -> None:
+        mock_task["result"] = make_result(
+            TaskStatus.FAILURE,
+            error_message=(
+                "Navegador do Playwright nao encontrado. Rode: playwright install chromium"
+            ),
+        )
+        result = runner.invoke(cli, [*base_args(), "--js"])
+        assert result.exit_code == 1
+        assert "playwright install chromium" in result.output

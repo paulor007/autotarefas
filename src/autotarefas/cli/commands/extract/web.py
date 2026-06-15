@@ -108,6 +108,18 @@ def _parse_fields(itens: tuple[str, ...]) -> dict[str, str]:
     show_default=True,
     help="Tentativas por pagina em erro temporario.",
 )
+@click.option(
+    "--js",
+    is_flag=True,
+    default=False,
+    help="Renderiza a pagina num navegador (Playwright) antes de raspar "
+    "— para conteudo carregado via JavaScript. Exige 'playwright install chromium'.",
+)
+@click.option(
+    "--wait-for",
+    default=None,
+    help="Seletor CSS a aguardar antes de extrair (so com --js).",
+)
 @click.pass_obj
 def web_command(
     ctx: CLIContext,
@@ -120,6 +132,8 @@ def web_command(
     delay: float,
     timeout: float,
     max_retries: int,
+    js: bool,
+    wait_for: str | None,
 ) -> None:
     """
     Extrai dados de uma pagina HTML por seletores CSS (web scraping).
@@ -131,11 +145,25 @@ def web_command(
     Exemplo:
       autotarefas extract web -u http://localhost:5555/catalogo -o produtos.csv \\
         -r "tr.produto" -f "nome=td.nome" -f "preco=td.preco" -n "a.next"
+
+    Para paginas que carregam conteudo via JavaScript, use --js (e, se
+    precisar, --wait-for para aguardar um elemento aparecer):
+      autotarefas extract web -u ... -o produtos.csv -r "tr.produto" \\
+        -f "nome=td.nome" --js --wait-for "table.produtos"
     """
     # Validacao de URL (erro de uso -> exit 2)
     if not url.startswith(("http://", "https://")):
         click.secho(
             "Erro: a URL deve comecar com http:// ou https://",
+            fg="red",
+            err=True,
+        )
+        raise SystemExit(_EXIT_USAGE)
+
+    # --wait-for so faz sentido com --js (erro de uso -> exit 2)
+    if wait_for is not None and not js:
+        click.secho(
+            "Erro: --wait-for so pode ser usado junto com --js",
             fg="red",
             err=True,
         )
@@ -157,6 +185,9 @@ def web_command(
     click.echo(f"URL:    {url}")
     click.echo(f"Saida:  {output}")
     click.echo(f"Linhas: {row_selector}  ({len(fields)} campos)")
+    if js:
+        espera = f", aguarda '{wait_for}'" if wait_for else ""
+        click.echo(f"Render: navegador headless (Playwright){espera}")
     modo = "dry-run (preview, nao salva)" if dry_run else "normal"
     click.echo(f"Modo:   {modo}")
     click.echo("")
@@ -178,6 +209,8 @@ def web_command(
             delay_s=delay,
             timeout_s=timeout,
             max_retries=max_retries,
+            use_js=js,
+            wait_for=wait_for,
             on_progress=None if dry_run else _on_progress,
             dry_run=dry_run,
         )
