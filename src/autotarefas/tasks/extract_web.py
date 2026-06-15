@@ -8,6 +8,15 @@ dados em CSV/XLSX/JSON.
 E a irma da ExtractApiTask: mesma forma (paginacao, retry resiliente,
 multi-formato, dry-run), mas para sites que NAO expoem API — so HTML.
 
+Dois modos de busca do HTML:
+- padrao (httpx): rapido, para paginas cujo conteudo ja vem no HTML;
+- ``use_js=True`` (Playwright via BrowserSession): renderiza a pagina num
+  navegador headless e extrai o HTML DEPOIS do JavaScript rodar. Reusa uma
+  unica sessao de navegador ao longo da paginacao. Exige o navegador
+  instalado (``playwright install chromium``). A paginacao continua sendo
+  pelo ``next_selector`` (href) — SPA com paginacao por clique fica fora do
+  escopo deste modo.
+
 Decima task real (decima subclasse concreta de BaseTask).
 """
 
@@ -16,7 +25,7 @@ from __future__ import annotations
 import time
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, TypeVar
 from urllib.parse import urljoin
 
 import httpx
@@ -36,6 +45,8 @@ from autotarefas.core.logger import logger
 if TYPE_CHECKING:
     from collections.abc import Callable
 
+    from autotarefas.core.browser import BrowserSession
+
 # ============================================================
 # Constantes
 # ============================================================
@@ -49,15 +60,17 @@ _MAX_PAGES_SAFETY = 10_000
 #: Formatos de saida suportados (pela extensao do arquivo).
 _SUPPORTED_FORMATS = (".csv", ".xlsx", ".xls", ".json")
 
-#: User-Agent honesto: o scraper se identifica.
-_USER_AGENT = "AutoTarefas/1.1 (+https://github.com/paulor007/autotarefas)"
+#: User-Agent honesto: o scraper se identifica (modo httpx).
+_USER_AGENT = "AutoTarefas/1.2 (+https://github.com/paulor007/autotarefas)"
 
 #: Status que o callback de progresso recebe.
 ProgressInfo = dict[str, Any]
 
+_T = TypeVar("_T")
+
 
 # ============================================================
-# Predicado de retry (igual a ExtractApiTask)
+# Predicado de retry (modo httpx, igual a ExtractApiTask)
 # ============================================================
 
 
@@ -71,6 +84,15 @@ def _is_retryable(exc: BaseException) -> bool:
 
 
 # ============================================================
+# Erro interno (mensagem ja pronta para o usuario)
+# ============================================================
+
+
+class _ScrapeError(Exception):
+    """Falha de scraping cuja mensagem ja esta pronta para o usuario."""
+
+
+# ============================================================
 # Task
 # ============================================================
 
@@ -81,7 +103,7 @@ class ExtractWebTask(BaseTask):
     name = "extract_web"
     description = "Extrai dados de paginas HTML por seletores CSS (CSV/XLSX/JSON)"
 
-    def __init__(  # noqa: PLR0913 - task de config com parametros keyword-only
+    def __init__(  # noqa: PLR0913 - construtor com muitos params keyword-only
         self,
         url: str,
         *,
@@ -93,6 +115,9 @@ class ExtractWebTask(BaseTask):
         delay_s: float = 0.0,
         timeout_s: float = _DEFAULT_TIMEOUT_S,
         max_retries: int = _DEFAULT_MAX_RETRIES,
+        use_js: bool = False,
+        wait_for: str | None = None,
+        headless: bool = True,
         on_progress: Callable[[ProgressInfo], None] | None = None,
         dry_run: bool = False,
     ) -> None:
@@ -107,8 +132,12 @@ class ExtractWebTask(BaseTask):
                 "a.next"); None desliga a paginacao (so a 1a pagina).
             max_pages: Limite de paginas a seguir (None = todas).
             delay_s: Pausa em segundos entre paginas (rate limit / educacao).
-            timeout_s: Timeout de cada request.
-            max_retries: Tentativas por pagina em erro temporario.
+            timeout_s: Timeout de cada request/navegacao (> 0).
+            max_retries: Tentativas por pagina em erro temporario (>= 1).
+            use_js: Se True, renderiza a pagina num navegador (Playwright)
+                antes de extrair — para conteudo carregado via JavaScript.
+            wait_for: Seletor CSS a aguardar antes de extrair (so com use_js).
+            headless: No modo JS, True abre o navegador sem janela.
             on_progress: Callback chamado a cada pagina raspada.
             dry_run: Se True, raspa so a 1a pagina e nao salva.
         """
@@ -142,6 +171,18 @@ class ExtractWebTask(BaseTask):
             msg = "delay_s nao pode ser negativo"
             raise ValidationError(msg)
 
+        if timeout_s <= 0:
+            msg = "timeout_s deve ser maior que zero"
+            raise ValidationError(msg)
+
+        if max_retries < 1:
+            msg = "max_retries deve ser >= 1"
+            raise ValidationError(msg)
+
+        if wait_for is not None and not use_js:
+            msg = "wait_for so se aplica com use_js=True (--js)"
+            raise ValidationError(msg)
+
         self.url = url.strip()
         self.output_path = output_path
         self.row_selector = row_selector.strip()
@@ -151,14 +192,17 @@ class ExtractWebTask(BaseTask):
         self.delay_s = delay_s
         self.timeout_s = timeout_s
         self.max_retries = max_retries
+        self.use_js = use_js
+        self.wait_for = wait_for.strip() if wait_for else None
+        self.headless = headless
         self.on_progress = on_progress
 
     # --------------------------------------------------------
-    # Busca (HTTP) com retry
+    # Busca (HTTP) com retry — modo padrao
     # --------------------------------------------------------
 
     def _fetch_html(self, url: str) -> str:
-        """Busca o HTML de uma URL (levanta em status >= 400)."""
+        """Busca o HTML de uma URL via httpx (levanta em status >= 400)."""
         with httpx.Client(timeout=self.timeout_s, follow_redirects=True) as client:
             resp = client.get(url, headers={"User-Agent": _USER_AGENT})
             resp.raise_for_status()
@@ -166,7 +210,7 @@ class ExtractWebTask(BaseTask):
             return html
 
     def _fetch_html_with_retry(self, url: str) -> str:
-        """Busca o HTML com retry (backoff exponencial)."""
+        """Busca o HTML (httpx) com retry (backoff exponencial)."""
         retryer = Retrying(
             stop=stop_after_attempt(self.max_retries),
             wait=wait_exponential(multiplier=0.5, min=0.5, max=5.0),
@@ -175,6 +219,73 @@ class ExtractWebTask(BaseTask):
         )
         result: str = retryer(self._fetch_html, url)
         return result
+
+    # --------------------------------------------------------
+    # Busca via navegador (Playwright) — modo use_js
+    # --------------------------------------------------------
+
+    def _browser_timeout_ms(self) -> int:
+        """Timeout do navegador em ms (a partir de timeout_s, sempre > 0)."""
+        return max(1, int(self.timeout_s * 1000))
+
+    def _fetch_html_js(self, browser: BrowserSession, url: str) -> str:
+        """Renderiza a pagina no navegador e devolve o HTML (apos o JS)."""
+        browser.go_to(url)
+        if self.wait_for:
+            browser.wait_for(self.wait_for)
+        return browser.content()
+
+    def _fetch_html_js_with_retry(self, browser: BrowserSession, url: str) -> str:
+        """Busca o HTML (navegador) com retry — so em timeout do Playwright."""
+        # import lazy: o modo httpx nunca carrega o Playwright
+        from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
+
+        def _retryable(exc: BaseException) -> bool:
+            return isinstance(exc, PlaywrightTimeoutError)
+
+        retryer = Retrying(
+            stop=stop_after_attempt(self.max_retries),
+            wait=wait_exponential(multiplier=0.5, min=0.5, max=5.0),
+            retry=retry_if_exception(_retryable),
+            reraise=True,
+        )
+        result: str = retryer(self._fetch_html_js, browser, url)
+        return result
+
+    def _run_with_browser(self, fn: Callable[[BrowserSession], _T]) -> _T:
+        """
+        Abre UMA BrowserSession (reusada) e roda fn(browser).
+
+        Traduz erros do Playwright em _ScrapeError com mensagem acionavel.
+        Imports lazy: o modo httpx nunca carrega o navegador.
+        """
+        # imports lazy: o modo httpx nunca carrega o navegador
+        from playwright.sync_api import Error as PlaywrightError
+
+        from autotarefas.core.browser import BrowserSession
+
+        try:
+            with BrowserSession(
+                headless=self.headless,
+                timeout_ms=self._browser_timeout_ms(),
+            ) as browser:
+                return fn(browser)
+        except PlaywrightError as exc:
+            raise _ScrapeError(self._browser_error_message(exc)) from exc
+
+    def _browser_error_message(self, exc: Exception) -> str:
+        """Traduz um erro do navegador em mensagem acionavel para o usuario."""
+        texto = str(exc)
+        nome = type(exc).__name__
+        if "Executable doesn't exist" in texto or "playwright install" in texto:
+            return "Navegador do Playwright nao encontrado. Rode: playwright install chromium"
+        if "Timeout" in nome:
+            alvo = f" (ou aguardar '{self.wait_for}')" if self.wait_for else ""
+            return (
+                f"Tempo esgotado ao renderizar a pagina{alvo}. "
+                "Aumente --timeout ou verifique o seletor."
+            )
+        return f"Erro ao renderizar a pagina ({nome}): {texto}"[:200]
 
     # --------------------------------------------------------
     # Parsing (BeautifulSoup)
@@ -225,8 +336,8 @@ class ExtractWebTask(BaseTask):
     # Paginacao
     # --------------------------------------------------------
 
-    def _scrape_all_pages(self) -> list[dict[str, str]]:
-        """Raspa a 1a pagina e segue o link de proxima ate o fim."""
+    def _scrape_loop(self, fetch: Callable[[str], str]) -> list[dict[str, str]]:
+        """Loop de paginacao: usa fetch(url) para obter o HTML de cada pagina."""
         todos: list[dict[str, str]] = []
         url: str | None = self.url
         page = 0
@@ -236,7 +347,7 @@ class ExtractWebTask(BaseTask):
         while url is not None and page < limite:
             page += 1
             visitadas.add(url)
-            html = self._fetch_html_with_retry(url)
+            html = fetch(url)
             rows, next_url = self._process_page(html, url)
             todos.extend(rows)
             self._notify(page, len(rows), len(todos))
@@ -250,9 +361,24 @@ class ExtractWebTask(BaseTask):
 
         return todos
 
+    def _scrape_all_pages(self) -> list[dict[str, str]]:
+        """Raspa todas as paginas, via httpx ou via navegador (use_js)."""
+        if self.use_js:
+            return self._run_with_browser(
+                lambda browser: self._scrape_loop(
+                    lambda url: self._fetch_html_js_with_retry(browser, url),
+                ),
+            )
+        return self._scrape_loop(self._fetch_html_with_retry)
+
     def _dry_run_preview(self) -> dict[str, Any]:
         """Raspa so a 1a pagina (sem salvar) para um preview."""
-        html = self._fetch_html_with_retry(self.url)
+        if self.use_js:
+            html = self._run_with_browser(
+                lambda browser: self._fetch_html_js_with_retry(browser, self.url),
+            )
+        else:
+            html = self._fetch_html_with_retry(self.url)
         rows, next_url = self._process_page(html, self.url)
         return {"would_extract_first_page": len(rows), "has_next": next_url is not None}
 
@@ -280,10 +406,11 @@ class ExtractWebTask(BaseTask):
     # Execute
     # --------------------------------------------------------
 
-    def execute(self) -> TaskResult:
+    def execute(self) -> TaskResult:  # noqa: PLR0911 - caminhos de saida distintos
         """Executa o scraping."""
         started_at = datetime.now(UTC)
-        logger.info(f"Raspando {self.url}")
+        modo = "navegador (--js)" if self.use_js else "http"
+        logger.info(f"Raspando {self.url} [modo: {modo}]")
 
         # --- Dry-run: preview da 1a pagina, sem salvar ---
         if self.dry_run:
@@ -295,6 +422,13 @@ class ExtractWebTask(BaseTask):
                     status=TaskStatus.FAILURE,
                     started_at=started_at,
                     error_message=f"Erro ao acessar a pagina: {exc}",
+                )
+            except _ScrapeError as exc:
+                logger.error(f"Falha no preview (dry-run): {exc}")
+                return self._make_result(
+                    status=TaskStatus.FAILURE,
+                    started_at=started_at,
+                    error_message=str(exc),
                 )
 
             logger.info(
@@ -308,6 +442,7 @@ class ExtractWebTask(BaseTask):
                     "would_extract_first_page": preview["would_extract_first_page"],
                     "has_next": preview["has_next"],
                     "url": self.url,
+                    "use_js": self.use_js,
                     "output_path": str(self.output_path),
                 },
             )
@@ -322,6 +457,13 @@ class ExtractWebTask(BaseTask):
                 started_at=started_at,
                 error_message=f"Erro ao acessar a pagina: {exc}",
             )
+        except _ScrapeError as exc:
+            logger.error(f"Falha no scraping: {exc}")
+            return self._make_result(
+                status=TaskStatus.FAILURE,
+                started_at=started_at,
+                error_message=str(exc),
+            )
 
         # 0 itens nao eh erro - a pagina so nao tinha o que casar
         if not records:
@@ -333,6 +475,7 @@ class ExtractWebTask(BaseTask):
                 data={
                     "extracted": 0,
                     "url": self.url,
+                    "use_js": self.use_js,
                     "output_path": str(self.output_path),
                     "saved": False,
                     "warning": "Nenhum item casou row_selector",
@@ -358,6 +501,7 @@ class ExtractWebTask(BaseTask):
             data={
                 "extracted": len(records),
                 "url": self.url,
+                "use_js": self.use_js,
                 "output_path": str(self.output_path),
                 "output_format": self.output_path.suffix.lower().lstrip("."),
                 "saved": True,
