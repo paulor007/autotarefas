@@ -1,0 +1,49 @@
+{% extends "base.html" %} {% block title %}Catálogo JS — AutoTarefas Demo{%
+endblock %} {% block content %}
+<h2>Catálogo de produtos (renderizado por JavaScript)</h2>
+<p class="resumo">
+  Esta página carrega os produtos via JavaScript (fetch). Sem executar o script,
+  a tabela fica vazia — é o alvo do <code>extract web --js</code>.
+</p>
+
+<table class="produtos">
+  <thead>
+    <tr>
+      <th>ID</th>
+      <th>Nome</th>
+      <th>Preço (R$)</th>
+    </tr>
+  </thead>
+  <tbody id="corpo-produtos"></tbody>
+</table>
+
+<script>
+  // Conteudo carregado de forma assincrona (AJAX): as linhas so existem
+  // no DOM depois que este script roda e o fetch resolve. E por isso que
+  // o modo httpx ve 0 itens e o modo --js (navegador) ve os produtos.
+  document.addEventListener("DOMContentLoaded", function () {
+    fetch("/catalogo-js/dados")
+      .then(function (resp) {
+        return resp.json();
+      })
+      .then(function (produtos) {
+        var corpo = document.getElementById("corpo-produtos");
+        produtos.forEach(function (p) {
+          var tr = document.createElement("tr");
+          tr.className = "produto";
+          tr.innerHTML =
+            '<td class="id">' +
+            p.id +
+            "</td>" +
+            '<td class="nome">' +
+            p.nome +
+            "</td>" +
+            '<td class="preco">' +
+            p.preco +
+            "</td>";
+          corpo.appendChild(tr);
+        });
+      });
+  });
+</script>
+{% endblock %}

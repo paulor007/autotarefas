@@ -20,7 +20,6 @@ from typing import Any
 
 import pytest
 
-from autotarefas.core import base as base_module
 from autotarefas.core.base import BaseTask, TaskResult, TaskStatus
 from autotarefas.core.exceptions import AutoTarefasError
 
@@ -101,7 +100,10 @@ def audit_records(monkeypatch: pytest.MonkeyPatch) -> list[dict[str, Any]]:
     def fake_record(**kwargs: Any) -> None:
         records.append(kwargs)
 
-    monkeypatch.setattr(base_module.audit, "record", fake_record)  # type: ignore[attr-defined]
+    monkeypatch.setattr(
+        "autotarefas.core.base.audit.record",
+        fake_record,
+    )
     return records
 
 
@@ -206,9 +208,8 @@ class TestAuditRobustness:
             raise RuntimeError("audit DB offline")
 
         monkeypatch.setattr(
-            base_module.audit,
-            "record",
-            fake_record_raises,  # type: ignore[attr-defined]
+            "autotarefas.core.base.audit.record",
+            fake_record_raises,
         )
 
         # Nao deve propagar a excecao do audit
@@ -225,9 +226,8 @@ class TestAuditRobustness:
             raise RuntimeError("audit DB offline")
 
         monkeypatch.setattr(
-            base_module.audit,
-            "record",
-            fake_record_raises,  # type: ignore[attr-defined]
+            "autotarefas.core.base.audit.record",
+            fake_record_raises,
         )
 
         # Task falha (AutoTarefasError) E audit falha - mas run() retorna

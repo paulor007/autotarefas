@@ -401,6 +401,39 @@ def catalogo() -> str:
     )
 
 
+# ============================================================
+# Catalogo renderizado por JavaScript (alvo do 'extract web --js')
+# ============================================================
+
+#: Produtos FIXOS servidos via JSON e injetados no DOM por JavaScript.
+#: Deterministicos de proposito: o teste E2E confere valores exatos.
+_CATALOGO_JS: list[dict[str, str]] = [
+    {"id": "1", "nome": "Teclado Mecanico ABNT2", "preco": "349.90"},
+    {"id": "2", "nome": "Mouse Optico USB", "preco": "79.90"},
+    {"id": "3", "nome": "Monitor LED 24 polegadas", "preco": "899.00"},
+]
+
+
+@app.route("/catalogo-js")
+def catalogo_js() -> str:
+    """
+    Catalogo cujo conteudo e injetado via JavaScript (simula AJAX).
+
+    Alvo de teste para 'extract web --js'. O HTML servido vem com a
+    tabela VAZIA; um <script> busca /catalogo-js/dados (fetch) e injeta
+    as linhas no DOMContentLoaded. Sem executar JavaScript (modo httpx),
+    nenhum produto aparece no HTML cru — e e justamente esse contraste
+    (0 itens sem --js, N itens com --js) que prova o modo JS.
+    """
+    return render_template("catalogo_js.html")
+
+
+@app.route("/catalogo-js/dados")
+def catalogo_js_dados() -> Response:
+    """Dados (JSON) consumidos via fetch pela pagina /catalogo-js."""
+    return jsonify(_CATALOGO_JS)
+
+
 _telegram_inbox: list[dict[str, Any]] = []
 
 
