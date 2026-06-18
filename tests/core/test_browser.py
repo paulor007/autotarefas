@@ -258,7 +258,11 @@ class TestNavigation:
     ) -> None:
         with BrowserSession(timeout_ms=15000, screenshot_dir=screenshot_dir) as s:
             s.wait_for("#record-id")
-        mocks["page"].locator.return_value.wait_for.assert_called_once_with(
+
+        locator = mocks["page"].locator.return_value
+        mocks["page"].locator.assert_called_once_with("#record-id")
+        locator.nth.assert_called_once_with(0)
+        locator.nth.return_value.wait_for.assert_called_once_with(
             timeout=15000,
             state="visible",
         )
@@ -270,7 +274,11 @@ class TestNavigation:
     ) -> None:
         with BrowserSession(screenshot_dir=screenshot_dir) as s:
             s.wait_for("#x", timeout_ms=1000)
-        mocks["page"].locator.return_value.wait_for.assert_called_once_with(
+
+        locator = mocks["page"].locator.return_value
+        mocks["page"].locator.assert_called_once_with("#x")
+        locator.nth.assert_called_once_with(0)
+        locator.nth.return_value.wait_for.assert_called_once_with(
             timeout=1000,
             state="visible",
         )

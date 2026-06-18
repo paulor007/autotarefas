@@ -229,7 +229,7 @@ class BrowserSession:
         *,
         timeout_ms: int | None = None,
     ) -> None:
-        """Espera elemento aparecer e ficar visivel."""
+        """Espera ate que pelo menos um elemento do seletor fique visivel."""
         actual_timeout = timeout_ms if timeout_ms is not None else self.timeout_ms
         logger.debug(
             "wait_for: {sel} (timeout={timeout}ms)",
@@ -238,7 +238,10 @@ class BrowserSession:
         )
 
         page = self._ensure_page()
-        page.locator(selector).wait_for(timeout=actual_timeout, state="visible")
+        page.locator(selector).nth(0).wait_for(
+            timeout=actual_timeout,
+            state="visible",
+        )
 
     def text(self, selector: str) -> str:
         """Retorna o texto de um elemento."""
