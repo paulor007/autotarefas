@@ -20,6 +20,7 @@ from typing import Any
 
 import pytest
 
+from autotarefas.core import base as base_module
 from autotarefas.core.base import BaseTask, TaskResult, TaskStatus
 from autotarefas.core.exceptions import AutoTarefasError
 
@@ -100,10 +101,7 @@ def audit_records(monkeypatch: pytest.MonkeyPatch) -> list[dict[str, Any]]:
     def fake_record(**kwargs: Any) -> None:
         records.append(kwargs)
 
-    monkeypatch.setattr(
-        "autotarefas.core.base.audit.record",
-        fake_record,
-    )
+    monkeypatch.setattr(base_module.audit, "record", fake_record)  # type: ignore[attr-defined]
     return records
 
 
@@ -208,7 +206,8 @@ class TestAuditRobustness:
             raise RuntimeError("audit DB offline")
 
         monkeypatch.setattr(
-            "autotarefas.core.base.audit.record",
+            base_module.audit,  # type: ignore[attr-defined]
+            "record",
             fake_record_raises,
         )
 
@@ -226,7 +225,8 @@ class TestAuditRobustness:
             raise RuntimeError("audit DB offline")
 
         monkeypatch.setattr(
-            "autotarefas.core.base.audit.record",
+            base_module.audit,  # type: ignore[attr-defined]
+            "record",
             fake_record_raises,
         )
 
