@@ -9,7 +9,91 @@ e este projeto adere a [Versionamento Semântico](https://semver.org/lang/pt-BR/
 
 ## [Não lançado]
 
-Em desenvolvimento. Próxima: extração com JavaScript (`extract web --js`).
+Em desenvolvimento.
+
+---
+
+## [1.3.0] — 2026-06-19
+
+🌐 **Renderização JavaScript no web scraping!** O comando `extract web`
+ganha o modo `--js`: usa um navegador headless (Playwright) para renderizar
+páginas cujo conteúdo é carregado por JavaScript (AJAX/SPA) e extrai o HTML
+**depois** que o script roda. Não é uma task nova — é um novo modo da
+`extract web` existente, e o modo padrão (httpx) continua intacto e sem
+depender do navegador. Acompanha uma prova end-to-end real: a mesma
+extração, contra a mesma página, rende 0 itens sem `--js` e os itens
+renderizados com `--js`.
+
+### Adicionado
+
+#### Modo JavaScript no extract web
+
+- **`BrowserSession.content()`** — retorna o HTML renderizado da página
+  inteira (após o JavaScript), entre `current_url()` e `screenshot()`
+- **Modo JS na `ExtractWebTask`** (`autotarefas.tasks.extract_web`):
+  - `use_js` liga a renderizacao via navegador; `wait_for` aguarda um
+    seletor aparecer antes de extrair; `headless` controla a janela
+  - **Uma unica sessao de navegador reaproveitada** ao longo da paginacao
+    (nao reabre o Chromium a cada pagina)
+  - Retry so em timeout do Playwright; o loop de paginacao e compartilhado
+    com o modo httpx (`_scrape_loop`)
+  - **Imports lazy** do navegador: quem usa so o modo httpx nao carrega o
+    Playwright
+  - Erros do navegador traduzidos em mensagens acionaveis (navegador
+    ausente -> `playwright install chromium`; timeout -> aumente `--timeout`)
+- **Flags `--js` e `--wait-for`** no comando `autotarefas extract web`:
+  - `--wait-for` so e aceito junto com `--js` (erro de uso -> exit 2)
+  - O header da execucao indica quando a renderizacao via navegador esta ativa
+
+#### Demo
+
+- Pagina **`/catalogo-js`** no servidor demo: o HTML inicial vem com a
+  tabela vazia e um `<script>` busca **`/catalogo-js/dados`** (rota JSON
+  com 3 produtos fixos) e injeta as linhas — alvo controlado para testar
+  o modo `--js` (mesmos seletores do `/catalogo`)
+
+#### Testes
+
+- **Teste E2E de integracao** (`tests/e2e/`): sobe o demo numa porta real
+  (em thread, sem dependencia nova) e prova o **contraste** — sem `--js`
+  extrai 0 itens; com `--js` extrai os 3 produtos. Marcado
+  `@pytest.mark.integration` e com **skip automatico** se o navegador nao
+  estiver instalado (o CI nao precisa de Chromium)
+- ~30 testes novos no total (modo JS da `ExtractWebTask` com `BrowserSession`
+  mockado, flags `--js`/`--wait-for` na CLI, rota `/catalogo-js`, e o E2E)
+
+### Corrigido
+
+- **`BrowserSession.wait_for()` usa `.nth(0)`** — esperar um seletor que
+  casa multiplos elementos (como `tr.produto`) disparava _strict mode
+  violation_ no Playwright. Agora espera o primeiro elemento aparecer
+  (semantica "pelo menos um"), tornando o `wait_for` adequado a seletores
+  de lista — o caso comum em scraping. Bug descoberto justamente pela prova
+  E2E real com navegador (os mocks nao o revelavam)
+
+### Mudado
+
+- README e roadmap atualizados com o modo `extract web --js`
+
+### Estatisticas
+
+- **11 comandos** · **11 tasks** (`BaseTask`) · **1202 testes** (1 deles, o
+  E2E com navegador, exige Chromium e e pulado no CI) · **92% de cobertura**
+  · **0 erros** em mypy / ruff / bandit
+
+### Licoes aprendidas notaveis
+
+- **Mock prova a logica; o E2E prova a integracao.** O _strict mode_ do
+  Playwright so apareceu rodando contra um navegador real — dai o valor de
+  um teste de integracao de verdade, separado e com skip automatico
+- **`locator.nth(0).wait_for(...)`** espera "pelo menos um" elemento de uma
+  lista, sem o modo estrito reclamar
+- **Imports lazy** mantem o modo httpx desacoplado do Playwright (separacao
+  de responsabilidades sem custo para quem nao usa `--js`)
+- **Prova por contraste (0 vs N)** e a evidencia mais forte e didatica de
+  que e a renderizacao do JavaScript — e nao o parser — que traz o conteudo
+- **Determinismo sem `sleep`**: a pagina demo carrega via `fetch` e o E2E
+  usa `wait_for` para aguardar o seletor, em vez de pausas fixas frageis
 
 ---
 
@@ -840,7 +924,11 @@ com 2 comandos, ~220 testes.
 
 ---
 
-[Não lançado]: https://github.com/paulor007/autotarefas/compare/v0.8.0...HEAD
+[Não lançado]: https://github.com/paulor007/autotarefas/compare/v1.3.0...HEAD
+[1.3.0]: https://github.com/paulor007/autotarefas/releases/tag/v1.3.0
+[1.2.0]: https://github.com/paulor007/autotarefas/releases/tag/v1.2.0
+[1.1.0]: https://github.com/paulor007/autotarefas/releases/tag/v1.1.0
+[1.0.0]: https://github.com/paulor007/autotarefas/releases/tag/v1.0.0
 [0.8.0]: https://github.com/paulor007/autotarefas/releases/tag/v0.8.0
 [0.7.0]: https://github.com/paulor007/autotarefas/releases/tag/v0.7.0
 [0.6.0]: https://github.com/paulor007/autotarefas/releases/tag/v0.6.0

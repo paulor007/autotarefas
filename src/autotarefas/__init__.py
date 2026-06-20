@@ -6,7 +6,7 @@ Pacote raiz que expoe metadados (versao, autor, licenca).
 
 from __future__ import annotations
 
-__version__ = "1.2.0"
+__version__ = "1.3.0"
 __author__ = "Paulo Lavarini"
 __email__ = "paulo.lavarini@gmail.com"
 __license__ = "MIT"

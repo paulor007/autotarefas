@@ -27,7 +27,7 @@ arquivos, sistemas web (RPA) e APIs. Projeto Python moderno com foco em
 
 - **Automação web (RPA)** — cadastra registros web a partir de planilha, com navegador real (Playwright)
 - **Extração via API** — consome APIs REST paginadas (com retry e rate limit) e salva em CSV/XLSX/JSON
-- **Extração via Web Scraping** — raspa páginas HTML por seletores CSS, segue a paginação e salva em CSV/XLSX/JSON
+- **Extração via Web Scraping** — raspa páginas HTML por seletores CSS, segue a paginação e salva em CSV/XLSX/JSON; o modo `--js` renderiza páginas carregadas por JavaScript (Playwright)
 - **Envio via API** — cadastro em massa: lê planilha e faz POST de cada linha (retry, rate limit, relatório)
 - **Notificações por Email** — envia emails em massa de uma planilha, com template `{coluna}` e senha protegida
 - **Notificações por Telegram** — envia mensagens pela Bot API de uma planilha (gratuito), com template `{coluna}` e token protegido
@@ -44,7 +44,7 @@ arquivos, sistemas web (RPA) e APIs. Projeto Python moderno com foco em
 - **Dry-run em tudo** — simula operações antes de fazer mudanças reais
 - **Integração contínua** — CI no GitHub Actions (Python 3.12 e 3.13)
 - **Type-safe** — mypy strict, 0 erros
-- **1170 testes**, 92% de cobertura
+- **1202 testes**, 92% de cobertura
 
 ---
 
@@ -324,17 +324,19 @@ Extraidos 48 itens -> produtos.csv
 
 ### Opções
 
-| Flag                  | Descrição                                      | Default |
-| --------------------- | ---------------------------------------------- | ------- |
-| `--url, -u`           | URL da página a raspar                         | —       |
-| `--output, -o`        | Arquivo de saída (.csv/.xlsx/.json)            | —       |
-| `--row-selector, -r`  | Seletor CSS de cada linha (ex: `tr.produto`)   | —       |
-| `--field, -f`         | Coluna no formato `coluna=seletor` (repetível) | —       |
-| `--next-selector, -n` | Seletor do link "próxima página"               | —       |
-| `--max-pages`         | Limite de páginas (default: todas)             | —       |
-| `--delay`             | Pausa entre páginas em segundos                | `0.0`   |
-| `--timeout`           | Timeout por request em segundos                | `30.0`  |
-| `--max-retries`       | Tentativas por página em erro temporário       | `3`     |
+| Flag                  | Descrição                                               | Default |
+| --------------------- | ------------------------------------------------------- | ------- |
+| `--url, -u`           | URL da página a raspar                                  | —       |
+| `--output, -o`        | Arquivo de saída (.csv/.xlsx/.json)                     | —       |
+| `--row-selector, -r`  | Seletor CSS de cada linha (ex: `tr.produto`)            | —       |
+| `--field, -f`         | Coluna no formato `coluna=seletor` (repetível)          | —       |
+| `--next-selector, -n` | Seletor do link "próxima página"                        | —       |
+| `--max-pages`         | Limite de páginas (default: todas)                      | —       |
+| `--delay`             | Pausa entre páginas em segundos                         | `0.0`   |
+| `--timeout`           | Timeout por request em segundos                         | `30.0`  |
+| `--max-retries`       | Tentativas por página em erro temporário                | `3`     |
+| `--js`                | Renderiza a página num navegador (Playwright)           | _off_   |
+| `--wait-for`          | Seletor CSS a aguardar antes de extrair (só com `--js`) | —       |
 
 ### Recursos
 
@@ -344,6 +346,7 @@ Extraidos 48 itens -> produtos.csv
 - **Multi-formato** — CSV/XLSX/JSON pela extensão do `--output`
 - **Scraping educado** — User-Agent honesto e `--delay` entre páginas
 - **Parser leve** — `html.parser` da stdlib (sem `lxml`)
+- **Modo JavaScript (`--js`)** — renderiza a página num navegador headless (Playwright) e extrai o HTML após o JS; ideal para conteúdo via AJAX/SPA (requer `playwright install chromium`)
 
 ### Dry-run
 
@@ -353,12 +356,29 @@ autotarefas --dry-run extract web -u http://localhost:5555/catalogo -o x.csv \
 # [dry-run] Extrairia ~10 itens na 1a pagina (tem proxima: sim)
 ```
 
-### Sistema demo (para testes)
+### Modo JavaScript (`--js`)
 
-O servidor demo expõe o `/catalogo` (48 produtos paginados) como alvo:
+Para páginas cujo conteúdo é carregado por JavaScript (AJAX/SPA), o modo
+`--js` usa um navegador headless (Playwright) para renderizar a página e
+extrair o HTML **depois** que o script roda. O `--wait-for` aguarda um
+seletor aparecer (sem pausas fixas):
 
 ```bash
-python -m tools.demo_server          # http://localhost:5555/catalogo
+autotarefas extract web -u http://localhost:5555/catalogo-js -o produtos.csv \
+  -r "tr.produto" -f "nome=td.nome" -f "preco=td.preco" \
+  --js --wait-for "tr.produto"
+```
+
+Requer o navegador instalado (`playwright install chromium`). O modo padrão
+(sem `--js`) continua usando httpx — rápido e sem navegador.
+
+### Sistema demo (para testes)
+
+O servidor demo expõe o `/catalogo` (48 produtos paginados) e o
+`/catalogo-js` (conteúdo carregado por JavaScript) como alvos:
+
+```bash
+python -m tools.demo_server          # /catalogo e /catalogo-js
 ```
 
 ---
@@ -788,8 +808,9 @@ autotarefas sync        # sincronização API->API (sync api)
 - ✅ **v0.8.0** — Notificações por Email
 - ✅ **v1.0.0** — Versão estável: CI/CD + documentação + sincronização API→API
 - ✅ **v1.1.0** — Web scraping (`extract web`)
-- ✅ **v1.2.0** — Notificações por Telegram _(atual)_
-- ⏳ **futuro** — Extração com JavaScript (`extract web --js`)
+- ✅ **v1.2.0** — Notificações por Telegram
+- ✅ **v1.3.0** — Extração com JavaScript (`extract web --js`) _(atual)_
+- ⏳ **futuro** — Paginação por clique em SPAs no modo `--js`
 
 ---
 
