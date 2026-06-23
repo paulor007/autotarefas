@@ -187,6 +187,9 @@ reports/
 data/
 screenshots/
 
+# Dashboard gerado pelo comando (output default; nao versionar)
+/dashboard.html
+
 # === PLAYWRIGHT (browsers e cache) ===
 
 .playwright/

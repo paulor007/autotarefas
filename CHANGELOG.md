@@ -13,6 +13,39 @@ Em desenvolvimento.
 
 ---
 
+## [1.4.0] — 2026-06-23
+
+📊 **Dashboard de auditoria!** Um novo comando `autotarefas dashboard`
+transforma o histórico de execuções (audit trail) num **painel HTML
+estático e autocontido** — as mesmas execuções do `report`, agora visuais.
+Sem servidor e sem dependência nova: o comando lê o audit, gera a página e
+pode abri-la no navegador (`--open`). É a primeira parte **visual** do
+projeto, construída em camadas separadas (dados → HTML → CLI).
+
+### Adicionado
+
+#### Dashboard de auditoria
+
+- **Pacote `autotarefas.dashboard`** com camadas desacopladas:
+  - **`reader`** — lê o audit (reusa `audit.query()`) e devolve execuções
+    tipadas (`AuditEntry`), resumo por status (`AuditSummary`) e a
+    verificação do `input_hash` (`verify_input_hash`)
+  - **`renderer`** — `render_dashboard()` gera um HTML autocontido (CSS
+    embutido), com escape de todo valor dinâmico (anti-injection)
+- **Comando `autotarefas dashboard`**:
+  - Gera o HTML do audit e grava em `--output` (default: `dashboard.html`)
+  - Filtros `--task`, `--status` e `--limit` (semântica do `report`)
+  - `--open` abre o arquivo no navegador (via stdlib `webbrowser`)
+- Resumo em cards (total e por status) + tabela de execuções com indicação
+  do `input_hash`; dados sensíveis nunca aparecem (apenas o hash)
+
+### Testes e qualidade
+
+- **1229 testes** (1228 passed, 1 skipped), 92% de cobertura
+- 0 erros em ruff, mypy estrito e bandit; `mypy src/ tests/` 100% limpo
+
+---
+
 ## [1.3.0] — 2026-06-19
 
 🌐 **Renderização JavaScript no web scraping!** O comando `extract web`
@@ -924,7 +957,8 @@ com 2 comandos, ~220 testes.
 
 ---
 
-[Não lançado]: https://github.com/paulor007/autotarefas/compare/v1.3.0...HEAD
+[Não lançado]: https://github.com/paulor007/autotarefas/compare/v1.4.0...HEAD
+[1.4.0]: https://github.com/paulor007/autotarefas/releases/tag/v1.4.0
 [1.3.0]: https://github.com/paulor007/autotarefas/releases/tag/v1.3.0
 [1.2.0]: https://github.com/paulor007/autotarefas/releases/tag/v1.2.0
 [1.1.0]: https://github.com/paulor007/autotarefas/releases/tag/v1.1.0

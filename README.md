@@ -38,13 +38,14 @@ arquivos, sistemas web (RPA) e APIs. Projeto Python moderno com foco em
 - **Backup ZIP** com hash SHA-256 e excludes inteligentes
 - **Organizador de arquivos** com regras YAML
 - **Relatórios consolidados** do audit trail (summary/list/errors)
+- **Dashboard de auditoria** — painel HTML visual das execuções, gerado localmente (v1.4.0)
 - **Segurança transversal documentada** — 13 princípios, threat model
 - **Audit trail completo** — toda execução em SQLite append-only com HMAC-SHA256
 - **Mascaramento automático** — CPFs, CNPJs, senhas e tokens nunca vazam em logs nem em screenshots
 - **Dry-run em tudo** — simula operações antes de fazer mudanças reais
 - **Integração contínua** — CI no GitHub Actions (Python 3.12 e 3.13)
 - **Type-safe** — mypy strict, 0 erros
-- **1202 testes**, 92% de cobertura
+- **1229 testes**, 92% de cobertura
 
 ---
 
@@ -720,6 +721,50 @@ Falhas recentes (ultimas 5):
 
 ---
 
+## 📊 Dashboard de Auditoria (v1.4.0)
+
+Um **painel HTML** do audit trail: as mesmas execuções do `report`, agora
+visuais. O comando lê o histórico, gera uma página **estática e autocontida**
+(sem servidor, sem dependência extra) e pode abri-la no navegador.
+
+![Dashboard de auditoria do AutoTarefas](docs/assets/dashboard.png)
+
+### Uso
+
+```bash
+# Gera dashboard.html no diretório atual
+autotarefas dashboard
+
+# Caminho de saída customizado (cria as pastas)
+autotarefas dashboard --output relatorios/audit.html
+
+# Gera e abre no navegador
+autotarefas dashboard --open
+
+# Filtros (mesma semântica do report)
+autotarefas dashboard --task validate --status failure --limit 50
+```
+
+### O que mostra
+
+- **Resumo** em cards: total de execuções e contagem por status.
+- **Tabela** de execuções: quando, task, status, duração, linhas OK/falhas,
+  indicação do `input_hash` (HMAC) e ambiente.
+- Todo valor dinâmico é **escapado** (sem HTML injection); dados sensíveis
+  nunca aparecem — apenas o hash do input.
+
+### Opções
+
+| Flag                  | Descrição                                 | Default          |
+| --------------------- | ----------------------------------------- | ---------------- |
+| `--output, -o PATH`   | Arquivo HTML de saída                     | `dashboard.html` |
+| `--task, -t NAME`     | Filtra por task                           | —                |
+| `--status, -s STATUS` | Filtra por status                         | —                |
+| `--limit N`           | Máximo de execuções incluídas             | `100`            |
+| `--open`              | Abre o arquivo gerado no navegador padrão | desligado        |
+
+---
+
 ## 🛡️ Segurança (v0.4.0)
 
 Este projeto adere a **13 princípios documentados** de segurança.
@@ -809,7 +854,8 @@ autotarefas sync        # sincronização API->API (sync api)
 - ✅ **v1.0.0** — Versão estável: CI/CD + documentação + sincronização API→API
 - ✅ **v1.1.0** — Web scraping (`extract web`)
 - ✅ **v1.2.0** — Notificações por Telegram
-- ✅ **v1.3.0** — Extração com JavaScript (`extract web --js`) _(atual)_
+- ✅ **v1.3.0** — Extração com JavaScript (`extract web --js`)
+- ✅ **v1.4.0** — Dashboard de auditoria (`autotarefas dashboard`) _(atual)_
 - ⏳ **futuro** — Paginação por clique em SPAs no modo `--js`
 
 ---

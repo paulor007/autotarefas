@@ -50,6 +50,19 @@ autotarefas report --task send_api --limit 50
 
 ---
 
+## dashboard
+
+Gera um **painel HTML** do audit trail — as mesmas execuções do `report`, em formato visual. A página é estática e autocontida (sem servidor); use `--open` para abri-la no navegador.
+
+```bash
+autotarefas dashboard --output relatorios/audit.html --open
+```
+
+!!! tip "Filtros"
+Aceita `--task`, `--status` e `--limit`, com a mesma semântica do `report`. Dados sensíveis não aparecem no HTML — apenas o `input_hash` (HMAC) de cada execução.
+
+---
+
 ## rpa cadastro
 
 Cadastro em massa via **navegador** (Playwright), para sistemas web sem API. Lê uma planilha e preenche o formulário linha a linha.
