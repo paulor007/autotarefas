@@ -1,9 +1,9 @@
 """
 Dashboard local do AutoTarefas (visualizacao do audit trail).
 
-Subetapa 1: apenas a camada de leitura (``reader``). Sem HTML, sem
-servidor e sem dependencias novas — a base sobre a qual o dashboard
-visual sera construido nas proximas subetapas.
+Subetapa 1: camada de leitura (``reader``).
+Subetapa 2: renderizacao HTML estatica (``renderer``).
+Sem servidor e sem dependencias novas — a base do dashboard visual.
 """
 
 from __future__ import annotations
@@ -15,11 +15,13 @@ from .reader import (
     summarize,
     verify_input_hash,
 )
+from .renderer import render_dashboard
 
 __all__ = [
     "AuditEntry",
     "AuditSummary",
     "read_entries",
+    "render_dashboard",
     "summarize",
     "verify_input_hash",
 ]
