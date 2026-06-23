@@ -16,6 +16,7 @@ import click
 
 from autotarefas import __version__
 from autotarefas.cli.commands.backup import backup
+from autotarefas.cli.commands.dashboard import dashboard
 from autotarefas.cli.commands.extract import extract
 from autotarefas.cli.commands.info import info
 from autotarefas.cli.commands.init import init
@@ -77,6 +78,7 @@ def cli(
 # ============================================================
 
 cli.add_command(backup)
+cli.add_command(dashboard)
 cli.add_command(info)
 cli.add_command(init)
 cli.add_command(organize)
