@@ -1,0 +1,764 @@
+{
+  "schema_version": "1.0",
+  "generated_at": "2026-06-24T19:30:01.591247+00:00",
+  "tool": {
+    "name": "autotarefas",
+    "version": "1.4.0"
+  },
+  "environment": {
+    "python": "3.13.5",
+    "platform": "win32",
+    "browser_available": true,
+    "browser_note": "Chromium disponivel",
+    "mode": "demo"
+  },
+  "summary": {
+    "total": 13,
+    "captured": 13,
+    "requires_browser": 0,
+    "by_status": {
+      "failure": 1,
+      "success": 11
+    },
+    "by_outcome": {
+      "caught_issue": 1,
+      "ok": 12
+    }
+  },
+  "categories": [
+    {
+      "key": "validacao",
+      "title": "Validacao & Qualidade",
+      "summary": "Valida planilhas contra schema YAML e barra dados fora do padrao."
+    },
+    {
+      "key": "arquivos",
+      "title": "Backup & Organizacao",
+      "summary": "Compacta com hash SHA-256 e classifica arquivos por tipo."
+    },
+    {
+      "key": "integracao",
+      "title": "Integracao de API",
+      "summary": "Envia, coleta e sincroniza registros entre APIs REST."
+    },
+    {
+      "key": "notificacoes",
+      "title": "Notificacoes",
+      "summary": "Disparos personalizados por e-mail (SMTP) e Telegram."
+    },
+    {
+      "key": "scraping",
+      "title": "Web Scraping",
+      "summary": "Raspa catalogos paginados, inclusive renderizados via JavaScript."
+    },
+    {
+      "key": "rpa",
+      "title": "RPA (Navegador)",
+      "summary": "Preenche formularios web automaticamente via Chromium headless."
+    },
+    {
+      "key": "auditoria",
+      "title": "Auditoria",
+      "summary": "Consolida o trilho append-only e gera o painel HTML."
+    }
+  ],
+  "runs": [
+    {
+      "id": "validate",
+      "category": "validacao",
+      "title": "Validacao de planilha",
+      "subtitle": "CSV x schema YAML (CPF, e-mail, idade)",
+      "command": "python -m autotarefas validate D:\\Projetos\\autotarefas\\examples\\fixtures\\clientes.csv -s D:\\Projetos\\autotarefas\\examples\\fixtures\\schema_clientes.yaml --report-json D:\\Projetos\\autotarefas\\examples\\output\\validate_report.json",
+      "requires_browser": false,
+      "expected_outcome": "Detecta 1 CPF invalido (digito verificador) e retorna codigo 1.",
+      "input": {
+        "descriptor": "CSV x schema YAML (CPF, e-mail, idade)",
+        "identity": {
+          "task": "validate",
+          "arquivo": "clientes.csv",
+          "schema": "schema_clientes.yaml"
+        },
+        "preview": [
+          {
+            "nome": "Ana Lima",
+            "email": "ana.lima@example.com",
+            "cpf": "***.***.***-**",
+            "chat_id": "100001"
+          },
+          {
+            "nome": "Bruno Sa",
+            "email": "bruno.sa@example.com",
+            "cpf": "***.***.***-**",
+            "chat_id": "100002"
+          },
+          {
+            "nome": "Carla Reis",
+            "email": "carla.reis@example.com",
+            "cpf": "***.***.***-**",
+            "chat_id": "100003"
+          }
+        ],
+        "hmac_sha256": "9be5a724bc4f7a469ecfb9c1b68a3b69de53e75368441f223fc7ff33f7ca1d64",
+        "hmac_short": "9be5a724bc4f",
+        "hmac_algo": "HMAC-SHA256 (core.security.hash_string, chave de auditoria)"
+      },
+      "outputs": [
+        {
+          "path": "examples/output/validate_report.json",
+          "kind": "file",
+          "files": 1,
+          "bytes": 744,
+          "sha256": "16c5379b08cc60e89215c87fbf9074b31f36b9e4205d79b2f7cd2337b99dbda9"
+        }
+      ],
+      "captured": true,
+      "exit_code": 1,
+      "duration_ms": 1020,
+      "stdout": "Carregando schema: \nD:\\Projetos\\autotarefas\\examples\\fixtures\\schema_clientes.yaml\nSchema carregado: 4 coluna(s) declarada(s).\n\nValidando arquivo: D:\\Projetos\\autotarefas\\examples\\fixtures\\clientes.csv\n\n[OK] Relatorio JSON salvo: \nD:\\Projetos\\autotarefas\\examples\\output\\validate_report.json\n\nArquivo:  D:\\Projetos\\autotarefas\\examples\\fixtures\\clientes.csv\nLinhas:   5\nColunas:  5\n\nEncontrados 1 problema(s):\n  - 1 erro(s)\n  - 0 aviso(s)\n\n  [ERROR] Linha 6, coluna 'cpf': CPF invalido: '***.***.***-**'",
+      "stderr": "[ERRO] Validacao falhou: 1 erro(s).",
+      "outcome": "caught_issue",
+      "headline": "CPF invalido barrado pela validacao",
+      "audit": {
+        "recorded": true,
+        "task_name": "validate",
+        "status": "failure",
+        "timestamp": "2026-06-24T19:29:22.499847+00:00",
+        "duration_ms": 2,
+        "rows_affected": 0,
+        "rows_failed": 0,
+        "environment": "demo",
+        "stored_input_hash": "",
+        "verify_input_hash_against_stored": false
+      }
+    },
+    {
+      "id": "backup",
+      "category": "arquivos",
+      "title": "Backup compactado",
+      "subtitle": "ZIP com hash SHA-256",
+      "command": "python -m autotarefas backup D:\\Projetos\\autotarefas\\examples\\fixtures -o D:\\Projetos\\autotarefas\\examples\\output\\backup_fixtures.zip",
+      "requires_browser": false,
+      "expected_outcome": "Compacta a pasta de fixtures e calcula o hash SHA-256 do pacote.",
+      "input": {
+        "descriptor": "ZIP com hash SHA-256",
+        "identity": {
+          "task": "backup",
+          "origem": "examples/fixtures"
+        },
+        "preview": null,
+        "hmac_sha256": "66dd8d6c3686c4b696cfd9b50d1d5dba31095fca16e641f767ef5cc64e91a9d5",
+        "hmac_short": "66dd8d6c3686",
+        "hmac_algo": "HMAC-SHA256 (core.security.hash_string, chave de auditoria)"
+      },
+      "outputs": [
+        {
+          "path": "examples/output/backup_fixtures.zip",
+          "kind": "file",
+          "files": 1,
+          "bytes": 906842,
+          "sha256": "c566f44a6a323163c560792bf157e5ab0304588453d91f95303997ae040ca7dd"
+        }
+      ],
+      "captured": true,
+      "exit_code": 0,
+      "duration_ms": 1051,
+      "stdout": "Backup de 1 source -> \nD:\\Projetos\\autotarefas\\examples\\output\\backup_fixtures.zip\n\n[OK] Backup criado: D:\\Projetos\\autotarefas\\examples\\output\\backup_fixtures.zip\nArquivos incluidos: 8\nTamanho: 885.6 KB\nSHA-256: c566f44a6a323163c560792bf157e5ab0304588453d91f95303997ae040ca7dd",
+      "stderr": "",
+      "outcome": "ok",
+      "headline": "Pacote ZIP integro com hash SHA-256 (8 linha(s))",
+      "audit": {
+        "recorded": true,
+        "task_name": "backup",
+        "status": "success",
+        "timestamp": "2026-06-24T19:29:23.523645+00:00",
+        "duration_ms": 37,
+        "rows_affected": 8,
+        "rows_failed": 0,
+        "environment": "demo",
+        "stored_input_hash": "",
+        "verify_input_hash_against_stored": false
+      }
+    },
+    {
+      "id": "organize",
+      "category": "arquivos",
+      "title": "Organizacao por tipo",
+      "subtitle": "Classifica arquivos em subpastas",
+      "command": "python -m autotarefas --yes organize D:\\Projetos\\autotarefas\\examples\\fixtures\\desorganizado -r D:\\Projetos\\autotarefas\\examples\\fixtures\\organize_rules.yaml",
+      "requires_browser": false,
+      "expected_outcome": "Copia os arquivos para documentos/, imagens/ e planilhas/.",
+      "input": {
+        "descriptor": "Classifica arquivos em subpastas",
+        "identity": {
+          "task": "organize",
+          "origem": "desorganizado",
+          "regras": "organize_rules.yaml"
+        },
+        "preview": null,
+        "hmac_sha256": "1e32567a27bcf4744cee6af2876ec6be4d9ae1a57c6d57d316b3f8be8812ab50",
+        "hmac_short": "1e32567a27bc",
+        "hmac_algo": "HMAC-SHA256 (core.security.hash_string, chave de auditoria)"
+      },
+      "outputs": [
+        {
+          "path": "examples/output/organizado",
+          "kind": "dir",
+          "files": 5,
+          "bytes": 919288,
+          "sha256": null
+        }
+      ],
+      "captured": true,
+      "exit_code": 0,
+      "duration_ms": 1022,
+      "stdout": "Carregando regras: \nD:\\Projetos\\autotarefas\\examples\\fixtures\\organize_rules.yaml\nRegras carregadas: 3 regra(s).\n\nSource:      D:\\Projetos\\autotarefas\\examples\\fixtures\\desorganizado\nTarget root: examples\\output\\organizado\nAction:      copy\nOn conflict: rename\n\n\n[OK] Organizacao concluida! 5 arquivos copy-idos.",
+      "stderr": "",
+      "outcome": "ok",
+      "headline": "Arquivos classificados por tipo (5 linha(s))",
+      "audit": {
+        "recorded": true,
+        "task_name": "organize",
+        "status": "success",
+        "timestamp": "2026-06-24T19:29:24.579866+00:00",
+        "duration_ms": 7,
+        "rows_affected": 5,
+        "rows_failed": 0,
+        "environment": "demo",
+        "stored_input_hash": "",
+        "verify_input_hash_against_stored": false
+      }
+    },
+    {
+      "id": "send_api",
+      "category": "integracao",
+      "title": "Envio via API",
+      "subtitle": "POST de cada linha para /api/clientes",
+      "command": "python -m autotarefas send api -p D:\\Projetos\\autotarefas\\examples\\fixtures\\clientes.csv -u http://127.0.0.1:5555/api/clientes -r D:\\Projetos\\autotarefas\\examples\\output\\send_api_report.csv",
+      "requires_browser": false,
+      "expected_outcome": "Envia as 5 linhas da planilha como JSON para a API local.",
+      "input": {
+        "descriptor": "POST de cada linha para /api/clientes",
+        "identity": {
+          "task": "send_api",
+          "endpoint": "/api/clientes",
+          "planilha": "clientes.csv"
+        },
+        "preview": [
+          {
+            "nome": "Ana Lima",
+            "email": "ana.lima@example.com",
+            "cpf": "***.***.***-**",
+            "chat_id": "100001"
+          },
+          {
+            "nome": "Bruno Sa",
+            "email": "bruno.sa@example.com",
+            "cpf": "***.***.***-**",
+            "chat_id": "100002"
+          },
+          {
+            "nome": "Carla Reis",
+            "email": "carla.reis@example.com",
+            "cpf": "***.***.***-**",
+            "chat_id": "100003"
+          }
+        ],
+        "hmac_sha256": "ef501754a35b8007460b2b95651f1c608bcb5118f366deb06e642b10c77bcfc9",
+        "hmac_short": "ef501754a35b",
+        "hmac_algo": "HMAC-SHA256 (core.security.hash_string, chave de auditoria)"
+      },
+      "outputs": [
+        {
+          "path": "examples/output/send_api_report.csv",
+          "kind": "file",
+          "files": 1,
+          "bytes": 393,
+          "sha256": "a70715f963007d3d95d6410f42fd52d453c716a54499644a258464adf33192ca"
+        }
+      ],
+      "captured": true,
+      "exit_code": 0,
+      "duration_ms": 1950,
+      "stdout": "============================================================\n Envio via API\n============================================================\nPlanilha: D:\\Projetos\\autotarefas\\examples\\fixtures\\clientes.csv\nURL:      http://127.0.0.1:5555/api/clientes\nModo:     normal\n\n  [1/5] [OK] criado\n  [2/5] [OK] criado\n  [3/5] [OK] criado\n  [4/5] [OK] criado\n  [5/5] [OK] criado\n\n============================================================\nTotal:    5\nEnviados: 5\nFalhas:   0\nRelatorio: D:\\Projetos\\autotarefas\\examples\\output\\send_api_report.csv\n============================================================",
+      "stderr": "",
+      "outcome": "ok",
+      "headline": "Registros enviados via API (5 linha(s))",
+      "audit": {
+        "recorded": true,
+        "task_name": "send_api",
+        "status": "success",
+        "timestamp": "2026-06-24T19:29:25.656609+00:00",
+        "duration_ms": 913,
+        "rows_affected": 5,
+        "rows_failed": 0,
+        "environment": "demo",
+        "stored_input_hash": "",
+        "verify_input_hash_against_stored": false
+      }
+    },
+    {
+      "id": "extract_api",
+      "category": "integracao",
+      "title": "Coleta via API",
+      "subtitle": "GET paginado de /api/clientes",
+      "command": "python -m autotarefas extract api -u http://127.0.0.1:5555/api/clientes -o D:\\Projetos\\autotarefas\\examples\\output\\extract_api.csv",
+      "requires_browser": false,
+      "expected_outcome": "Le todas as paginas da API e grava um CSV consolidado.",
+      "input": {
+        "descriptor": "GET paginado de /api/clientes",
+        "identity": {
+          "task": "extract_api",
+          "endpoint": "/api/clientes"
+        },
+        "preview": null,
+        "hmac_sha256": "89c4afb5fdb003476ab5ea11521aa256bd29c57f99a3d6637076c2a8716573bc",
+        "hmac_short": "89c4afb5fdb0",
+        "hmac_algo": "HMAC-SHA256 (core.security.hash_string, chave de auditoria)"
+      },
+      "outputs": [
+        {
+          "path": "examples/output/extract_api.csv",
+          "kind": "file",
+          "files": 1,
+          "bytes": 461,
+          "sha256": "bccd09d72cf88e08642d7f88c638d7db1e34654d42da3415373ae27ff5d121d8"
+        }
+      ],
+      "captured": true,
+      "exit_code": 0,
+      "duration_ms": 1274,
+      "stdout": "============================================================\n Extracao via API\n============================================================\nURL:    http://127.0.0.1:5555/api/clientes\nSaida:  D:\\Projetos\\autotarefas\\examples\\output\\extract_api.csv\nModo:   normal\n\n  Pagina 1/1 ... 5 registros (total: 5)\n\n============================================================\nExtraidos 5 registros -> D:\\Projetos\\autotarefas\\examples\\output\\extract_api.csv\n============================================================",
+      "stderr": "",
+      "outcome": "ok",
+      "headline": "Registros coletados da API (5 linha(s))",
+      "audit": {
+        "recorded": true,
+        "task_name": "extract_api",
+        "status": "success",
+        "timestamp": "2026-06-24T19:29:27.617388+00:00",
+        "duration_ms": 224,
+        "rows_affected": 5,
+        "rows_failed": 0,
+        "environment": "demo",
+        "stored_input_hash": "",
+        "verify_input_hash_against_stored": false
+      }
+    },
+    {
+      "id": "sync_api",
+      "category": "integracao",
+      "title": "Sincronizacao de API",
+      "subtitle": "Replica origem -> destino",
+      "command": "python -m autotarefas sync api -s http://127.0.0.1:5555/api/clientes -d http://127.0.0.1:5556/api/clientes -r D:\\Projetos\\autotarefas\\examples\\output\\sync_report.csv",
+      "requires_browser": false,
+      "expected_outcome": "Copia os registros da origem (5555) para o destino (5556).",
+      "input": {
+        "descriptor": "Replica origem -> destino",
+        "identity": {
+          "task": "sync_api",
+          "origem": "5555",
+          "destino": "5556"
+        },
+        "preview": null,
+        "hmac_sha256": "06f5269b8f8cf336bd45cc1ebce861af6b7d78db87e2815c763e410bfe71baae",
+        "hmac_short": "06f5269b8f8c",
+        "hmac_algo": "HMAC-SHA256 (core.security.hash_string, chave de auditoria)"
+      },
+      "outputs": [
+        {
+          "path": "examples/output/sync_report.csv",
+          "kind": "file",
+          "files": 1,
+          "bytes": 532,
+          "sha256": "dea08a9dd89b482968f50b6caec0706a8dd8e3b566a64a6851baa873fc30b228"
+        }
+      ],
+      "captured": true,
+      "exit_code": 0,
+      "duration_ms": 2347,
+      "stdout": "============================================================\n Sincronizacao API -> API\n============================================================\nOrigem:  http://127.0.0.1:5555/api/clientes\nDestino: http://127.0.0.1:5556/api/clientes\nModo:    normal\n\n  [1/5] [OK] criado\n  [2/5] [OK] criado\n  [3/5] [OK] criado\n  [4/5] [OK] criado\n  [5/5] [OK] criado\n\n============================================================\nExtraidos: 5\nEnviados:  5\nFalhas:    0\nRelatorio: D:\\Projetos\\autotarefas\\examples\\output\\sync_report.csv\n============================================================",
+      "stderr": "",
+      "outcome": "ok",
+      "headline": "Origem replicada no destino (5 linha(s))",
+      "audit": {
+        "recorded": true,
+        "task_name": "sync_api",
+        "status": "success",
+        "timestamp": "2026-06-24T19:29:28.889446+00:00",
+        "duration_ms": 1305,
+        "rows_affected": 5,
+        "rows_failed": 0,
+        "environment": "demo",
+        "stored_input_hash": "",
+        "verify_input_hash_against_stored": false
+      }
+    },
+    {
+      "id": "send_email",
+      "category": "notificacoes",
+      "title": "Disparo de e-mails",
+      "subtitle": "SMTP local (.eml em disco)",
+      "command": "python -m autotarefas send email -p D:\\Projetos\\autotarefas\\examples\\fixtures\\clientes.csv --smtp-host localhost --smtp-port 8025 --from robo@example.com --subject \"AutoTarefas — comunicado para {nome}\" --body \"Ola {nome}, este e um envio de demonstracao do AutoTarefas.\" --no-tls --email-column email -r D:\\Projetos\\autotarefas\\examples\\output\\send_email_report.csv",
+      "requires_browser": false,
+      "expected_outcome": "Envia 5 e-mails personalizados ao servidor SMTP de debug.",
+      "input": {
+        "descriptor": "SMTP local (.eml em disco)",
+        "identity": {
+          "task": "send_email",
+          "planilha": "clientes.csv",
+          "destinatarios": 5
+        },
+        "preview": [
+          {
+            "nome": "Ana Lima",
+            "email": "ana.lima@example.com",
+            "cpf": "***.***.***-**",
+            "chat_id": "100001"
+          },
+          {
+            "nome": "Bruno Sa",
+            "email": "bruno.sa@example.com",
+            "cpf": "***.***.***-**",
+            "chat_id": "100002"
+          },
+          {
+            "nome": "Carla Reis",
+            "email": "carla.reis@example.com",
+            "cpf": "***.***.***-**",
+            "chat_id": "100003"
+          }
+        ],
+        "hmac_sha256": "5b8bf359b24d1faa158760804589981539b062caef852dd8b1d938e711cec25f",
+        "hmac_short": "5b8bf359b24d",
+        "hmac_algo": "HMAC-SHA256 (core.security.hash_string, chave de auditoria)"
+      },
+      "outputs": [
+        {
+          "path": "examples/output/send_email_report.csv",
+          "kind": "file",
+          "files": 1,
+          "bytes": 398,
+          "sha256": "4ee88c0bd61f9aba8df2e4f76dbcee025ec984934c00122d0adaebe213b58a66"
+        },
+        {
+          "path": "examples/output/emails_recebidos",
+          "kind": "dir",
+          "files": 5,
+          "bytes": 1388,
+          "sha256": null
+        }
+      ],
+      "captured": true,
+      "exit_code": 0,
+      "duration_ms": 1103,
+      "stdout": "============================================================\n Envio de emails\n============================================================\nPlanilha: D:\\Projetos\\autotarefas\\examples\\fixtures\\clientes.csv\nSMTP:     localhost:8025 (TLS off)\nDe:       robo@example.com\nAssunto:  AutoTarefas â€” comunicado para {nome}\nModo:     normal\n\n  [1/5] [OK] ana.lima@example.com - enviado\n  [2/5] [OK] bruno.sa@example.com - enviado\n  [3/5] [OK] carla.reis@example.com - enviado\n  [4/5] [OK] diego.souza@example.com - enviado\n  [5/5] [OK] caio.erro@example.com - enviado\n\n============================================================\nTotal:    5\nEnviados: 5\nFalhas:   0\nRelatorio: D:\\Projetos\\autotarefas\\examples\\output\\send_email_report.csv\n============================================================",
+      "stderr": "",
+      "outcome": "ok",
+      "headline": "E-mails entregues ao servidor SMTP (5 linha(s))",
+      "audit": {
+        "recorded": true,
+        "task_name": "send_email",
+        "status": "success",
+        "timestamp": "2026-06-24T19:29:31.258290+00:00",
+        "duration_ms": 33,
+        "rows_affected": 5,
+        "rows_failed": 0,
+        "environment": "demo",
+        "stored_input_hash": "",
+        "verify_input_hash_against_stored": false
+      }
+    },
+    {
+      "id": "send_telegram",
+      "category": "notificacoes",
+      "title": "Mensagens no Telegram",
+      "subtitle": "Bot mock local (sendMessage)",
+      "command": "python -m autotarefas send telegram -p D:\\Projetos\\autotarefas\\examples\\fixtures\\clientes.csv --chat-id-column chat_id --base-url http://127.0.0.1:5555 --text \"Ola {nome}! Mensagem de teste do AutoTarefas.\" -r D:\\Projetos\\autotarefas\\examples\\output\\send_telegram_report.csv",
+      "requires_browser": false,
+      "expected_outcome": "Envia 5 mensagens ao endpoint mock /bot<token>/sendMessage.",
+      "input": {
+        "descriptor": "Bot mock local (sendMessage)",
+        "identity": {
+          "task": "send_telegram",
+          "planilha": "clientes.csv",
+          "destinatarios": 5
+        },
+        "preview": null,
+        "hmac_sha256": "051c0c55a8f4bd6a55b7e4b623a5c2dc1c78e450e53a229c492d46089f7e525b",
+        "hmac_short": "051c0c55a8f4",
+        "hmac_algo": "HMAC-SHA256 (core.security.hash_string, chave de auditoria)"
+      },
+      "outputs": [
+        {
+          "path": "examples/output/send_telegram_report.csv",
+          "kind": "file",
+          "files": 1,
+          "bytes": 442,
+          "sha256": "d28e0e6caf111722d586ecd19ba6231e048788c9edf0eca9758c129fd47eacdf"
+        }
+      ],
+      "captured": true,
+      "exit_code": 0,
+      "duration_ms": 1966,
+      "stdout": "============================================================\n Envio via Telegram\n============================================================\nPlanilha: D:\\Projetos\\autotarefas\\examples\\fixtures\\clientes.csv\nAPI:      http://127.0.0.1:5555\nDestino:  coluna 'chat_id'\nToken:    via env AUTOTAREFAS_TELEGRAM_TOKEN\nModo:     normal\n\n  [1/5] [OK] enviado\n  [2/5] [OK] enviado\n  [3/5] [OK] enviado\n  [4/5] [OK] enviado\n  [5/5] [OK] enviado\n\n============================================================\nTotal:    5\nEnviados: 5\nFalhas:   0\nRelatorio: D:\\Projetos\\autotarefas\\examples\\output\\send_telegram_report.csv\n============================================================",
+      "stderr": "",
+      "outcome": "ok",
+      "headline": "Mensagens entregues ao bot (mock) (5 linha(s))",
+      "audit": {
+        "recorded": true,
+        "task_name": "send_telegram",
+        "status": "success",
+        "timestamp": "2026-06-24T19:29:32.369746+00:00",
+        "duration_ms": 935,
+        "rows_affected": 5,
+        "rows_failed": 0,
+        "environment": "demo",
+        "stored_input_hash": "",
+        "verify_input_hash_against_stored": false
+      }
+    },
+    {
+      "id": "extract_web",
+      "category": "scraping",
+      "title": "Scraping de catalogo",
+      "subtitle": "HTML paginado (48 itens)",
+      "command": "python -m autotarefas extract web -u http://127.0.0.1:5555/catalogo -o D:\\Projetos\\autotarefas\\examples\\output\\extract_web.csv -r tr.produto -f nome=td.nome -f preco=td.preco -n a.next",
+      "requires_browser": false,
+      "expected_outcome": "Percorre as paginas do catalogo e extrai 48 itens (nome/preco).",
+      "input": {
+        "descriptor": "HTML paginado (48 itens)",
+        "identity": {
+          "task": "extract_web",
+          "url": "/catalogo",
+          "row_selector": "tr.produto"
+        },
+        "preview": null,
+        "hmac_sha256": "2213f2818403f721296a4e1623aed5ed9e181f56b4cee3a8a753a64db782881e",
+        "hmac_short": "2213f2818403",
+        "hmac_algo": "HMAC-SHA256 (core.security.hash_string, chave de auditoria)"
+      },
+      "outputs": [
+        {
+          "path": "examples/output/extract_web.csv",
+          "kind": "file",
+          "files": 1,
+          "bytes": 1248,
+          "sha256": "b7aa14f4a615ecce5bd836c04902403982438df0108003192f61dfeb5ffbe078"
+        }
+      ],
+      "captured": true,
+      "exit_code": 0,
+      "duration_ms": 1993,
+      "stdout": "============================================================\n Extracao via Web (scraping)\n============================================================\nURL:    http://127.0.0.1:5555/catalogo\nSaida:  D:\\Projetos\\autotarefas\\examples\\output\\extract_web.csv\nLinhas: tr.produto  (2 campos)\nModo:   normal\n\n  Pagina 1 ... 10 itens (total: 10)\n  Pagina 2 ... 10 itens (total: 20)\n  Pagina 3 ... 10 itens (total: 30)\n  Pagina 4 ... 10 itens (total: 40)\n  Pagina 5 ... 8 itens (total: 48)\n\n============================================================\nExtraidos 48 itens -> D:\\Projetos\\autotarefas\\examples\\output\\extract_web.csv\n============================================================",
+      "stderr": "",
+      "outcome": "ok",
+      "headline": "Catalogo paginado raspado (48 linha(s))",
+      "audit": {
+        "recorded": true,
+        "task_name": "extract_web",
+        "status": "success",
+        "timestamp": "2026-06-24T19:29:34.339355+00:00",
+        "duration_ms": 964,
+        "rows_affected": 48,
+        "rows_failed": 0,
+        "environment": "demo",
+        "stored_input_hash": "",
+        "verify_input_hash_against_stored": false
+      }
+    },
+    {
+      "id": "rpa_cadastro",
+      "category": "rpa",
+      "title": "RPA de cadastro",
+      "subtitle": "Chromium headless preenche formulario",
+      "command": "python -m autotarefas rpa cadastro -p D:\\Projetos\\autotarefas\\examples\\fixtures\\clientes.csv -s http://127.0.0.1:5555 --no-screenshot",
+      "requires_browser": true,
+      "expected_outcome": "Abre o Chromium e preenche o formulario web para cada CPF valido.",
+      "input": {
+        "descriptor": "Chromium headless preenche formulario",
+        "identity": {
+          "task": "rpa_cadastro",
+          "planilha": "clientes.csv",
+          "site": "127.0.0.1:5555"
+        },
+        "preview": [
+          {
+            "nome": "Ana Lima",
+            "email": "ana.lima@example.com",
+            "cpf": "***.***.***-**",
+            "chat_id": "100001"
+          },
+          {
+            "nome": "Bruno Sa",
+            "email": "bruno.sa@example.com",
+            "cpf": "***.***.***-**",
+            "chat_id": "100002"
+          },
+          {
+            "nome": "Carla Reis",
+            "email": "carla.reis@example.com",
+            "cpf": "***.***.***-**",
+            "chat_id": "100003"
+          }
+        ],
+        "hmac_sha256": "742cebc44652311f6f28ebea7d34664c63eb46e8b49cdd5bc971599d8a79c8dd",
+        "hmac_short": "742cebc44652",
+        "hmac_algo": "HMAC-SHA256 (core.security.hash_string, chave de auditoria)"
+      },
+      "outputs": [],
+      "captured": true,
+      "exit_code": 0,
+      "duration_ms": 22491,
+      "stdout": "============================================================\n RPA Cadastro\n============================================================\nPlanilha: D:\\Projetos\\autotarefas\\examples\\fixtures\\clientes.csv\nSite:     http://127.0.0.1:5555\nModo:     headless\n\nProcessando...\n\n[1/5] Ana Lima                       ... [SKIP] Corrija os erros abaixo: CPF ja cadastrado\n[2/5] Bruno Sa                       ... [SKIP] Corrija os erros abaixo: CPF ja cadastrado\n[3/5] Carla Reis                     ... [SKIP] Corrija os erros abaixo: CPF ja cadastrado\n[4/5] Diego Souza                    ... [SKIP] Corrija os erros abaixo: CPF ja cadastrado\n[5/5] Caio Erro                      ... [SKIP] CPF invalido (modulo 11)\n\n============================================================\nTotal:    5 linhas processadas\nSucesso:  0 cadastros realizados\nSkipped:  5 linhas puladas\nErros:    0\nTempo:    21.4s\n============================================================",
+      "stderr": "",
+      "outcome": "ok",
+      "headline": "Cadastros preenchidos via navegador",
+      "audit": {
+        "recorded": true,
+        "task_name": "rpa_cadastro",
+        "status": "success",
+        "timestamp": "2026-06-24T19:29:36.345362+00:00",
+        "duration_ms": 21431,
+        "rows_affected": 0,
+        "rows_failed": 0,
+        "environment": "demo",
+        "stored_input_hash": "",
+        "verify_input_hash_against_stored": false
+      }
+    },
+    {
+      "id": "extract_web_js",
+      "category": "scraping",
+      "title": "Scraping com JavaScript",
+      "subtitle": "Catalogo renderizado via JS (3 itens)",
+      "command": "python -m autotarefas extract web -u http://127.0.0.1:5555/catalogo-js -o D:\\Projetos\\autotarefas\\examples\\output\\extract_web_js.csv -r tr.produto -f nome=td.nome -f preco=td.preco --js",
+      "requires_browser": true,
+      "expected_outcome": "Renderiza a pagina com Chromium e extrai os 3 itens injetados via JS.",
+      "input": {
+        "descriptor": "Catalogo renderizado via JS (3 itens)",
+        "identity": {
+          "task": "extract_web",
+          "url": "/catalogo-js",
+          "js": true
+        },
+        "preview": null,
+        "hmac_sha256": "242d34b57fcd72806e79f7ab872ae379fcb1ee735e4f812220ca504f7a72a477",
+        "hmac_short": "242d34b57fcd",
+        "hmac_algo": "HMAC-SHA256 (core.security.hash_string, chave de auditoria)"
+      },
+      "outputs": [
+        {
+          "path": "examples/output/extract_web_js.csv",
+          "kind": "file",
+          "files": 1,
+          "bytes": 100,
+          "sha256": "ad0318f7630ecc4bb9a310f5104b3563b18b2122d87d24687a86915853a3be59"
+        }
+      ],
+      "captured": true,
+      "exit_code": 0,
+      "duration_ms": 1637,
+      "stdout": "============================================================\n Extracao via Web (scraping)\n============================================================\nURL:    http://127.0.0.1:5555/catalogo-js\nSaida:  D:\\Projetos\\autotarefas\\examples\\output\\extract_web_js.csv\nLinhas: tr.produto  (2 campos)\nRender: navegador headless (Playwright)\nModo:   normal\n\n  Pagina 1 ... 3 itens (total: 3)\n\n============================================================\nExtraidos 3 itens -> D:\\Projetos\\autotarefas\\examples\\output\\extract_web_js.csv\n============================================================",
+      "stderr": "",
+      "outcome": "ok",
+      "headline": "Catalogo dinamico (JS) raspado (3 linha(s))",
+      "audit": {
+        "recorded": true,
+        "task_name": "extract_web",
+        "status": "success",
+        "timestamp": "2026-06-24T19:29:58.799163+00:00",
+        "duration_ms": 636,
+        "rows_affected": 3,
+        "rows_failed": 0,
+        "environment": "demo",
+        "stored_input_hash": "",
+        "verify_input_hash_against_stored": false
+      }
+    },
+    {
+      "id": "report",
+      "category": "auditoria",
+      "title": "Relatorio de auditoria",
+      "subtitle": "Resumo consolidado do trilho",
+      "command": "python -m autotarefas report --days 1 --type summary --format table",
+      "requires_browser": false,
+      "expected_outcome": "Consolida as execucoes da ultima janela e imprime o resumo.",
+      "input": {
+        "descriptor": "Resumo consolidado do trilho",
+        "identity": {
+          "task": "report_audit",
+          "janela_dias": 1
+        },
+        "preview": null,
+        "hmac_sha256": "501edd50641be0bc2a9360ab97bd20efd44fc14ede70025fad45e12443de03ab",
+        "hmac_short": "501edd50641b",
+        "hmac_algo": "HMAC-SHA256 (core.security.hash_string, chave de auditoria)"
+      },
+      "outputs": [],
+      "captured": true,
+      "exit_code": 0,
+      "duration_ms": 1038,
+      "stdout": "============================================================\n AutoTarefas - Relatorio Audit Trail\n============================================================\n\nPeriodo:  2026-06-23 19:30  ->  agora\nTotal:    13 execucoes\n\nPor task:\n  - extract_api     2 ( 15.4%)  2 ok\n  - extract_web     2 ( 15.4%)  2 ok\n  - send_api        2 ( 15.4%)  2 ok\n  - backup          1 (  7.7%)  1 ok\n  - organize        1 (  7.7%)  1 ok\n  - rpa_cadastro    1 (  7.7%)  1 ok\n  - send_email      1 (  7.7%)  1 ok\n  - send_telegram    1 (  7.7%)  1 ok\n  - sync_api        1 (  7.7%)  1 ok\n  - validate        1 (  7.7%)  1 falha\n\nPor status:\n  - success        12 ( 92.3%)\n  - failure         1 (  7.7%)\n\nDuracao media por task:\n  - rpa_cadastro 21.43s\n  - sync_api     1.30s\n  - send_telegram 935ms\n  - send_api     892ms\n  - extract_web  800ms\n  - extract_api  224ms\n  - backup       37ms\n  - send_email   33ms\n  - organize     7ms\n  - validate     2ms\n\nLinhas processadas: 99 (com 0 falhas)\n\nFalhas recentes (ultimas 5):\n  X 2026-06-24 19:29  validate      1 erro(s) de validacao encontrado(s)",
+      "stderr": "",
+      "outcome": "ok",
+      "headline": "Relatorio de auditoria consolidado (13 linha(s))",
+      "audit": {
+        "recorded": true,
+        "task_name": "report_audit",
+        "status": "success",
+        "timestamp": "2026-06-24T19:30:00.450142+00:00",
+        "duration_ms": 0,
+        "rows_affected": 13,
+        "rows_failed": 0,
+        "environment": "demo",
+        "stored_input_hash": "",
+        "verify_input_hash_against_stored": false
+      }
+    },
+    {
+      "id": "dashboard",
+      "category": "auditoria",
+      "title": "Painel de auditoria",
+      "subtitle": "HTML autocontido (renderer oficial)",
+      "command": "python -m autotarefas dashboard -o D:\\Projetos\\autotarefas\\examples\\output\\dashboard.html --limit 100",
+      "requires_browser": false,
+      "expected_outcome": "Le todo o trilho (inclusive o report_audit) e gera o painel HTML.",
+      "input": {
+        "descriptor": "HTML autocontido (renderer oficial)",
+        "identity": {
+          "task": "dashboard",
+          "limite": 100
+        },
+        "preview": null,
+        "hmac_sha256": "3a914d9f5ce92d1025cb873882b29198d99c527361090c0f7d64273d981bf35a",
+        "hmac_short": "3a914d9f5ce9",
+        "hmac_algo": "HMAC-SHA256 (core.security.hash_string, chave de auditoria)"
+      },
+      "outputs": [
+        {
+          "path": "examples/output/dashboard.html",
+          "kind": "file",
+          "files": 1,
+          "bytes": 5604,
+          "sha256": "cf422a2dfa8f9e2fb65f8961976b718bfc366a1abe8ffc9984068b6f247a5713"
+        }
+      ],
+      "captured": true,
+      "exit_code": 0,
+      "duration_ms": 900,
+      "stdout": "[OK] Dashboard gerado em: \nD:\\Projetos\\autotarefas\\examples\\output\\dashboard.html",
+      "stderr": "",
+      "outcome": "ok",
+      "headline": "Painel HTML de auditoria gerado",
+      "audit": {
+        "recorded": false,
+        "note": "Execucao read-only: nao grava auditoria."
+      }
+    }
+  ],
+  "notes": {
+    "input_hash": "O nucleo (BaseTask) registra cada execucao sem passar input_data ao audit, entao a coluna input_hash do banco fica vazia por padrao. Para o painel, recalculamos o HMAC-SHA256 do input sanitizado (mesmo algoritmo de core.security.hash_string e dashboard.verify_input_hash) e o expomos em input.hmac_sha256. O campo stored_input_hash reflete fielmente o que esta gravado (vazio) e verify_input_hash_against_stored e, por isso, false.",
+    "sanitization": "Saidas capturadas tem ANSI removido e CPFs mascarados (***.***.***-**). E-mails @example.com sao ficticios e preservados. Tokens/segredos de demonstracao sao redigidos.",
+    "reproducibility": "Execucao isolada: AUTOTAREFAS_HOME dedicado, ENVIRONMENT=demo e servidores locais com armazenamento proprio. Nenhum dado de producao e tocado."
+  }
+}

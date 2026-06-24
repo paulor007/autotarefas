@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AutoTarefas — Painel de Auditoria</title>
+<style>
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  background: #f5f6f8; color: #1a1a1a; line-height: 1.5;
+}
+.container { max-width: 1100px; margin: 0 auto; padding: 2rem 1.25rem; }
+h1 { font-size: 1.5rem; margin: 0 0 0.25rem; }
+.meta { color: #666; font-size: 0.875rem; margin: 0 0 1.5rem; }
+.cards { display: flex; flex-wrap: wrap; gap: 0.75rem; margin-bottom: 1.5rem; }
+.card {
+  background: #fff; border: 1px solid #e3e5e8; border-radius: 10px;
+  padding: 0.75rem 1rem; min-width: 110px;
+}
+.card .label {
+  font-size: 0.72rem; color: #666; text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+.card .value { font-size: 1.4rem; font-weight: 600; }
+table {
+  width: 100%; border-collapse: collapse; background: #fff;
+  border: 1px solid #e3e5e8; border-radius: 10px; overflow: hidden;
+  font-size: 0.9rem;
+}
+thead th {
+  background: #2b2f36; color: #fff; text-align: left;
+  padding: 0.6rem 0.75rem; font-weight: 600;
+}
+tbody td { padding: 0.55rem 0.75rem; border-top: 1px solid #eceef1; }
+tbody tr:nth-child(even) { background: #fafbfc; }
+.badge {
+  display: inline-block; padding: 0.1rem 0.5rem; border-radius: 999px;
+  font-size: 0.78rem; font-weight: 600;
+}
+.badge-success { background: #e6f4ea; color: #1e7e34; }
+.badge-failure { background: #fdecea; color: #c0392b; }
+.badge-partial { background: #fff4e5; color: #b9770e; }
+.badge-dry_run { background: #eef2f7; color: #4a5568; }
+.badge-skipped { background: #eef2f7; color: #4a5568; }
+.badge-unknown { background: #eef2f7; color: #4a5568; }
+.hash-yes { color: #1e7e34; font-weight: 600; }
+.hash-no { color: #999; }
+.mono {
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 0.85rem;
+}
+.empty {
+  background: #fff; border: 1px solid #e3e5e8; border-radius: 10px;
+  padding: 2rem; text-align: center; color: #666;
+}
+</style>
+</head>
+<body>
+<main class="container">
+<h1>AutoTarefas — Painel de Auditoria</h1>
+<p class="meta">Gerado em 2026-06-24 16:30:01 · 14 execucoes</p>
+<section class="cards"><div class="card"><div class="label">Total</div><div class="value">14</div></div><div class="card"><div class="label">failure</div><div class="value">1</div></div><div class="card"><div class="label">success</div><div class="value">13</div></div></section>
+<table><thead><tr><th>Quando</th><th>Task</th><th>Status</th><th>Duracao</th><th>OK</th><th>Falhas</th><th>Input (HMAC)</th><th>Ambiente</th></tr></thead><tbody><tr><td>2026-06-24 19:30:00</td><td>report_audit</td><td><span class="badge badge-success">success</span></td><td>0 ms</td><td>13</td><td>0</td><td><span class="hash-no">—</span></td><td>demo</td></tr><tr><td>2026-06-24 19:29:58</td><td>extract_web</td><td><span class="badge badge-success">success</span></td><td>636 ms</td><td>3</td><td>0</td><td><span class="hash-no">—</span></td><td>demo</td></tr><tr><td>2026-06-24 19:29:36</td><td>rpa_cadastro</td><td><span class="badge badge-success">success</span></td><td>21431 ms</td><td>0</td><td>0</td><td><span class="hash-no">—</span></td><td>demo</td></tr><tr><td>2026-06-24 19:29:34</td><td>extract_web</td><td><span class="badge badge-success">success</span></td><td>964 ms</td><td>48</td><td>0</td><td><span class="hash-no">—</span></td><td>demo</td></tr><tr><td>2026-06-24 19:29:32</td><td>send_telegram</td><td><span class="badge badge-success">success</span></td><td>935 ms</td><td>5</td><td>0</td><td><span class="hash-no">—</span></td><td>demo</td></tr><tr><td>2026-06-24 19:29:31</td><td>send_email</td><td><span class="badge badge-success">success</span></td><td>33 ms</td><td>5</td><td>0</td><td><span class="hash-no">—</span></td><td>demo</td></tr><tr><td>2026-06-24 19:29:28</td><td>sync_api</td><td><span class="badge badge-success">success</span></td><td>1305 ms</td><td>5</td><td>0</td><td><span class="hash-no">—</span></td><td>demo</td></tr><tr><td>2026-06-24 19:29:29</td><td>send_api</td><td><span class="badge badge-success">success</span></td><td>871 ms</td><td>5</td><td>0</td><td><span class="hash-no">—</span></td><td>demo</td></tr><tr><td>2026-06-24 19:29:28</td><td>extract_api</td><td><span class="badge badge-success">success</span></td><td>225 ms</td><td>5</td><td>0</td><td><span class="hash-no">—</span></td><td>demo</td></tr><tr><td>2026-06-24 19:29:27</td><td>extract_api</td><td><span class="badge badge-success">success</span></td><td>224 ms</td><td>5</td><td>0</td><td><span class="hash-no">—</span></td><td>demo</td></tr><tr><td>2026-06-24 19:29:25</td><td>send_api</td><td><span class="badge badge-success">success</span></td><td>913 ms</td><td>5</td><td>0</td><td><span class="hash-no">—</span></td><td>demo</td></tr><tr><td>2026-06-24 19:29:24</td><td>organize</td><td><span class="badge badge-success">success</span></td><td>7 ms</td><td>5</td><td>0</td><td><span class="hash-no">—</span></td><td>demo</td></tr><tr><td>2026-06-24 19:29:23</td><td>backup</td><td><span class="badge badge-success">success</span></td><td>37 ms</td><td>8</td><td>0</td><td><span class="hash-no">—</span></td><td>demo</td></tr><tr><td>2026-06-24 19:29:22</td><td>validate</td><td><span class="badge badge-failure">failure</span></td><td>2 ms</td><td>0</td><td>0</td><td><span class="hash-no">—</span></td><td>demo</td></tr></tbody></table>
+</main>
+</body>
+</html>

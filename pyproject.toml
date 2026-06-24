@@ -242,6 +242,14 @@ ignore = [
     "ANN",    # type hints não são obrigatórios em utilitários
 ]
 
+# Scripts de demonstração (capturador do Live System) orquestram subprocessos
+# e falam HTTP com servidores locais de demo. As exceções abaixo são desse contexto:
+"examples/**" = [
+    "T20",    # print é a saída do script (orquestrador de captura)
+    "S105",   # "segredos" são valores FAKE de demonstração, não credenciais reais
+    "S310",   # urlopen aqui só chama endpoints locais do servidor de demo (127.0.0.1)
+]
+
 [tool.ruff.format]
 quote-style = "double"
 indent-style = "space"

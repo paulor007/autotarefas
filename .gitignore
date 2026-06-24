@@ -205,3 +205,9 @@ yarn.lock
 site/
 
 site/
+
+# === LIVE SYSTEM (capturador de execucoes) ===
+# Saida gerada por examples/capture_runs.py (artefatos locais, nao versionar).
+# As copias publicadas ficam em docs/live/assets/ (essas SIM sao versionadas).
+examples/output/
+emails_recebidos/
