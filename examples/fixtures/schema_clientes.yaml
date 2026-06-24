@@ -1,0 +1,14 @@
+# Schema de validacao dos clientes (demo — dados ficticios)
+columns:
+  - name: nome
+    type: str
+    required: true
+  - name: email
+    type: str
+    required: true
+  - name: cpf
+    type: str
+    required: true
+    validator_br: cpf
+  - name: idade
+    type: int

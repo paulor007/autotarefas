@@ -1,0 +1,14 @@
+# Regras de organizacao (demo). Caminhos relativos a raiz do projeto.
+target_root: examples/output/organizado
+action: copy
+on_conflict: rename
+rules:
+  - name: Documentos
+    patterns: ["*.pdf", "*.docx"]
+    destination: documentos
+  - name: Imagens
+    patterns: ["*.jpg", "*.png"]
+    destination: imagens
+  - name: Planilhas
+    patterns: ["*.csv", "*.xlsx"]
+    destination: planilhas
