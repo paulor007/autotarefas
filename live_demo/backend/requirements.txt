@@ -1,0 +1,8 @@
+fastapi>=0.138.0
+uvicorn[standard]>=0.34.0
+python-multipart>=0.0.32
+
+# Os mocks de demonstracao usam Flask + Faker (tambem vem como deps do autotarefas;
+# listados aqui para garantir no container caso sejam opcionais no pacote).
+flask>=3.1.0
+faker>=37.0.0

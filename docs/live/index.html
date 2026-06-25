@@ -1,0 +1,328 @@
+<!doctype html>
+<html lang="pt-br">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>AutoTarefas — Live System</title>
+    <meta
+      name="description"
+      content="Console de execucoes reais do AutoTarefas: cada automacao roda de verdade, com saida capturada, trilha de auditoria e hash de integridade."
+    />
+    <link rel="icon" type="image/png" href="assets/logo.png" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <!-- textura ambiente (grade discreta, estilo telemetria) -->
+    <div class="grid-bg" aria-hidden="true"></div>
+
+    <!-- ============================ TOPBAR / TELEMETRIA ============================ -->
+    <header class="topbar">
+      <a class="brand" href="#" aria-label="AutoTarefas Live System">
+        <span class="brand__mark" aria-hidden="true">
+          <svg
+            viewBox="0 0 24 24"
+            width="22"
+            height="22"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <path d="M4 5l6 7-6 7"></path>
+            <path d="M13 19h7"></path>
+          </svg>
+        </span>
+        <span class="brand__text">
+          <span class="brand__name">AutoTarefas</span>
+          <span class="brand__sys">Live System</span>
+        </span>
+      </a>
+
+      <div class="telemetry" id="telemetry" aria-label="Metadados da captura">
+        <span class="tlm tlm--env" id="tel-env" title="Ambiente de execucao"
+          >demo</span
+        >
+        <span class="tlm" id="tel-version" title="Versao da ferramenta"
+          >v—</span
+        >
+        <span class="tlm" id="tel-python" title="Runtime Python">py —</span>
+        <span class="tlm" id="tel-browser" title="Disponibilidade do navegador"
+          >navegador —</span
+        >
+        <span class="tlm tlm--time" id="tel-generated" title="Gerado em"
+          >—</span
+        >
+      </div>
+    </header>
+
+    <!-- ============================ ERRO DE CARREGAMENTO ============================ -->
+    <div class="loadstate" id="error" hidden>
+      <h2>Sem dados de execucao</h2>
+      <p>
+        Nao foi possivel carregar <code>assets/runs.json</code>. Gere os
+        artefatos com <code>python examples/capture_runs.py</code> e publique-os
+        em <code>docs/live/assets/</code>.
+      </p>
+      <p class="loadstate__hint">
+        Se estiver abrindo o arquivo direto pelo disco, sirva a pasta:
+        <code>python -m http.server</code> dentro de <code>docs/live</code>.
+      </p>
+    </div>
+
+    <main class="shell" id="shell" hidden>
+      <!-- ============================ RAIL DE CATEGORIAS ============================ -->
+      <nav class="rail" id="rail" aria-label="Categorias de automacao"></nav>
+
+      <div class="content">
+        <!-- ============================ HERO / TESE ============================ -->
+        <section class="hero">
+          <p class="hero__eyebrow">
+            Console operacional &middot; execucoes verificaveis
+          </p>
+          <h1 class="hero__title">
+            Execucoes reais.<br />Capturadas, sanitizadas e auditadas.
+          </h1>
+          <p class="hero__lede">
+            Cada automacao abaixo foi executada de verdade contra servidores
+            locais. O que voce ve e a <strong>saida real</strong> do robo — com
+            trilha de auditoria e hash de integridade do input. Nada e simulado.
+          </p>
+
+          <div class="stats" id="summary">
+            <div class="stat">
+              <span class="stat__value" id="sum-total">—</span>
+              <span class="stat__label">automacoes</span>
+            </div>
+            <div class="stat stat--ok">
+              <span class="stat__value" id="sum-ok">—</span>
+              <span class="stat__label">concluidas</span>
+            </div>
+            <div class="stat stat--caught">
+              <span class="stat__value" id="sum-caught">—</span>
+              <span class="stat__label">dados barrados</span>
+            </div>
+            <div class="stat stat--local">
+              <span class="stat__value" id="sum-local">—</span>
+              <span class="stat__label">rodam local</span>
+            </div>
+          </div>
+        </section>
+
+        <!-- ============================ GRID DE CARDS ============================ -->
+        <section class="catalog" aria-label="Automacoes">
+          <h2 class="catalog__head" id="catalog-head">Todas as automacoes</h2>
+          <p class="catalog__sub" id="catalog-sub"></p>
+          <div class="cards" id="cards"></div>
+        </section>
+
+        <!-- ============================ DASHBOARD EMBUTIDO ============================ -->
+        <section class="report" aria-label="Painel de auditoria">
+          <div class="report__head">
+            <div>
+              <h2 class="report__title">Painel de auditoria</h2>
+              <p class="report__sub">
+                Gerado pelo renderer oficial do projeto, a partir do mesmo
+                trilho append-only.
+              </p>
+            </div>
+            <a
+              class="btn btn--ghost"
+              id="dash-open"
+              href="./assets/dashboard.html"
+              target="_blank"
+              rel="noopener"
+              >Abrir em nova aba</a
+            >
+          </div>
+          <div class="report__frame">
+            <iframe
+              id="dash-frame"
+              title="Painel de auditoria do AutoTarefas"
+              loading="lazy"
+              src="./assets/dashboard.html"
+            ></iframe>
+          </div>
+        </section>
+
+        <!-- ============================ NOTAS / RODAPE ============================ -->
+        <footer class="notes" aria-label="Notas tecnicas">
+          <div class="note">
+            <h3 class="note__title">Integridade do input</h3>
+            <p class="note__body" id="note-hash">—</p>
+          </div>
+          <div class="note">
+            <h3 class="note__title">Sanitizacao</h3>
+            <p class="note__body" id="note-sanit">—</p>
+          </div>
+          <div class="note">
+            <h3 class="note__title">Reprodutibilidade</h3>
+            <p class="note__body" id="note-repro">—</p>
+          </div>
+          <p class="notes__sign">
+            AutoTarefas &middot; projeto de portfolio open source (MIT) &middot;
+            <a
+              href="https://github.com/paulor007/autotarefas"
+              target="_blank"
+              rel="noopener"
+              >github.com/paulor007/autotarefas</a
+            >
+          </p>
+        </footer>
+      </div>
+    </main>
+
+    <!-- ============================ EXECUTION DRAWER ============================ -->
+    <div class="drawer-backdrop" id="drawer-backdrop" hidden></div>
+    <aside
+      class="drawer"
+      id="drawer"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="drawer-title"
+      hidden
+    >
+      <div class="drawer__top">
+        <div class="drawer__heading">
+          <span class="drawer__cat" id="drawer-cat">—</span>
+          <h2 class="drawer__title" id="drawer-title">—</h2>
+          <p class="drawer__subtitle" id="drawer-subtitle">—</p>
+        </div>
+        <button
+          class="drawer__close"
+          id="drawer-close"
+          aria-label="Fechar painel"
+        >
+          <svg
+            viewBox="0 0 24 24"
+            width="20"
+            height="20"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+          >
+            <path d="M6 6l12 12M18 6L6 18"></path>
+          </svg>
+        </button>
+      </div>
+
+      <div class="drawer__statusrow">
+        <span class="badge" id="drawer-status">—</span>
+        <span
+          class="seal"
+          id="drawer-hash"
+          title="HMAC-SHA256 do input (recalculado)"
+        >
+          <svg
+            viewBox="0 0 24 24"
+            width="13"
+            height="13"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <path d="M12 2l7 4v6c0 4-3 7-7 8-4-1-7-4-7-8V6z"></path>
+            <path d="M9 12l2 2 4-4"></path>
+          </svg>
+          <span id="drawer-hash-text">—</span>
+        </span>
+      </div>
+
+      <div class="cmd">
+        <code class="cmd__text" id="drawer-cmd">—</code>
+        <button class="cmd__copy" id="drawer-copy" aria-label="Copiar comando">
+          copiar
+        </button>
+      </div>
+
+      <div class="runbar">
+        <button class="btn btn--run" id="btn-run">
+          <svg
+            viewBox="0 0 24 24"
+            width="16"
+            height="16"
+            fill="currentColor"
+            aria-hidden="true"
+          >
+            <path d="M8 5v14l11-7z"></path>
+          </svg>
+          <span id="btn-run-label">Executar simulacao</span>
+        </button>
+        <button class="btn btn--ghost" id="btn-skip" hidden>
+          Pular animacao
+        </button>
+      </div>
+
+      <div class="terminal" id="terminal" aria-live="polite">
+        <div class="terminal__bar" aria-hidden="true">
+          <span class="dot"></span><span class="dot"></span
+          ><span class="dot"></span>
+          <span class="terminal__name" id="terminal-name">console</span>
+        </div>
+        <pre class="terminal__body" id="terminal-body"></pre>
+      </div>
+
+      <div class="tabs" role="tablist" aria-label="Detalhes da execucao">
+        <button
+          class="tab is-active"
+          id="tabbtn-output"
+          role="tab"
+          aria-selected="true"
+          aria-controls="tab-output"
+        >
+          Saida
+        </button>
+        <button
+          class="tab"
+          id="tabbtn-input"
+          role="tab"
+          aria-selected="false"
+          aria-controls="tab-input"
+        >
+          Entrada
+        </button>
+        <button
+          class="tab"
+          id="tabbtn-audit"
+          role="tab"
+          aria-selected="false"
+          aria-controls="tab-audit"
+        >
+          Auditoria
+        </button>
+      </div>
+
+      <section
+        class="tabpanel"
+        id="tab-output"
+        role="tabpanel"
+        aria-labelledby="tabbtn-output"
+      ></section>
+      <section
+        class="tabpanel"
+        id="tab-input"
+        role="tabpanel"
+        aria-labelledby="tabbtn-input"
+        hidden
+      ></section>
+      <section
+        class="tabpanel"
+        id="tab-audit"
+        role="tabpanel"
+        aria-labelledby="tabbtn-audit"
+        hidden
+      ></section>
+    </aside>
+
+    <script src="./app.js" defer></script>
+  </body>
+</html>
