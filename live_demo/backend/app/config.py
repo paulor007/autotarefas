@@ -49,6 +49,22 @@ class Settings:
     max_upload_files: int = field(default_factory=lambda: _env_int("MAX_UPLOAD_FILES", 50))
     run_timeout_s: int = field(default_factory=lambda: _env_int("RUN_TIMEOUT_S", 60))
     rate_limit_per_min: int = field(default_factory=lambda: _env_int("RATE_LIMIT_PER_MIN", 12))
+    workspace_ttl_min: int = field(default_factory=lambda: _env_int("WORKSPACE_TTL_MIN", 15))
+    max_workspaces: int = field(default_factory=lambda: _env_int("MAX_WORKSPACES", 40))
+    allowed_upload_extensions: tuple[str, ...] = (
+        ".csv",
+        ".tsv",
+        ".txt",
+        ".pdf",
+        ".docx",
+        ".xlsx",
+        ".jpg",
+        ".jpeg",
+        ".png",
+        ".json",
+        ".yaml",
+        ".yml",
+    )
 
     # diretorios
     workspaces_root: Path = field(

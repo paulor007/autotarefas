@@ -224,6 +224,13 @@ ignore = [
     "T20",    # print em testes é OK pra debug
     "PLR2004",  # valores literais em asserts de teste são esperados
 ]
+
+"live_demo/backend/tests/**" = [
+    "S101",    # assert é esperado em pytest
+    "PLR2004", # números fixos em comparação nos testes
+    "ANN",     # testes podem omitir algumas anotações
+]
+
 # CLI pode usar print (faz parte do output)
 "src/autotarefas/cli/**" = [
     "T20",

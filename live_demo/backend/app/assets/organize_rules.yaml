@@ -1,0 +1,15 @@
+# Regras de organizacao — versao SANDBOX da demo ao vivo.
+# target_root e relativo ao workspace efemero (cwd), nao ao projeto.
+target_root: out/organizado
+action: copy
+on_conflict: rename
+rules:
+  - name: Documentos
+    patterns: ["*.pdf", "*.docx"]
+    destination: documentos
+  - name: Imagens
+    patterns: ["*.jpg", "*.png"]
+    destination: imagens
+  - name: Planilhas
+    patterns: ["*.csv", "*.xlsx"]
+    destination: planilhas
