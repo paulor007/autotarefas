@@ -51,6 +51,11 @@ class Settings:
     rate_limit_per_min: int = field(default_factory=lambda: _env_int("RATE_LIMIT_PER_MIN", 12))
     workspace_ttl_min: int = field(default_factory=lambda: _env_int("WORKSPACE_TTL_MIN", 15))
     max_workspaces: int = field(default_factory=lambda: _env_int("MAX_WORKSPACES", 40))
+    # Live-1.3: streaming, concorrencia e egress
+    max_concurrent_runs: int = field(default_factory=lambda: _env_int("MAX_CONCURRENT_RUNS", 4))
+    max_stream_lines: int = field(default_factory=lambda: _env_int("MAX_STREAM_LINES", 2000))
+    max_stream_bytes: int = field(default_factory=lambda: _env_int("MAX_STREAM_BYTES", 256 * 1024))
+    egress_lockdown: bool = field(default_factory=lambda: _env_bool("EGRESS_LOCKDOWN", True))
     allowed_upload_extensions: tuple[str, ...] = (
         ".csv",
         ".tsv",

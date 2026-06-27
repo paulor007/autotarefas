@@ -1,27 +1,33 @@
 """Motor de execucao: workspace efemero -> AutoTarefas real -> artefatos.
 
-Sandbox seguro: cada execucao roda num diretorio uuid isolado, com
-AUTOTAREFAS_HOME proprio, comando montado por receita (sem shell, sem entrada
-do usuario como argumento), timeout, e coleta de artefatos com sha256.
+Live-1.3: execucao assincrona com stdout transmitido linha a linha (SSE). Cada
+execucao roda num diretorio uuid isolado, com AUTOTAREFAS_HOME proprio, comando
+montado por receita (sem shell, sem entrada do usuario como argumento), timeout
+com kill, limites de stream e bloqueio de egress (defesa em profundidade).
 """
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import os
 import re
 import shutil
 import subprocess  # nosec B404
+import threading
 import time
 import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from . import recipes, sanitize
 from .config import settings
 
-# So estas automacoes executam ao vivo na Live-1.2.
+if TYPE_CHECKING:
+    from .jobs import Job
+
+# So estas automacoes executam ao vivo (mantidas da Live-1.2).
 ACTIVE_AUTOMATIONS: tuple[str, ...] = (
     "validate",
     "backup",
@@ -33,6 +39,7 @@ ACTIVE_AUTOMATIONS: tuple[str, ...] = (
 _TIMEOUT_EXIT = 124
 _VALIDATE_FAIL_EXIT = 1
 _TOKEN_RE = re.compile(r"^[0-9a-f]{32}$")
+_DEAD_PROXY = "http://127.0.0.1:9"
 
 
 @dataclass
@@ -54,7 +61,7 @@ class Artifact:
 
 @dataclass
 class RunResult:
-    """Resultado de uma execucao real."""
+    """Resultado consolidado de uma execucao real."""
 
     token: str
     outcome: str
@@ -108,6 +115,18 @@ def _env_for(workspace: Path) -> dict[str, str]:
             "PYTHONUNBUFFERED": "1",
         }
     )
+    if settings.egress_lockdown:
+        # Defesa em profundidade: o robo so fala com mocks locais; saida externa morre.
+        env.update(
+            {
+                "HTTP_PROXY": _DEAD_PROXY,
+                "HTTPS_PROXY": _DEAD_PROXY,
+                "http_proxy": _DEAD_PROXY,
+                "https_proxy": _DEAD_PROXY,
+                "NO_PROXY": "127.0.0.1,localhost",
+                "no_proxy": "127.0.0.1,localhost",
+            }
+        )
     return env
 
 
@@ -147,46 +166,94 @@ def _outcome(automation_id: str, exit_code: int) -> str:
     return "error"
 
 
-def run(automation_id: str, inputs: list[Path], token: str, workspace: Path) -> RunResult:
-    """Executa a automacao curada de verdade e devolve o resultado sanitizado."""
-    argv = recipes.build_argv(automation_id, workspace, inputs)
+def _start_process(argv: list[str], workspace: Path) -> subprocess.Popen[str]:
+    # Comando montado por receita (allowlist), sem shell nem entrada do usuario como argumento.
+    return subprocess.Popen(  # nosec B603  # noqa: S603
+        argv,
+        cwd=str(workspace),
+        env=_env_for(workspace),
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        bufsize=1,
+    )
+
+
+def _pump(
+    proc: subprocess.Popen[str],
+    job: Job,
+    loop: asyncio.AbstractEventLoop,
+    done: asyncio.Event,
+) -> None:
+    """Le o stdout do processo (em thread) e enfileira as linhas sanitizadas."""
+    stdout = proc.stdout
+    if stdout is None:
+        loop.call_soon_threadsafe(done.set)
+        return
+    streamed_bytes = 0
+    truncated = False
+    try:
+        for raw in stdout:
+            line = sanitize.sanitize(raw, job.workspace, settings.repo_root)
+            if not line:
+                continue
+            if (
+                len(job.lines) >= settings.max_stream_lines
+                or streamed_bytes >= settings.max_stream_bytes
+            ):
+                if not truncated:
+                    truncated = True
+                    warn = "... saida truncada (limite de stream atingido) ..."
+                    job.lines.append(warn)
+                    loop.call_soon_threadsafe(job.queue.put_nowait, warn)
+                continue
+            streamed_bytes += len(line)
+            job.lines.append(line)
+            loop.call_soon_threadsafe(job.queue.put_nowait, line)
+    finally:
+        stdout.close()
+        loop.call_soon_threadsafe(done.set)
+
+
+async def run_streaming(automation_id: str, inputs: list[Path], job: Job) -> RunResult:
+    """Executa a automacao de verdade, transmitindo o stdout linha a linha."""
+    argv = recipes.build_argv(automation_id, job.workspace, inputs)
+    loop = asyncio.get_running_loop()
     start = time.monotonic()
     timed_out = False
-    try:
-        # Comando montado por receita (allowlist), sem shell nem entrada do usuario como argumento.
-        proc = subprocess.run(  # nosec B603  # noqa: S603
-            argv,
-            cwd=str(workspace),
-            env=_env_for(workspace),
-            capture_output=True,
-            text=True,
-            timeout=settings.run_timeout_s,
-            check=False,
-        )
-        exit_code = proc.returncode
-        raw = (proc.stdout or "") + (f"\n{proc.stderr}" if proc.stderr else "")
-    except subprocess.TimeoutExpired as exc:
-        exit_code = _TIMEOUT_EXIT
-        raw = exc.stdout if isinstance(exc.stdout, str) else ""
-        timed_out = True
 
+    proc = _start_process(argv, job.workspace)
+    done = asyncio.Event()
+    reader = threading.Thread(target=_pump, args=(proc, job, loop, done), daemon=True)
+    reader.start()
+
+    try:
+        await asyncio.wait_for(done.wait(), timeout=settings.run_timeout_s)
+    except TimeoutError:
+        timed_out = True
+        proc.kill()
+
+    await loop.run_in_executor(None, proc.wait)
+    exit_code = _TIMEOUT_EXIT if timed_out else (proc.returncode or 0)
     duration_ms = int((time.monotonic() - start) * 1000)
 
     if not timed_out and exit_code == 0:
-        _postprocess(automation_id, workspace)
+        _postprocess(automation_id, job.workspace)
 
-    artifacts = _collect(workspace / "out")
-    stdout = sanitize.sanitize(raw, workspace, settings.repo_root)
+    artifacts = _collect(job.workspace / "out")
     outcome = "timeout" if timed_out else _outcome(automation_id, exit_code)
-
-    return RunResult(
-        token=token,
+    result = RunResult(
+        token=job.token,
         outcome=outcome,
         exit_code=exit_code,
         duration_ms=duration_ms,
-        stdout=stdout,
+        stdout="\n".join(job.lines),
         artifacts=artifacts,
     )
+    job.result = result
+    job.status = outcome
+    job.queue.put_nowait(None)
+    return result
 
 
 def resolve_artifact(token: str, name: str) -> Path | None:

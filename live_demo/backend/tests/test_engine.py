@@ -1,15 +1,17 @@
-"""Testes do motor de execucao (Live-1.2), isolados da suite principal.
+"""Testes do motor de execucao (Live-1.3), isolados da suite principal.
 
-Cobrem o fluxo real upload/exemplo -> workspace -> AutoTarefas -> artefatos ->
-download, alem dos caminhos de seguranca (id invalido, automacao inativa,
-extensao proibida, path traversal). As automacoes de extracao (rede) ficam no
-roteiro de validacao manual.
+Cobrem o fluxo real em duas fases: POST inicia o job -> SSE transmite o stdout ->
+evento final com artefatos -> download. Mais os caminhos de seguranca (id
+invalido, automacao inativa, extensao proibida, path traversal). As automacoes
+de extracao (rede) ficam no roteiro de validacao manual.
 """
 
 from __future__ import annotations
 
+import json
 import warnings
 from collections.abc import Iterator
+from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
@@ -24,12 +26,32 @@ HTTP_NOT_FOUND = 404
 HTTP_NOT_IMPLEMENTED = 501
 HTTP_UNSUPPORTED_MEDIA = 415
 VALIDATE_FAIL_EXIT = 1
+DATA_PREFIX = "data: "
 
 
 @pytest.fixture(scope="module")
 def client() -> Iterator[TestClient]:
     with TestClient(app) as test_client:
         yield test_client
+
+
+def _run_and_collect(client: TestClient, automation_id: str, **params: str) -> dict[str, Any]:
+    """Inicia um job, consome o SSE ate o evento final e devolve o resultado."""
+    started = client.post(f"/api/run/{automation_id}", params=params)
+    assert started.status_code == HTTP_OK, started.text
+    body = started.json()
+    assert body["status"] == "running"
+    assert body["stream_url"].endswith(body["token"])
+
+    with client.stream("GET", f"/api/stream/{body['token']}") as response:
+        assert response.status_code == HTTP_OK
+        lines = list(response.iter_lines())
+
+    for index, line in enumerate(lines):
+        if line.startswith(("event: done", "event: timeout")):
+            parsed: dict[str, Any] = json.loads(lines[index + 1][len(DATA_PREFIX) :])
+            return parsed
+    pytest.fail(f"stream sem evento final: {lines!r}")
 
 
 def test_catalog_e_health(client: TestClient) -> None:
@@ -40,37 +62,34 @@ def test_catalog_e_health(client: TestClient) -> None:
     health = client.get("/api/health").json()
     assert health["status"] == "ok"
     assert set(health["active_automations"]) == set(engine.ACTIVE_AUTOMATIONS)
+    assert health["limits"]["max_concurrent_runs"] == 4
+    assert health["limits"]["egress_lockdown"] is True
 
 
-def test_validate_sample_caught_issue(client: TestClient) -> None:
-    resp = client.post("/api/run/validate", params={"use_sample": "true"})
-    assert resp.status_code == HTTP_OK, resp.text
-    body = resp.json()
-    assert body["outcome"] == "caught_issue"
-    assert body["exit_code"] == VALIDATE_FAIL_EXIT
-    names = [a["name"] for a in body["artifacts"]]
-    assert "validate_report.json" in names
+def test_validate_stream_caught_issue(client: TestClient) -> None:
+    result = _run_and_collect(client, "validate", use_sample="true")
+    assert result["outcome"] == "caught_issue"
+    assert result["exit_code"] == VALIDATE_FAIL_EXIT
+    assert "validate_report.json" in [a["name"] for a in result["artifacts"]]
 
-    url = next(a["download_url"] for a in body["artifacts"] if a["name"] == "validate_report.json")
-    download = client.get(url)
+
+def test_backup_stream_zip(client: TestClient) -> None:
+    result = _run_and_collect(client, "backup", use_sample="true")
+    assert result["outcome"] == "ok"
+    assert "backup.zip" in [a["name"] for a in result["artifacts"]]
+
+
+def test_organize_stream_zip(client: TestClient) -> None:
+    result = _run_and_collect(client, "organize", use_sample="true")
+    assert result["outcome"] == "ok"
+    assert "organizado.zip" in [a["name"] for a in result["artifacts"]]
+
+
+def test_download_apos_run(client: TestClient) -> None:
+    result = _run_and_collect(client, "validate", use_sample="true")
+    download = client.get(result["artifacts"][0]["download_url"])
     assert download.status_code == HTTP_OK
     assert download.content
-
-
-def test_backup_sample_zip(client: TestClient) -> None:
-    resp = client.post("/api/run/backup", params={"use_sample": "true"})
-    assert resp.status_code == HTTP_OK, resp.text
-    body = resp.json()
-    assert body["outcome"] == "ok"
-    assert "backup.zip" in [a["name"] for a in body["artifacts"]]
-
-
-def test_organize_sample_zip(client: TestClient) -> None:
-    resp = client.post("/api/run/organize", params={"use_sample": "true"})
-    assert resp.status_code == HTTP_OK, resp.text
-    body = resp.json()
-    assert body["outcome"] == "ok"
-    assert "organizado.zip" in [a["name"] for a in body["artifacts"]]
 
 
 def test_run_desconhecida_404(client: TestClient) -> None:
@@ -78,7 +97,7 @@ def test_run_desconhecida_404(client: TestClient) -> None:
 
 
 def test_run_nao_ativa_501(client: TestClient) -> None:
-    # send_api existe no catalogo, mas nao esta ativa na Live-1.2
+    # send_api existe no catalogo, mas nao esta ativa na Live-1.3
     assert client.post("/api/run/send_api").status_code == HTTP_NOT_IMPLEMENTED
 
 

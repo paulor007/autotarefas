@@ -225,10 +225,12 @@ ignore = [
     "PLR2004",  # valores literais em asserts de teste são esperados
 ]
 
+# Testes do backend do Live System (mesmas excecoes dos testes principais)
 "live_demo/backend/tests/**" = [
-    "S101",    # assert é esperado em pytest
-    "PLR2004", # números fixos em comparação nos testes
-    "ANN",     # testes podem omitir algumas anotações
+    "S101",
+    "PLR2004",
+    "ANN",
+    "SLF001",
 ]
 
 # CLI pode usar print (faz parte do output)
