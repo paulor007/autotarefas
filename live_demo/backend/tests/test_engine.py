@@ -11,12 +11,13 @@ from __future__ import annotations
 import json
 import warnings
 from collections.abc import Iterator
+from pathlib import Path
 from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
 
-from live_demo.backend.app import engine
+from live_demo.backend.app import engine, recipes
 from live_demo.backend.app.main import app
 
 warnings.filterwarnings("ignore")
@@ -62,6 +63,7 @@ def test_catalog_e_health(client: TestClient) -> None:
     health = client.get("/api/health").json()
     assert health["status"] == "ok"
     assert set(health["active_automations"]) == set(engine.ACTIVE_AUTOMATIONS)
+    assert len(health["active_automations"]) == 7
     assert health["limits"]["max_concurrent_runs"] == 4
     assert health["limits"]["egress_lockdown"] is True
 
@@ -97,8 +99,8 @@ def test_run_desconhecida_404(client: TestClient) -> None:
 
 
 def test_run_nao_ativa_501(client: TestClient) -> None:
-    # send_api existe no catalogo, mas nao esta ativa na Live-1.3
-    assert client.post("/api/run/send_api").status_code == HTTP_NOT_IMPLEMENTED
+    # send_email existe no catalogo, mas ainda nao esta disponivel ao vivo
+    assert client.post("/api/run/send_email").status_code == HTTP_NOT_IMPLEMENTED
 
 
 def test_upload_extensao_proibida(client: TestClient) -> None:
@@ -111,3 +113,20 @@ def test_resolve_artifact_barra_traversal() -> None:
     assert engine.resolve_artifact("naoehex", "x") is None
     assert engine.resolve_artifact("a" * 32, "../secret") is None
     assert engine.resolve_artifact("a" * 32, "naoexiste.csv") is None
+
+
+def test_recipe_send_api_argv(tmp_path: Path) -> None:
+    argv = recipes.build_argv("send_api", tmp_path, [tmp_path / "in" / "leads.csv"])
+    assert "send" in argv
+    assert "api" in argv
+    assert any("/api/clientes" in part for part in argv)
+    assert any(part.endswith("send_api_report.json") for part in argv)
+
+
+def test_recipe_send_telegram_argv(tmp_path: Path) -> None:
+    argv = recipes.build_argv("send_telegram", tmp_path, [])
+    assert "send" in argv
+    assert "telegram" in argv
+    assert "--base-url" in argv
+    assert any("contatos_demo.csv" in part for part in argv)
+    assert any(part.endswith("send_telegram_report.json") for part in argv)

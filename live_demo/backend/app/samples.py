@@ -17,6 +17,7 @@ _MAP: dict[str, list[Path]] = {
     "validate": [_SAMPLES / "clientes.csv"],
     "backup": sorted((_SAMPLES / "bagunca").glob("*")),
     "organize": sorted((_SAMPLES / "bagunca").glob("*")),
+    "send_api": [_SAMPLES / "leads.csv"],
 }
 
 

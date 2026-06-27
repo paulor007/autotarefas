@@ -34,6 +34,8 @@ ACTIVE_AUTOMATIONS: tuple[str, ...] = (
     "organize",
     "extract_web",
     "extract_api",
+    "send_api",
+    "send_telegram",
 )
 
 _TIMEOUT_EXIT = 124
@@ -113,6 +115,8 @@ def _env_for(workspace: Path) -> dict[str, str]:
             "ENVIRONMENT": "demo",
             "NO_COLOR": "1",
             "PYTHONUNBUFFERED": "1",
+            # Token fake do bot: usado so contra o mock local; evita prompt que travaria o processo.
+            "AUTOTAREFAS_TELEGRAM_TOKEN": "demo-fake-token-0000",  # nosec B105
         }
     )
     if settings.egress_lockdown:
