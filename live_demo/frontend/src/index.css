@@ -1,0 +1,40 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    color-scheme: dark;
+  }
+
+  html {
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  body {
+    @apply bg-ink text-text font-sans;
+    background-image:
+      radial-gradient(
+        1200px 600px at 80% -10%,
+        rgba(79, 182, 201, 0.06),
+        transparent 60%
+      ),
+      radial-gradient(
+        900px 500px at 0% 0%,
+        rgba(240, 180, 41, 0.05),
+        transparent 55%
+      );
+    background-attachment: fixed;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}
