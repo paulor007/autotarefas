@@ -1,75 +1,105 @@
 import type { Automation } from "../lib/api";
-
-const OUTPUT_LABEL: Record<string, string> = {
-  report: "relatório",
-  zip: "arquivo .zip",
-  file: "arquivo",
-  html: "painel html",
-};
+import { iconFor } from "../lib/icons";
 
 const UPLOAD_LABEL: Record<string, string> = {
-  csv: "envia .csv",
-  folder: "envia arquivos",
-  none: "sem upload",
+  csv: "CSV",
+  folder: "Arquivos",
+  none: "Sem upload",
 };
+const OUTPUT_LABEL: Record<string, string> = {
+  report: "Relatório JSON",
+  zip: "ZIP",
+  file: "Arquivo",
+  html: "Painel HTML",
+};
+
+function Field({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex flex-col gap-0.5">
+      <span className="text-[0.65rem] uppercase tracking-wider text-muted">
+        {label}
+      </span>
+      <span className="text-xs font-medium text-fg">{value}</span>
+    </div>
+  );
+}
+
+interface Props {
+  automation: Automation;
+  active: boolean;
+  selected: boolean;
+  onSelect: (id: string) => void;
+}
 
 export default function AutomationCard({
   automation,
   active,
-}: {
-  automation: Automation;
-  active: boolean;
-}) {
-  return (
-    <article
-      className={[
-        "group relative flex flex-col rounded-lg border bg-surface p-5 transition-colors",
-        active
-          ? "border-line hover:border-signal/50 hover:bg-surface-2"
-          : "border-line/60 opacity-60",
-      ].join(" ")}
-    >
-      <div className="mb-3 flex items-start justify-between gap-3">
-        <h3 className="font-display text-base font-semibold text-text">
-          {automation.title}
-        </h3>
-        {active ? (
-          <span className="shrink-0 rounded-full border border-signal/40 bg-signal/10 px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-signal">
-            ativo
-          </span>
-        ) : (
-          <span className="shrink-0 rounded-full border border-line-strong px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-text-dim">
-            em breve
-          </span>
-        )}
-      </div>
+  selected,
+  onSelect,
+}: Props) {
+  const Icon = iconFor(automation.id);
 
-      <p className="mb-1 font-mono text-xs text-cyan/80">
-        {automation.subtitle}
-      </p>
-      <p className="mb-4 text-sm leading-relaxed text-text-muted">
+  if (!active) {
+    return (
+      <div className="flex flex-col gap-3 rounded-2xl border border-white/[0.06] bg-surface p-6 opacity-40">
+        <div className="flex items-center justify-between">
+          <div className="flex h-10 w-10 items-center justify-center rounded-md bg-white/[0.05] text-muted">
+            <Icon className="h-5 w-5" />
+          </div>
+          <span className="rounded bg-white/[0.05] px-2 py-0.5 text-[0.68rem] font-semibold uppercase tracking-wide text-muted">
+            Em breve
+          </span>
+        </div>
+        <h3 className="text-[1.02rem] font-semibold">{automation.title}</h3>
+        <p className="text-sm leading-relaxed text-muted">
+          {automation.description}
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div
+      className={`group flex flex-col gap-3 rounded-2xl border bg-surface p-6 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_8px_32px_rgba(0,0,0,0.3)] ${
+        selected
+          ? "border-signal shadow-[0_0_20px_rgba(240,177,0,0.2)]"
+          : "border-white/[0.06] hover:border-signal/30"
+      }`}
+    >
+      <div className="flex items-center justify-between">
+        <div className="flex h-10 w-10 items-center justify-center rounded-md bg-signal/10 text-signal">
+          <Icon className="h-5 w-5" />
+        </div>
+        <span className="rounded bg-ok/10 px-2 py-0.5 text-[0.68rem] font-semibold uppercase tracking-wide text-ok">
+          Ativo
+        </span>
+      </div>
+      <h3 className="text-[1.02rem] font-semibold">{automation.title}</h3>
+      <p className="flex-grow text-sm leading-relaxed text-muted">
         {automation.description}
       </p>
-
-      <div className="mt-auto border-t border-line/70 pt-3">
-        <code className="font-mono text-xs text-text-dim">
-          $ autotarefas {automation.id.replace("_", " ")}
-        </code>
+      <div className="flex gap-4 border-t border-white/[0.06] pt-3">
+        <Field
+          label="Entrada"
+          value={UPLOAD_LABEL[automation.upload] ?? automation.upload}
+        />
+        <Field
+          label="Saída"
+          value={OUTPUT_LABEL[automation.output] ?? automation.output}
+        />
       </div>
-
-      <div className="mt-3 flex flex-wrap gap-2 font-mono text-[10px] text-text-dim">
-        <span className="rounded border border-line px-1.5 py-0.5">
-          {UPLOAD_LABEL[automation.upload]}
-        </span>
-        <span className="rounded border border-line px-1.5 py-0.5">
-          {OUTPUT_LABEL[automation.output]}
-        </span>
-        {automation.requires_browser && (
-          <span className="rounded border border-line px-1.5 py-0.5">
-            usa navegador
-          </span>
-        )}
-      </div>
-    </article>
+      <button
+        type="button"
+        onClick={() => onSelect(automation.id)}
+        aria-pressed={selected}
+        className={`mt-1 w-full rounded-lg border px-4 py-2 text-sm font-semibold transition-all ${
+          selected
+            ? "border-signal bg-signal text-black hover:bg-amber-400"
+            : "border-signal/30 text-signal hover:bg-signal/10"
+        }`}
+      >
+        {selected ? "Selecionado" : "Selecionar"}
+      </button>
+    </div>
   );
 }

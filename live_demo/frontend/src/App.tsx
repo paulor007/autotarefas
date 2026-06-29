@@ -1,30 +1,60 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
-import CatalogGrid from "./components/CatalogGrid";
-import HealthBar from "./components/HealthBar";
-import { getCatalog, getHealth, type Catalog, type Health } from "./lib/api";
+import Artifacts from "./components/Artifacts";
+import Catalog from "./components/Catalog";
+import ExecutionPanel from "./components/ExecutionPanel";
+import Footer from "./components/Footer";
+import Hero from "./components/Hero";
+import Navbar from "./components/Navbar";
+import StatusBar from "./components/StatusBar";
+import TerminalView, { type TerminalLine } from "./components/TerminalView";
+import {
+  getCatalog,
+  getHealth,
+  type Catalog as CatalogData,
+  type Health,
+} from "./lib/api";
 
-type LoadState =
-  | { phase: "loading" }
-  | { phase: "error"; message: string }
-  | { phase: "ready"; health: Health; catalog: Catalog };
+// Saida de exemplo: linhas reais representativas do stdout do AutoTarefas
+// (validate com o clientes.csv de exemplo, ja validado no backend). No Front-2,
+// este terminal passa a consumir o SSE real de /api/stream/{token}.
+const SAMPLE_LINES: TerminalLine[] = [
+  { kind: "command", text: "autotarefas validate clientes.csv" },
+  {
+    kind: "plain",
+    text: "Carregando schema: live_demo/backend/app/assets/schema_clientes.yaml",
+  },
+  { kind: "plain", text: "Schema carregado: 4 coluna(s) declarada(s)." },
+  { kind: "plain", text: "Validando arquivo: clientes.csv" },
+  { kind: "plain", text: "Encontrados 1 problema(s):" },
+  { kind: "error", text: "Linha 6, coluna 'cpf': CPF invalido" },
+  { kind: "ok", text: "Relatorio JSON salvo: out/validate_report.json" },
+];
 
 export default function App() {
-  const [state, setState] = useState<LoadState>({ phase: "loading" });
+  const [health, setHealth] = useState<Health | null>(null);
+  const [catalog, setCatalog] = useState<CatalogData | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     Promise.all([getHealth(), getCatalog()])
-      .then(([health, catalog]) => {
+      .then(([h, c]) => {
         if (!cancelled) {
-          setState({ phase: "ready", health, catalog });
+          setHealth(h);
+          setCatalog(c);
         }
       })
-      .catch((error: unknown) => {
-        const message =
-          error instanceof Error ? error.message : "falha ao carregar";
+      .catch((e: unknown) => {
         if (!cancelled) {
-          setState({ phase: "error", message });
+          setError(e instanceof Error ? e.message : "falha ao conectar");
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setLoading(false);
         }
       });
     return () => {
@@ -32,62 +62,42 @@ export default function App() {
     };
   }, []);
 
+  const activeIds = useMemo(
+    () => new Set(health?.active_automations ?? []),
+    [health],
+  );
+  const online = !!health && (health.demo_servers[0]?.alive ?? false);
+  const selectedAutomation = useMemo(
+    () => catalog?.automations.find((a) => a.id === selectedId) ?? null,
+    [catalog, selectedId],
+  );
+
+  const handleSelect = (id: string) => {
+    setSelectedId(id);
+    setTimeout(() => {
+      document
+        .getElementById("execucao")
+        ?.scrollIntoView({ behavior: "smooth" });
+    }, 150);
+  };
+
   return (
     <div className="min-h-screen">
-      <div className="mx-auto w-full max-w-6xl px-6 py-10 sm:py-14">
-        <header className="mb-10">
-          <p className="mb-3 font-mono text-xs uppercase tracking-[0.22em] text-signal">
-            sandbox seguro · execução real
-          </p>
-          <h1 className="font-display text-4xl font-bold tracking-tight text-text sm:text-5xl">
-            AutoTarefas
-          </h1>
-          <p className="mt-3 max-w-2xl text-base leading-relaxed text-text-muted">
-            Robô de automação operacional. Aqui você roda as tarefas de verdade
-            — num ambiente isolado, sem instalar nada. O catálogo abaixo é
-            executado pelo backend real; nas próximas etapas você acompanha o
-            stdout ao vivo e baixa os artefatos gerados.
-          </p>
-        </header>
-
-        {state.phase === "ready" && (
-          <>
-            <div className="mb-12 animate-fade-up">
-              <HealthBar health={state.health} />
-            </div>
-            <div className="animate-fade-up">
-              <CatalogGrid
-                catalog={state.catalog}
-                activeIds={new Set(state.health.active_automations)}
-              />
-            </div>
-          </>
-        )}
-
-        {state.phase === "loading" && (
-          <div className="flex items-center gap-3 font-mono text-sm text-text-muted">
-            <span className="h-2 w-2 animate-pulse-dot rounded-full bg-cyan" />
-            carregando catálogo do backend…
-          </div>
-        )}
-
-        {state.phase === "error" && (
-          <div className="rounded-lg border border-warn/40 bg-warn/5 px-5 py-4">
-            <p className="font-mono text-sm text-warn">
-              não foi possível falar com o backend
-            </p>
-            <p className="mt-1 text-sm text-text-muted">
-              {state.message}. Confirme que o servidor está no ar em{" "}
-              <code className="font-mono text-text-dim">localhost:7860</code> e
-              recarregue.
-            </p>
-          </div>
-        )}
-
-        <footer className="mt-16 border-t border-line pt-6 font-mono text-xs text-text-dim">
-          AutoTarefas · Live System — execução real em sandbox isolado.
-        </footer>
-      </div>
+      <Navbar online={online} />
+      <Hero health={health} />
+      <StatusBar health={health} />
+      <Catalog
+        catalog={catalog}
+        activeIds={activeIds}
+        selectedId={selectedId}
+        onSelect={handleSelect}
+        loading={loading}
+        error={error}
+      />
+      <ExecutionPanel selected={selectedAutomation} />
+      <TerminalView lines={SAMPLE_LINES} sample />
+      <Artifacts />
+      <Footer />
     </div>
   );
 }

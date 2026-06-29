@@ -1,32 +1,111 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
+@import "tw-animate-css";
+
+/* Tokens do tema "painel de operacoes" (Tailwind v4 via @theme).
+   Geram utilitarias: bg-ink, text-signal, border-cyan, font-mono, etc. */
+@theme {
+  --color-ink: #04070f;
+  --color-elevated: #02040a;
+  --color-surface: #0a1018;
+  --color-surface-2: #151b24;
+  --color-terminal: #010204;
+  --color-fg: #e6e8eb;
+  --color-muted: #7b8189;
+  --color-signal: #f0b100;
+  --color-cyan: #00babb;
+  --color-ok: #11bc6d;
+  --color-danger: #ff6467;
+
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+
+  --radius: 0.625rem;
+
+  --animate-pulse-dot: pulse-dot 2s ease-in-out infinite;
+  --animate-blink: blink 1s step-end infinite;
+}
+
+@keyframes pulse-dot {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.4;
+  }
+}
+
+@keyframes blink {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0;
+  }
+}
 
 @layer base {
-  :root {
-    color-scheme: dark;
-  }
-
   html {
-    -webkit-font-smoothing: antialiased;
-    text-rendering: optimizeLegibility;
+    color-scheme: dark;
+    scroll-behavior: smooth;
   }
 
   body {
-    @apply bg-ink text-text font-sans;
+    @apply bg-ink text-fg font-sans antialiased;
     background-image:
       radial-gradient(
         1200px 600px at 80% -10%,
-        rgba(79, 182, 201, 0.06),
+        rgba(0, 186, 187, 0.05),
         transparent 60%
       ),
       radial-gradient(
         900px 500px at 0% 0%,
-        rgba(240, 180, 41, 0.05),
+        rgba(240, 177, 0, 0.05),
         transparent 55%
       );
     background-attachment: fixed;
   }
+
+  :focus-visible {
+    outline: 2px solid var(--color-signal);
+    outline-offset: 2px;
+    border-radius: 2px;
+  }
+}
+
+/* Container central reaproveitado nas secoes (CSS puro, sem depender de @layer) */
+.container-page {
+  width: 100%;
+  margin-inline: auto;
+  max-width: 80rem;
+  padding-inline: 1rem;
+}
+@media (min-width: 640px) {
+  .container-page {
+    padding-inline: 1.5rem;
+  }
+}
+@media (min-width: 1024px) {
+  .container-page {
+    padding-inline: 2rem;
+  }
+}
+
+/* Scrollbar fina translucida */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.2);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -36,5 +115,6 @@
     animation-duration: 0.001ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
   }
 }
