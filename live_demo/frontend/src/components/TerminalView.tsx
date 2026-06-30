@@ -1,6 +1,7 @@
-import { useEffect, useRef, useState } from "react";
-import { Check, Copy, Trash2 } from "lucide-react";
+﻿import { useEffect, useRef, useState } from "react";
+import { Check, Copy, Loader2, Trash2 } from "lucide-react";
 
+import type { RunStatus } from "../hooks/useExecution";
 import SectionHeader from "./SectionHeader";
 
 export type LineKind =
@@ -17,14 +18,6 @@ export interface TerminalLine {
   text: string;
 }
 
-const LABEL: Partial<Record<LineKind, string>> = {
-  info: "[INFO]",
-  warn: "[WARN]",
-  ok: "[OK]",
-  error: "[ERROR]",
-  done: "[DONE]",
-};
-
 const COLOR: Record<LineKind, string> = {
   command: "text-fg",
   info: "text-cyan",
@@ -35,12 +28,48 @@ const COLOR: Record<LineKind, string> = {
   plain: "text-muted",
 };
 
-interface Props {
-  lines: TerminalLine[];
-  sample?: boolean;
+// O badge reflete o resultado real: o backend emite "done" para qualquer
+// termino, e o outcome (ok | caught_issue | error) diz se foi sucesso, aviso
+// ou erro. Assim nao mostramos "concluido" em verde quando houve problema.
+function badgeFor(
+  status: RunStatus,
+  outcome?: string,
+): { text: string; cls: string } | null {
+  switch (status) {
+    case "starting":
+      return { text: "iniciando", cls: "text-signal" };
+    case "running":
+      return { text: "executando", cls: "text-signal" };
+    case "timeout":
+      return { text: "timeout", cls: "text-danger" };
+    case "error":
+      return { text: "erro", cls: "text-danger" };
+    case "done":
+      if (outcome === "caught_issue")
+        return { text: "concluÃ­do Â· com avisos", cls: "text-signal" };
+      if (outcome === "error")
+        return { text: "concluÃ­do Â· com erros", cls: "text-danger" };
+      return { text: "concluÃ­do", cls: "text-ok" };
+    default:
+      return null;
+  }
 }
 
-export default function TerminalView({ lines, sample = false }: Props) {
+interface Props {
+  lines: TerminalLine[];
+  status: RunStatus;
+  outcome?: string;
+  sample?: boolean;
+  onClear?: () => void;
+}
+
+export default function TerminalView({
+  lines,
+  status,
+  outcome,
+  sample = false,
+  onClear,
+}: Props) {
   const bodyRef = useRef<HTMLDivElement>(null);
   const [copied, setCopied] = useState(false);
 
@@ -63,36 +92,58 @@ export default function TerminalView({ lines, sample = false }: Props) {
     }
   };
 
+  const busy = status === "starting" || status === "running";
+  const canClear = !!onClear && !busy && lines.length > 0;
+  const badge = badgeFor(status, outcome);
+  const showCursor = status === "idle" || busy;
+
   return (
     <section id="terminal" className="py-20">
       <div className="container-page">
         <SectionHeader
           title="Terminal ao Vivo"
-          subtitle="Saída em tempo real da execução no sandbox"
+          subtitle="SaÃ­da em tempo real da execuÃ§Ã£o no sandbox"
         />
 
-        <div className="overflow-hidden rounded-2xl border border-white/[0.06] bg-terminal shadow-[0_20px_60px_rgba(0,0,0,0.4)]">
+        <div className="overflow-hidden rounded-2xl border border-white/6 bg-terminal shadow-[0_20px_60px_rgba(0,0,0,0.4)]">
           {/* Header estilo macOS */}
-          <div className="flex items-center border-b border-white/[0.06] bg-white/[0.02] px-4 py-3">
+          <div className="flex items-center border-b border-white/6 bg-white/2 px-4 py-3">
             <div className="mr-4 flex gap-1.5">
               <span className="h-2.5 w-2.5 rounded-full bg-danger" />
               <span className="h-2.5 w-2.5 rounded-full bg-signal" />
               <span className="h-2.5 w-2.5 rounded-full bg-ok" />
             </div>
-            <span className="flex-grow font-mono text-xs text-muted">
+            <span className="grow font-mono text-xs text-muted">
               autotarefas@sandbox:~
             </span>
-            {sample && (
-              <span className="mr-3 rounded bg-white/[0.05] px-2 py-0.5 font-mono text-[0.6rem] uppercase tracking-wider text-muted">
-                saída de exemplo
+
+            {busy ? (
+              <span className="mr-3 inline-flex items-center gap-1.5 font-mono text-[0.65rem] text-signal">
+                <Loader2 className="h-3 w-3 animate-spin" />
+                {badge?.text}
+              </span>
+            ) : (
+              badge && (
+                <span
+                  className={`mr-3 font-mono text-[0.65rem] uppercase tracking-wider ${badge.cls}`}
+                >
+                  {badge.text}
+                </span>
+              )
+            )}
+
+            {sample && status === "idle" && (
+              <span className="mr-3 rounded bg-white/5 px-2 py-0.5 font-mono text-[0.6rem] uppercase tracking-wider text-muted">
+                saÃ­da de exemplo
               </span>
             )}
+
             <div className="flex gap-2">
               <button
                 type="button"
                 onClick={handleCopy}
-                aria-label="Copiar saída do terminal"
-                className="rounded p-1 text-muted transition-colors hover:bg-white/[0.05] hover:text-fg"
+                aria-label="Copiar saÃ­da do terminal"
+                className="rounded p-1 text-muted transition-colors hover:bg-white/5 hover:text-fg"
               >
                 {copied ? (
                   <Check className="h-3.5 w-3.5 text-ok" />
@@ -102,9 +153,14 @@ export default function TerminalView({ lines, sample = false }: Props) {
               </button>
               <button
                 type="button"
-                disabled
-                aria-label="Limpar terminal (disponível no Front-2)"
-                className="cursor-not-allowed rounded p-1 text-muted/40"
+                onClick={() => onClear?.()}
+                disabled={!canClear}
+                aria-label="Limpar terminal"
+                className={`rounded p-1 transition-colors ${
+                  canClear
+                    ? "text-muted hover:bg-white/5 hover:text-fg"
+                    : "cursor-not-allowed text-muted/40"
+                }`}
               >
                 <Trash2 className="h-3.5 w-3.5" />
               </button>
@@ -114,8 +170,13 @@ export default function TerminalView({ lines, sample = false }: Props) {
           {/* Corpo */}
           <div
             ref={bodyRef}
-            className="max-h-[400px] min-h-[280px] overflow-y-auto p-5 font-mono text-[0.8rem] leading-[1.9]"
+            className="max-h-100 min-h-70 overflow-y-auto p-5 font-mono text-[0.8rem] leading-[1.9]"
           >
+            {lines.length === 0 && !busy && (
+              <div className="text-muted">
+                Selecione uma automaÃ§Ã£o e execute para ver o stdout real aqui.
+              </div>
+            )}
             {lines.map((line, i) => (
               <div key={i} className="flex items-baseline gap-2">
                 {line.kind === "command" ? (
@@ -123,22 +184,21 @@ export default function TerminalView({ lines, sample = false }: Props) {
                     <span className="select-none font-semibold text-ok">$</span>
                     <span className="font-medium text-fg">{line.text}</span>
                   </>
-                ) : line.kind === "plain" ? (
-                  <span className="text-muted">{line.text}</span>
                 ) : (
-                  <>
-                    <span className={`font-semibold ${COLOR[line.kind]}`}>
-                      {LABEL[line.kind]}
-                    </span>
-                    <span className="text-muted">{line.text}</span>
-                  </>
+                  <span
+                    className={`whitespace-pre-wrap wrap-break-word ${COLOR[line.kind]}`}
+                  >
+                    {line.text}
+                  </span>
                 )}
               </div>
             ))}
-            <div className="flex items-baseline gap-2">
-              <span className="select-none font-semibold text-ok">$</span>
-              <span className="animate-blink text-ok">_</span>
-            </div>
+            {showCursor && (
+              <div className="flex items-baseline gap-2">
+                <span className="select-none font-semibold text-ok">$</span>
+                <span className="animate-blink text-ok">_</span>
+              </div>
+            )}
           </div>
         </div>
       </div>

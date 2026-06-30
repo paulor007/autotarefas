@@ -8,16 +8,18 @@ import Hero from "./components/Hero";
 import Navbar from "./components/Navbar";
 import StatusBar from "./components/StatusBar";
 import TerminalView, { type TerminalLine } from "./components/TerminalView";
+import { useExecution } from "./hooks/useExecution";
 import {
   getCatalog,
   getHealth,
+  type Automation,
   type Catalog as CatalogData,
   type Health,
 } from "./lib/api";
 
 // Saida de exemplo: linhas reais representativas do stdout do AutoTarefas
-// (validate com o clientes.csv de exemplo, ja validado no backend). No Front-2,
-// este terminal passa a consumir o SSE real de /api/stream/{token}.
+// (validate com o clientes.csv de exemplo). Some na 1a execucao real, quando o
+// terminal passa a receber o stdout ao vivo do SSE (/api/stream/{token}).
 const SAMPLE_LINES: TerminalLine[] = [
   { kind: "command", text: "autotarefas validate clientes.csv" },
   {
@@ -27,8 +29,8 @@ const SAMPLE_LINES: TerminalLine[] = [
   { kind: "plain", text: "Schema carregado: 4 coluna(s) declarada(s)." },
   { kind: "plain", text: "Validando arquivo: clientes.csv" },
   { kind: "plain", text: "Encontrados 1 problema(s):" },
-  { kind: "error", text: "Linha 6, coluna 'cpf': CPF invalido" },
-  { kind: "ok", text: "Relatorio JSON salvo: out/validate_report.json" },
+  { kind: "error", text: "[ERROR] Linha 6, coluna 'cpf': CPF invalido" },
+  { kind: "ok", text: "[OK] Relatorio JSON salvo: out/validate_report.json" },
 ];
 
 export default function App() {
@@ -37,6 +39,9 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [hasInteracted, setHasInteracted] = useState(false);
+
+  const exec = useExecution();
 
   useEffect(() => {
     let cancelled = false;
@@ -81,6 +86,21 @@ export default function App() {
     }, 150);
   };
 
+  const handleRun = (
+    automation: Automation,
+    opts: { files?: File[]; useSample?: boolean },
+  ) => {
+    setHasInteracted(true);
+    void exec.run(automation, opts);
+    setTimeout(() => {
+      document
+        .getElementById("terminal")
+        ?.scrollIntoView({ behavior: "smooth" });
+    }, 150);
+  };
+
+  const terminalLines = hasInteracted ? exec.lines : SAMPLE_LINES;
+
   return (
     <div className="min-h-screen">
       <Navbar online={online} />
@@ -94,9 +114,20 @@ export default function App() {
         loading={loading}
         error={error}
       />
-      <ExecutionPanel selected={selectedAutomation} />
-      <TerminalView lines={SAMPLE_LINES} sample />
-      <Artifacts />
+      <ExecutionPanel
+        selected={selectedAutomation}
+        status={exec.status}
+        error={exec.error}
+        onRun={handleRun}
+      />
+      <TerminalView
+        lines={terminalLines}
+        status={exec.status}
+        outcome={exec.result?.outcome}
+        sample={!hasInteracted}
+        onClear={hasInteracted ? exec.reset : undefined}
+      />
+      <Artifacts result={exec.result} />
       <Footer />
     </div>
   );

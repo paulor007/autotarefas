@@ -1,124 +1,209 @@
-import { FileUp, Info, Play, Upload } from "lucide-react";
+﻿import { useEffect, useState } from "react";
+import { FileUp, Info, Loader2, Play } from "lucide-react";
 
+import type { RunStatus } from "../hooks/useExecution";
 import type { Automation } from "../lib/api";
+import FileDrop from "./FileDrop";
 import SectionHeader from "./SectionHeader";
 
+// Automacoes que realmente tem exemplo disponivel no backend.
+const SAMPLE_IDS = new Set(["validate", "backup", "organize", "send_api"]);
+
+// accept para upload do tipo "folder" (qualquer extensao permitida pelo backend).
+const FOLDER_ACCEPT =
+  ".csv,.tsv,.txt,.pdf,.docx,.xlsx,.jpg,.jpeg,.png,.json,.yaml,.yml";
+
 const STEPS = [
-  { num: 1, title: "Escolher Automação", desc: "Selecione no catálogo" },
+  { num: 1, title: "Escolher AutomaÃ§Ã£o", desc: "Selecione no catÃ¡logo" },
   { num: 2, title: "Enviar Arquivo", desc: "Upload ou usar exemplo" },
   { num: 3, title: "Executar", desc: "Rodar no sandbox" },
   { num: 4, title: "Terminal ao Vivo", desc: "Acompanhar stdout" },
   { num: 5, title: "Baixar Artefatos", desc: "Download dos resultados" },
 ];
 
+function activeStep(
+  status: RunStatus,
+  hasSelection: boolean,
+  hasInput: boolean,
+): number {
+  if (status === "starting" || status === "running") return 3;
+  if (status === "done" || status === "timeout") return 5;
+  if (!hasSelection) return 1;
+  return hasInput ? 3 : 2;
+}
+
+interface Props {
+  selected: Automation | null;
+  status: RunStatus;
+  error: string | null;
+  onRun: (
+    automation: Automation,
+    opts: { files?: File[]; useSample?: boolean },
+  ) => void;
+}
+
 export default function ExecutionPanel({
   selected,
-}: {
-  selected: Automation | null;
-}) {
+  status,
+  error,
+  onRun,
+}: Props) {
+  const [files, setFiles] = useState<File[]>([]);
+
+  // Trocar de automacao limpa os arquivos escolhidos.
+  useEffect(() => {
+    setFiles([]);
+  }, [selected?.id]);
+
+  const busy = status === "starting" || status === "running";
+  const upload = selected?.upload ?? "none";
+  const needsFile = upload !== "none";
+  const hasSample = selected ? SAMPLE_IDS.has(selected.id) : false;
+  const canRunFile = !!selected && (!needsFile || files.length > 0) && !busy;
+  const step = activeStep(status, !!selected, files.length > 0);
+
+  const runFile = () => {
+    if (selected && canRunFile) {
+      onRun(selected, { files: needsFile ? files : [] });
+    }
+  };
+  const runSample = () => {
+    if (selected && !busy) {
+      onRun(selected, { useSample: true });
+    }
+  };
+
   return (
     <section id="execucao" className="bg-elevated py-20">
       <div className="container-page">
         <SectionHeader
-          title="Painel de Execução"
-          subtitle="Configure e execute automações em tempo real"
+          title="Painel de ExecuÃ§Ã£o"
+          subtitle="Configure e execute automaÃ§Ãµes em tempo real"
         />
 
-        <div className="overflow-hidden rounded-2xl border border-white/[0.06] bg-surface">
+        <div className="overflow-hidden rounded-2xl border border-white/6 bg-surface">
           {/* Stepper */}
-          <div className="flex gap-2 overflow-x-auto border-b border-white/[0.06] p-5">
-            {STEPS.map((step) => (
-              <div
-                key={step.num}
-                className={`flex min-w-fit flex-1 items-center gap-3 rounded-lg px-4 py-3 ${
-                  step.num === 1 ? "bg-signal/10" : ""
-                }`}
-              >
+          <div className="flex gap-2 overflow-x-auto border-b border-white/6 p-5">
+            {STEPS.map((s) => {
+              const isActive = s.num === step;
+              return (
                 <div
-                  className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-bold ${
-                    step.num === 1
-                      ? "bg-signal text-black"
-                      : "border border-white/[0.06] bg-ink text-muted"
+                  key={s.num}
+                  className={`flex min-w-fit flex-1 items-center gap-3 rounded-lg px-4 py-3 ${
+                    isActive ? "bg-signal/10" : ""
                   }`}
                 >
-                  {step.num}
-                </div>
-                <div className="min-w-0">
-                  <div className="whitespace-nowrap text-[0.8rem] font-semibold text-fg">
-                    {step.title}
+                  <div
+                    className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-bold ${
+                      isActive
+                        ? "bg-signal text-black"
+                        : "border border-white/6 bg-ink text-muted"
+                    }`}
+                  >
+                    {s.num}
                   </div>
-                  <div className="whitespace-nowrap text-[0.68rem] text-muted">
-                    {step.desc}
+                  <div className="min-w-0">
+                    <div className="whitespace-nowrap text-[0.8rem] font-semibold text-fg">
+                      {s.title}
+                    </div>
+                    <div className="whitespace-nowrap text-[0.68rem] text-muted">
+                      {s.desc}
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
 
           {/* Workspace */}
           <div className="space-y-6 p-6 sm:p-8">
             <div>
               <span className="mb-2 block text-xs font-semibold uppercase tracking-wider text-muted">
-                Automação selecionada
+                AutomaÃ§Ã£o selecionada
               </span>
-              <div className="rounded-lg border border-white/[0.06] bg-ink p-3 text-sm">
+              <div className="rounded-lg border border-white/6 bg-ink p-3 text-sm">
                 {selected ? (
                   <span className="font-semibold text-signal">
                     {selected.title}
                   </span>
                 ) : (
                   <span className="text-muted">
-                    Nenhuma selecionada — escolha uma no catálogo acima
+                    Nenhuma selecionada â€” escolha uma no catÃ¡logo acima
                   </span>
                 )}
               </div>
             </div>
 
-            <div>
-              <span className="mb-2 block text-xs font-semibold uppercase tracking-wider text-muted">
-                Arquivo de entrada
-              </span>
-              <div className="flex flex-col items-center gap-2 rounded-lg border-2 border-dashed border-white/[0.06] p-8 text-center text-muted opacity-70">
-                <Upload className="h-6 w-6" />
-                <span className="text-sm">
-                  Upload e execução serão conectados ao backend no Front-2
+            {selected && needsFile && (
+              <div>
+                <span className="mb-2 block text-xs font-semibold uppercase tracking-wider text-muted">
+                  Arquivo de entrada{" "}
+                  {upload === "csv" ? "(.csv)" : "(um ou mais arquivos)"}
                 </span>
-                <span className="text-xs opacity-60">
-                  Esta área já reflete a automação selecionada acima
-                </span>
+                <FileDrop
+                  accept={upload === "csv" ? ".csv" : FOLDER_ACCEPT}
+                  multiple={upload === "folder"}
+                  files={files}
+                  onChange={setFiles}
+                  disabled={busy}
+                />
               </div>
-            </div>
+            )}
 
-            {/* Aviso honesto: ainda sem execucao real */}
-            <div className="flex items-start gap-3 rounded-lg border border-cyan/20 bg-cyan/[0.06] px-4 py-3">
-              <Info className="mt-0.5 h-4 w-4 shrink-0 text-cyan" />
-              <p className="text-sm text-muted">
-                <span className="font-medium text-fg">Pré-visualização.</span> A
-                execução real — upload, disparo no sandbox e stdout ao vivo via
-                SSE — será conectada ao backend na próxima etapa (Front-2). Nada
-                é simulado aqui.
-              </p>
-            </div>
+            {selected && !needsFile && (
+              <div className="flex items-start gap-3 rounded-lg border border-cyan/20 bg-cyan/6 px-4 py-3">
+                <Info className="mt-0.5 h-4 w-4 shrink-0 text-cyan" />
+                <p className="text-sm text-muted">
+                  Esta automaÃ§Ã£o nÃ£o precisa de upload â€” roda direto no sandbox
+                  contra os serviÃ§os internos.
+                </p>
+              </div>
+            )}
+
+            {error && (
+              <div className="rounded-lg border border-danger/40 bg-danger/5 px-4 py-3 text-sm text-danger">
+                {error}
+              </div>
+            )}
 
             <div className="flex flex-col gap-3 sm:flex-row">
               <button
                 type="button"
-                disabled
-                aria-disabled
-                className="inline-flex cursor-not-allowed items-center justify-center gap-2 rounded-lg bg-signal/40 px-5 py-2.5 text-sm font-semibold text-black/70"
+                onClick={runFile}
+                disabled={!canRunFile}
+                className={`inline-flex items-center justify-center gap-2 rounded-lg px-5 py-2.5 text-sm font-semibold transition-all ${
+                  canRunFile
+                    ? "bg-signal text-black shadow-[0_0_20px_rgba(240,177,0,0.2)] hover:bg-amber-400 hover:shadow-[0_0_30px_rgba(240,177,0,0.3)]"
+                    : "cursor-not-allowed bg-signal/40 text-black/70"
+                }`}
               >
-                <Play className="h-4 w-4 fill-current" />
-                Executar agora (em breve)
+                {busy ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Play className="h-4 w-4 fill-current" />
+                )}
+                {busy
+                  ? "Executandoâ€¦"
+                  : needsFile
+                    ? "Executar com arquivo"
+                    : "Executar agora"}
               </button>
-              <button
-                type="button"
-                disabled
-                aria-disabled
-                className="inline-flex cursor-not-allowed items-center justify-center gap-2 rounded-lg border border-white/10 px-5 py-2.5 text-sm font-medium text-muted"
-              >
-                <FileUp className="h-4 w-4" />
-                Usar exemplo (em breve)
-              </button>
+
+              {hasSample && (
+                <button
+                  type="button"
+                  onClick={runSample}
+                  disabled={busy}
+                  className={`inline-flex items-center justify-center gap-2 rounded-lg border px-5 py-2.5 text-sm font-medium transition-colors ${
+                    busy
+                      ? "cursor-not-allowed border-white/10 text-muted"
+                      : "border-signal/30 text-signal hover:bg-signal/10"
+                  }`}
+                >
+                  <FileUp className="h-4 w-4" />
+                  Usar exemplo
+                </button>
+              )}
             </div>
           </div>
         </div>
