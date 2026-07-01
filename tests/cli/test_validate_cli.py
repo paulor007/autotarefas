@@ -631,3 +631,24 @@ class TestValidateOutput:
             obj=cli_ctx,
         )
         assert result.exit_code == 2  # erro de uso
+
+
+class TestValidateCliModoLimpeza:
+    def test_limpeza_mostra_audit_trail(self, tmp_path: Path, cli_ctx: CLIContext) -> None:
+        schema = tmp_path / "schema.yaml"
+        schema.write_text(
+            "columns:\n  - name: email\n    type: str\n    required: true\n    format: email\n",
+            encoding="utf-8",
+        )
+        csv = tmp_path / "dados.csv"
+        csv.write_text("email\nAna@Example.COM\n", encoding="utf-8")
+
+        runner = CliRunner()
+        result = runner.invoke(
+            validate,
+            [str(csv), "-s", str(schema), "--mode", "limpeza"],
+            obj=cli_ctx,
+        )
+        assert result.exit_code == 0
+        assert "LIMPEZA" in result.output
+        assert "ana@example.com" in result.output

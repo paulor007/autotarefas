@@ -12,6 +12,7 @@ import pytest
 from autotarefas.core.base import TaskResult, TaskStatus
 from autotarefas.tasks.report import (
     CSV_FIELDNAMES,
+    generate_cleaning_summary,
     generate_summary,
     write_csv_report,
     write_json_report,
@@ -473,3 +474,81 @@ class TestEdgeCases:
         assert "line" in CSV_FIELDNAMES
         assert "column" in CSV_FIELDNAMES
         assert "message" in CSV_FIELDNAMES
+
+
+# ============================================================
+# generate_summary: issue sem coluna (linha duplicada)
+# ============================================================
+
+
+class TestGenerateSummaryColumnNone:
+    def test_linha_inteira_em_vez_de_coluna_none(self) -> None:
+        result = TaskResult(
+            task_name="validate",
+            status=TaskStatus.SUCCESS,
+            started_at=datetime(2026, 5, 15, tzinfo=UTC),
+            finished_at=datetime(2026, 5, 15, tzinfo=UTC),
+            duration_ms=10,
+            data={
+                "file": "x.csv",
+                "rows": 4,
+                "columns": ["a", "b"],
+                "total_issues": 1,
+                "total_errors": 0,
+                "total_warnings": 1,
+                "issues": [
+                    {
+                        "line": 4,
+                        "column": None,
+                        "message": "Linha duplicada (identica a linha 2)",
+                        "severity": "warning",
+                        "value": None,
+                    }
+                ],
+            },
+        )
+        summary = generate_summary(result)
+        assert "linha inteira" in summary
+        assert "coluna 'None'" not in summary
+        assert "identica a linha 2" in summary
+
+
+# ============================================================
+# generate_cleaning_summary (audit trail)
+# ============================================================
+
+
+class TestGenerateCleaningSummary:
+    def _result(self, changes: list[dict[str, object]]) -> TaskResult:
+        return TaskResult(
+            task_name="validate",
+            status=TaskStatus.SUCCESS,
+            started_at=datetime(2026, 5, 15, tzinfo=UTC),
+            finished_at=datetime(2026, 5, 15, tzinfo=UTC),
+            duration_ms=10,
+            data={
+                "mode": "limpeza",
+                "cleaning_changes": changes,
+                "total_cleaned": len(changes),
+            },
+        )
+
+    def test_sem_normalizacoes(self) -> None:
+        summary = generate_cleaning_summary(self._result([]))
+        assert "Nenhuma normalizacao" in summary
+
+    def test_com_normalizacoes(self) -> None:
+        changes: list[dict[str, object]] = [
+            {
+                "line": 2,
+                "column": "email",
+                "before": "A@X.COM",
+                "after": "a@x.com",
+                "rules": ["minusculo"],
+            }
+        ]
+        summary = generate_cleaning_summary(self._result(changes))
+        assert "1 valor(es) normalizado" in summary
+        assert "A@X.COM" in summary
+        assert "a@x.com" in summary
+        assert "minusculo" in summary

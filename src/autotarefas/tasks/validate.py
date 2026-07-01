@@ -41,6 +41,7 @@ import yaml
 from pydantic import BaseModel, Field
 
 from autotarefas.core import BaseTask, TaskResult, TaskStatus, ValidationError
+from autotarefas.tasks.cleaning import CleaningChange, clean_cell
 from autotarefas.tasks.duplicates import (
     find_duplicate_rows,
     find_duplicate_values,
@@ -77,6 +78,9 @@ BRValidatorType = Literal["cpf", "cnpj"]
 
 #: Formatos de alto nivel reconhecidos pelo schema (alem do type tecnico).
 FormatType = Literal["email", "phone"]
+
+#: Modos de operacao da auditoria de planilha.
+ValidationMode = Literal["auditoria", "limpeza", "bloqueio"]
 
 
 class ColumnSchema(BaseModel):
@@ -301,6 +305,7 @@ class ValidateTask(BaseTask):
         file_path: Path,
         schema: Schema,
         *,
+        mode: ValidationMode = "auditoria",
         dry_run: bool = False,
     ) -> None:
         """
@@ -309,11 +314,18 @@ class ValidateTask(BaseTask):
         Args:
             file_path: Caminho da planilha a validar.
             schema: Schema com as regras.
-            dry_run: Se True, nao persiste relatorio (Parte 3.3).
+            mode: Modo de operacao:
+                - "auditoria" (default): so aponta problemas, nao altera dados.
+                - "limpeza": normaliza dados seguros antes de validar e
+                  registra o audit trail (antes/depois). Nunca inventa dado.
+                - "bloqueio": nao altera dados; usado em pipelines, onde o
+                  exit code diferente de zero deve barrar o proximo passo.
+            dry_run: Se True, nao persiste relatorio.
         """
         super().__init__(dry_run=dry_run)
         self.file_path = file_path
         self.schema = schema
+        self.mode = mode
 
     def execute(self) -> TaskResult:
         """Executa a validacao."""
@@ -355,7 +367,14 @@ class ValidateTask(BaseTask):
                 },
             )
 
-        # 5. NOVO: validacao de conteudo
+        # 4b. Modo limpeza: normaliza dados seguros ANTES de validar,
+        # de modo que valores como "  Ana@X.COM " deixem de falhar por
+        # espacos/caixa. CPF/telefone invalidos permanecem intactos.
+        cleaning_changes: list[CleaningChange] = []
+        if self.mode == "limpeza":
+            df, cleaning_changes = self._clean_dataframe(df)
+
+        # 5. Validacao de conteudo
         collector = self._validate_content(df)
 
         # 5b. Deteccao de duplicatas (cross-row)
@@ -364,12 +383,15 @@ class ValidateTask(BaseTask):
         # 6. Monta resultado final
         base_data: dict[str, Any] = {
             "file": str(self.file_path),
+            "mode": self.mode,
             "rows": len(df),
             "columns": list(df.columns),
             "total_issues": len(collector),
             "total_errors": len(collector.errors),
             "total_warnings": len(collector.warnings),
             "issues": [self._issue_to_dict(i) for i in collector.issues],
+            "cleaning_changes": [self._change_to_dict(c) for c in cleaning_changes],
+            "total_cleaned": len(cleaning_changes),
         }
 
         if collector.is_valid:
@@ -467,6 +489,65 @@ class ValidateTask(BaseTask):
             for col in self.schema.columns
             if col.required and col.name not in actual_columns
         ]
+
+    # ========================================================
+    # Normalizacao segura (modo limpeza)
+    # ========================================================
+
+    def _clean_dataframe(self, df: pd.DataFrame) -> tuple[pd.DataFrame, list[CleaningChange]]:
+        """
+        Aplica normalizacao segura (modo limpeza) coluna-a-coluna.
+
+        Para cada coluna do schema presente no DataFrame, deriva quais
+        normalizacoes se aplicam (email → minusculo; cpf/cnpj → mascara
+        canonica *quando o documento e valido*; phone → mascara *quando
+        valido*; e sempre remocao/colapso de espacos). Registra em
+        `CleaningChange` apenas as celulas que de fato mudaram.
+
+        Nunca inventa dado: CPF/telefone invalidos permanecem intactos e
+        continuarao sendo apontados pela validacao.
+
+        Returns:
+            Tupla ``(df_normalizado, audit_trail)``. O DataFrame original
+            nao e mutado (opera sobre uma copia).
+        """
+        cleaned = df.copy()
+        changes: list[CleaningChange] = []
+
+        for col_schema in self.schema.columns:
+            if col_schema.name not in cleaned.columns:
+                continue
+
+            lowercase = col_schema.format == "email"
+            phone = col_schema.format == "phone"
+            cpf = col_schema.validator_br == "cpf"
+            cnpj = col_schema.validator_br == "cnpj"
+
+            new_values: list[str] = []
+            col_changes: list[CleaningChange] = []
+            for offset, raw in enumerate(cleaned[col_schema.name]):
+                before = self._cell_to_str(raw)
+                after, rules = clean_cell(
+                    before, lowercase=lowercase, cpf=cpf, cnpj=cnpj, phone=phone
+                )
+                new_values.append(after)
+                if rules:
+                    col_changes.append(
+                        CleaningChange(
+                            line=offset + 2,
+                            column=col_schema.name,
+                            before=before,
+                            after=after,
+                            rules=rules,
+                        )
+                    )
+
+            # So reescreve a coluna se houve alguma alteracao real.
+            if col_changes:
+                cleaned[col_schema.name] = new_values
+                changes.extend(col_changes)
+
+        return cleaned, changes
 
     # ========================================================
     # Validacao de conteudo (NOVO na Parte 3.2)
@@ -620,6 +701,17 @@ class ValidateTask(BaseTask):
             "value": issue.value,
         }
 
+    @staticmethod
+    def _change_to_dict(change: CleaningChange) -> dict[str, Any]:
+        """Serializa CleaningChange em dict (para o relatorio e o data)."""
+        return {
+            "line": change.line,
+            "column": change.column,
+            "before": change.before,
+            "after": change.after,
+            "rules": list(change.rules),
+        }
+
 
 __all__ = [
     "BRValidatorType",
@@ -628,5 +720,6 @@ __all__ = [
     "FormatType",
     "Schema",
     "ValidateTask",
+    "ValidationMode",
     "load_schema",
 ]

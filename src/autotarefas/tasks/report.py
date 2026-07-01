@@ -159,10 +159,9 @@ def generate_summary(result: TaskResult, *, max_issues_shown: int = 10) -> str:
         shown = issues[:max_issues_shown]
         for issue in shown:
             severity_tag = "[ERROR]" if issue.get("severity") == "error" else "[WARN]"
-            lines.append(
-                f"  {severity_tag} Linha {issue['line']}, "
-                f"coluna '{issue['column']}': {issue['message']}"
-            )
+            column = issue.get("column")
+            local = "linha inteira" if column is None else f"coluna '{column}'"
+            lines.append(f"  {severity_tag} Linha {issue['line']}, {local}: {issue['message']}")
 
         # Indica se truncou
         if len(issues) > max_issues_shown:
@@ -172,8 +171,54 @@ def generate_summary(result: TaskResult, *, max_issues_shown: int = 10) -> str:
     return "\n".join(lines)
 
 
+# ============================================================
+# Cleaning Summary (audit trail no console — modo limpeza)
+# ============================================================
+
+
+def generate_cleaning_summary(result: TaskResult, *, max_changes_shown: int = 10) -> str:
+    """
+    Gera resumo do audit trail de normalizacao (modo limpeza).
+
+    Le `cleaning_changes` do `result.data` e lista as alteracoes
+    antes→depois. Reforca que nenhum dado foi inventado. Se nao houve
+    normalizacao, informa isso.
+
+    Args:
+        result: TaskResult da validacao (modo limpeza).
+        max_changes_shown: Maximo de alteracoes a listar individualmente.
+
+    Returns:
+        String multi-linha com o resumo das normalizacoes.
+    """
+    changes: list[dict[str, Any]] = result.data.get("cleaning_changes", [])
+    total = result.data.get("total_cleaned", len(changes))
+
+    lines: list[str] = []
+    if total == 0:
+        lines.append("[LIMPEZA] Nenhuma normalizacao foi necessaria.")
+        return "\n".join(lines)
+
+    lines.append(
+        f"[LIMPEZA] {total} valor(es) normalizado(s) com seguranca (nenhum dado foi inventado):"
+    )
+    for change in changes[:max_changes_shown]:
+        rules = ", ".join(change.get("rules", []))
+        lines.append(
+            f"  Linha {change['line']}, coluna '{change['column']}': "
+            f"'{change['before']}' -> '{change['after']}' (regras: {rules})"
+        )
+
+    if len(changes) > max_changes_shown:
+        remaining = len(changes) - max_changes_shown
+        lines.append(f"  ... e mais {remaining} normalizacao(oes).")
+
+    return "\n".join(lines)
+
+
 __all__ = [
     "CSV_FIELDNAMES",
+    "generate_cleaning_summary",
     "generate_summary",
     "write_csv_report",
     "write_json_report",

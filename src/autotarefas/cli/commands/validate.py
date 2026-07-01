@@ -33,11 +33,12 @@ from autotarefas.cli.console import Console
 from autotarefas.cli.context import CLIContext
 from autotarefas.core.exceptions import AutoTarefasError
 from autotarefas.tasks.report import (
+    generate_cleaning_summary,
     generate_summary,
     write_csv_report,
     write_json_report,
 )
-from autotarefas.tasks.validate import ValidateTask, load_schema
+from autotarefas.tasks.validate import ValidateTask, ValidationMode, load_schema
 
 
 @click.command(name="validate")
@@ -83,19 +84,30 @@ from autotarefas.tasks.validate import ValidateTask, load_schema
     help="Maximo de issues a listar no terminal.",
 )
 @click.option(
+    "--mode",
+    type=click.Choice(["auditoria", "limpeza", "bloqueio"]),
+    default="auditoria",
+    show_default=True,
+    help=(
+        "auditoria: so aponta problemas | limpeza: normaliza dados seguros "
+        "(nunca inventa) e mostra o antes/depois | bloqueio: para pipelines."
+    ),
+)
+@click.option(
     "--strict-warnings",
     is_flag=True,
     default=False,
     help="Trata warnings como erros (exit 1 mesmo so com warnings).",
 )
 @click.pass_obj
-def validate(  # noqa: PLR0912
+def validate(  # noqa: PLR0912, PLR0915
     ctx: CLIContext,
     arquivo: Path,
     schema: Path,
     report_json: Path | None,
     report_csv: Path | None,
     max_issues: int,
+    mode: str,
     strict_warnings: bool,
 ) -> None:
     """Valida planilha CSV/Excel contra schema YAML."""
@@ -113,6 +125,7 @@ def validate(  # noqa: PLR0912
 
     n_cols = len(schema_obj.columns)
     console.info(f"Schema carregado: {n_cols} coluna(s) declarada(s).")
+    console.info(f"Modo: {mode}")
     console.info("")
 
     # ============================================================
@@ -120,9 +133,12 @@ def validate(  # noqa: PLR0912
     # ============================================================
     console.info(f"Validando arquivo: {arquivo}")
 
+    # click.Choice garante que `mode` e um dos literais de ValidationMode.
+    validation_mode: ValidationMode = mode  # type: ignore[assignment]
     task = ValidateTask(
         file_path=arquivo,
         schema=schema_obj,
+        mode=validation_mode,
         dry_run=ctx.dry_run,
     )
     # BaseTask.run() ja registra audit automaticamente — nao precisamos
@@ -162,6 +178,11 @@ def validate(  # noqa: PLR0912
     summary = generate_summary(result, max_issues_shown=max_issues)
     console.info(summary)
     console.info("")
+
+    # 4b. Resumo das normalizacoes (modo limpeza)
+    if mode == "limpeza":
+        console.info(generate_cleaning_summary(result, max_changes_shown=max_issues))
+        console.info("")
 
     # ============================================================
     # 5. Status final + exit code

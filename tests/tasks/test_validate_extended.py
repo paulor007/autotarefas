@@ -96,3 +96,48 @@ class TestDuplicateRows:
         assert any("duplicada" in str(w["message"]) for w in warnings)
         # a 2a ocorrencia (linha 4) e marcada
         assert any(w["line"] == 4 for w in warnings)
+
+
+class TestModoLimpeza:
+    def test_normaliza_email_lowercase(self, tmp_path: Path) -> None:
+        # e-mail com maiuscula: no modo limpeza vira minusculo (audit trail)
+        csv = _make_csv(tmp_path, "email\nAna@Example.COM\n")
+        schema = Schema(columns=[ColumnSchema(name="email", format="email")])
+        result = ValidateTask(file_path=csv, schema=schema, mode="limpeza").run()
+        assert result.is_success
+        assert result.data["total_cleaned"] >= 1
+        changes = result.data["cleaning_changes"]
+        assert any(c["after"] == "ana@example.com" for c in changes)
+
+    def test_normaliza_espacos_internos(self, tmp_path: Path) -> None:
+        csv = _make_csv(tmp_path, "nome\nAna   Lima\n")
+        schema = Schema(columns=[ColumnSchema(name="nome")])
+        result = ValidateTask(file_path=csv, schema=schema, mode="limpeza").run()
+        assert result.data["total_cleaned"] == 1
+        assert result.data["cleaning_changes"][0]["after"] == "Ana Lima"
+
+    def test_formata_cpf_valido(self, tmp_path: Path) -> None:
+        csv = _make_csv(tmp_path, "cpf\n52998224725\n")
+        schema = Schema(columns=[ColumnSchema(name="cpf", validator_br="cpf")])
+        result = ValidateTask(file_path=csv, schema=schema, mode="limpeza").run()
+        assert result.is_success
+        changes = result.data["cleaning_changes"]
+        assert any(c["after"] == "529.982.247-25" for c in changes)
+
+    def test_nao_conserta_cpf_invalido(self, tmp_path: Path) -> None:
+        # CPF invalido permanece invalido mesmo no modo limpeza (nao inventa)
+        csv = _make_csv(tmp_path, "cpf\n111.111.111-11\n")
+        schema = Schema(columns=[ColumnSchema(name="cpf", validator_br="cpf")])
+        result = ValidateTask(file_path=csv, schema=schema, mode="limpeza").run()
+        assert not result.is_success
+        assert any("CPF invalido" in m for m in _messages(result))
+
+
+class TestModoAuditoria:
+    def test_nao_normaliza(self, tmp_path: Path) -> None:
+        csv = _make_csv(tmp_path, "nome\nAna   Lima\n")
+        schema = Schema(columns=[ColumnSchema(name="nome")])
+        # modo default (auditoria) nao altera dados
+        result = ValidateTask(file_path=csv, schema=schema).run()
+        assert result.data["total_cleaned"] == 0
+        assert result.data["cleaning_changes"] == []
