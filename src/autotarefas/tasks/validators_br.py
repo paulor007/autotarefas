@@ -192,7 +192,140 @@ def is_valid_cnpj(value: str) -> bool:
     return dv2_calculado == int(digits[13])
 
 
+# ============================================================
+# Validacao de telefone brasileiro
+# ============================================================
+
+#: DDDs validos no Brasil (Plano Nacional de Discagem da Anatel).
+#: DDDs como 20, 23, 30, 36, 50, 70, 80, 90 nao existem e sao rejeitados.
+_DDDS_VALIDOS: frozenset[str] = frozenset(
+    {
+        "11",
+        "12",
+        "13",
+        "14",
+        "15",
+        "16",
+        "17",
+        "18",
+        "19",
+        "21",
+        "22",
+        "24",
+        "27",
+        "28",
+        "31",
+        "32",
+        "33",
+        "34",
+        "35",
+        "37",
+        "38",
+        "41",
+        "42",
+        "43",
+        "44",
+        "45",
+        "46",
+        "47",
+        "48",
+        "49",
+        "51",
+        "53",
+        "54",
+        "55",
+        "61",
+        "62",
+        "63",
+        "64",
+        "65",
+        "66",
+        "67",
+        "68",
+        "69",
+        "71",
+        "73",
+        "74",
+        "75",
+        "77",
+        "79",
+        "81",
+        "82",
+        "83",
+        "84",
+        "85",
+        "86",
+        "87",
+        "88",
+        "89",
+        "91",
+        "92",
+        "93",
+        "94",
+        "95",
+        "96",
+        "97",
+        "98",
+        "99",
+    }
+)
+
+
+def is_valid_phone_br(value: str) -> bool:
+    """
+    Valida um telefone brasileiro (fixo ou celular).
+
+    Aceita com ou sem mascara, com ou sem o codigo do pais (+55).
+    Verifica:
+    1. Apos remover nao-digitos (e o 55 inicial, se houver), sobra 10
+       (fixo) ou 11 (celular) digitos.
+    2. O DDD (2 primeiros digitos) existe no Plano Nacional de Discagem.
+    3. Celular (11 digitos): o primeiro digito do numero e 9.
+    4. Fixo (10 digitos): o primeiro digito do numero esta entre 2 e 5.
+
+    Args:
+        value: Telefone a validar (com ou sem mascara).
+
+    Returns:
+        True se valido, False caso contrario.
+
+    Exemplos:
+        >>> is_valid_phone_br("(11) 98765-4321")
+        True
+        >>> is_valid_phone_br("+55 11 98765-4321")
+        True
+        >>> is_valid_phone_br("1133334444")
+        True
+        >>> is_valid_phone_br("11 8765-4321")  # celular sem o 9
+        False
+        >>> is_valid_phone_br("(20) 98765-4321")  # DDD inexistente
+        False
+        >>> is_valid_phone_br("9999")
+        False
+    """
+    digits = _only_digits(value)
+
+    # Remove o codigo do pais (+55) quando presente.
+    if len(digits) in (12, 13) and digits.startswith("55"):
+        digits = digits[2:]
+
+    # 1. Comprimento: 10 (fixo) ou 11 (celular).
+    if len(digits) not in (10, 11):
+        return False
+
+    # 2. DDD valido.
+    if digits[:2] not in _DDDS_VALIDOS:
+        return False
+
+    # 3 e 4. Primeiro digito do numero (apos o DDD).
+    first = digits[2]
+    if len(digits) == 11:  # noqa: PLR2004
+        return first == "9"  # celular sempre comeca com 9
+    return first in {"2", "3", "4", "5"}  # fixo
+
+
 __all__ = [
     "is_valid_cnpj",
     "is_valid_cpf",
+    "is_valid_phone_br",
 ]

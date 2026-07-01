@@ -41,6 +41,12 @@ import yaml
 from pydantic import BaseModel, Field
 
 from autotarefas.core import BaseTask, TaskResult, TaskStatus, ValidationError
+from autotarefas.tasks.duplicates import (
+    find_duplicate_rows,
+    find_duplicate_values,
+    normalize_digits,
+    normalize_text,
+)
 from autotarefas.tasks.issues import (
     IssueCollector,
     IssueSeverity,
@@ -49,7 +55,10 @@ from autotarefas.tasks.issues import (
 from autotarefas.tasks.validators import (
     CNPJValidator,
     CPFValidator,
+    EmailValidator,
     EnumValidator,
+    MinLengthValidator,
+    PhoneValidator,
     RangeValidator,
     RegexValidator,
     TypeValidator,
@@ -65,6 +74,9 @@ ColumnType = Literal["str", "int", "float", "date", "bool"]
 
 #: Validadores brasileiros disponiveis no schema.
 BRValidatorType = Literal["cpf", "cnpj"]
+
+#: Formatos de alto nivel reconhecidos pelo schema (alem do type tecnico).
+FormatType = Literal["email", "phone"]
 
 
 class ColumnSchema(BaseModel):
@@ -92,6 +104,10 @@ class ColumnSchema(BaseModel):
         regex_message: Mensagem custom do erro de regex.
         enum_values: Lista de valores aceitos. Aplica EnumValidator.
         validator_br: "cpf" ou "cnpj". Aplica validator brasileiro.
+        format: "email" ou "phone". Aplica EmailValidator/PhoneValidator.
+        min_length: Comprimento minimo de texto. Aplica MinLengthValidator.
+        unique: Se True, valores repetidos nesta coluna viram erro
+            (deteccao cross-row feita pela ValidateTask).
     """
 
     name: str = Field(..., min_length=1)
@@ -106,6 +122,11 @@ class ColumnSchema(BaseModel):
     regex_message: str | None = None
     enum_values: tuple[str, ...] | None = None
     validator_br: BRValidatorType | None = None
+
+    # Novos campos (Auditoria de planilha)
+    format: FormatType | None = None
+    min_length: int | None = None
+    unique: bool = False
 
     def get_validators(self) -> list[Validator]:
         """
@@ -158,6 +179,16 @@ class ColumnSchema(BaseModel):
         elif self.validator_br == "cnpj":
             validators.append(CNPJValidator())
 
+        # 6. Formato de alto nivel (email/telefone)
+        if self.format == "email":
+            validators.append(EmailValidator())
+        elif self.format == "phone":
+            validators.append(PhoneValidator())
+
+        # 7. Comprimento minimo de texto
+        if self.min_length is not None:
+            validators.append(MinLengthValidator(min_length=self.min_length))
+
         return validators
 
 
@@ -167,9 +198,12 @@ class Schema(BaseModel):
 
     Attributes:
         columns: Lista de definicoes de coluna (minimo 1).
+        detect_duplicate_rows: Se True, linhas 100% identicas viram
+            warning (a 1a ocorrencia e considerada o original).
     """
 
     columns: list[ColumnSchema] = Field(..., min_length=1)
+    detect_duplicate_rows: bool = False
 
     @property
     def column_names(self) -> list[str]:
@@ -323,6 +357,9 @@ class ValidateTask(BaseTask):
 
         # 5. NOVO: validacao de conteudo
         collector = self._validate_content(df)
+
+        # 5b. Deteccao de duplicatas (cross-row)
+        self._validate_duplicates(df, collector)
 
         # 6. Monta resultado final
         base_data: dict[str, Any] = {
@@ -490,6 +527,56 @@ class ValidateTask(BaseTask):
 
         return collector
 
+    def _validate_duplicates(self, df: pd.DataFrame, collector: IssueCollector) -> None:
+        """
+        Detecta duplicatas cross-row e adiciona issues ao collector.
+
+        - Colunas com ``unique=True``: valores repetidos viram ERROR. A
+          comparacao normaliza por tipo — CPF/CNPJ por digitos (a mascara
+          nao importa), demais por texto (ignora caixa e espacos).
+        - ``detect_duplicate_rows=True``: linhas 100% identicas viram
+          WARNING, a partir da 2a ocorrencia (a 1a e o "original").
+
+        Indices 0-based vindos de `duplicates` viram numero de linha
+        somando +2 (offset 0 + cabecalho na linha 1 → 1a linha de dados
+        e a 2), mesma convencao do `_validate_content`.
+        """
+        # Colunas declaradas como unicas.
+        for col_schema in self.schema.columns:
+            if not col_schema.unique or col_schema.name not in df.columns:
+                continue
+
+            values = [self._cell_to_str(v) for v in df[col_schema.name]]
+            key = normalize_digits if col_schema.validator_br in {"cpf", "cnpj"} else normalize_text
+
+            for indices in find_duplicate_values(values, key=key).values():
+                lines = [i + 2 for i in indices]
+                where = ", ".join(str(n) for n in lines)
+                for line in lines:
+                    collector.add(
+                        line=line,
+                        column=col_schema.name,
+                        message=(f"Valor duplicado na coluna '{col_schema.name}' (linhas {where})"),
+                        severity=IssueSeverity.ERROR,
+                    )
+
+        # Linhas inteiras identicas.
+        if self.schema.detect_duplicate_rows:
+            rows = [
+                tuple(self._cell_to_str(v) for v in row)
+                for row in df.itertuples(index=False, name=None)
+            ]
+            for group in find_duplicate_rows(rows):
+                lines = [i + 2 for i in group]
+                original = lines[0]
+                for line in lines[1:]:
+                    collector.add(
+                        line=line,
+                        column=None,
+                        message=f"Linha duplicada (identica a linha {original})",
+                        severity=IssueSeverity.WARNING,
+                    )
+
     @staticmethod
     def _cell_to_str(value: Any) -> str:
         """
@@ -538,6 +625,7 @@ __all__ = [
     "BRValidatorType",
     "ColumnSchema",
     "ColumnType",
+    "FormatType",
     "Schema",
     "ValidateTask",
     "load_schema",

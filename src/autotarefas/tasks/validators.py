@@ -36,7 +36,7 @@ from datetime import datetime
 from typing import Literal, Protocol
 
 from autotarefas.tasks.issues import IssueCollector, IssueSeverity
-from autotarefas.tasks.validators_br import is_valid_cnpj, is_valid_cpf
+from autotarefas.tasks.validators_br import is_valid_cnpj, is_valid_cpf, is_valid_phone_br
 
 # ============================================================
 # Tipos
@@ -414,10 +414,145 @@ class CNPJValidator:
             )
 
 
+# ============================================================
+# EmailValidator — formato de e-mail
+# ============================================================
+
+#: Regex pratica de e-mail (cobre a vasta maioria dos casos reais).
+#: Nao implementa a RFC 5322 completa de proposito — seria complexa
+#: demais e, na pratica, rejeitaria poucos casos a mais.
+_EMAIL_PATTERN = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}")
+
+
+@dataclass(frozen=True, slots=True)
+class EmailValidator:
+    """
+    Valida que o valor tem formato de e-mail.
+
+    Usa `re.fullmatch` com um padrao pratico (local@dominio.tld). Aceita
+    subdominios (a@x.y.com) e os caracteres comuns na parte local
+    (``. _ % + -``). Ignora valores vazios (nulidade e do schema).
+
+    Attributes:
+        severity: Severidade (default ERROR).
+    """
+
+    severity: IssueSeverity = IssueSeverity.ERROR
+
+    def validate(
+        self,
+        value: str,
+        *,
+        line: int,
+        column: str,
+        collector: IssueCollector,
+    ) -> None:
+        if _is_empty(value):
+            return
+
+        if not _EMAIL_PATTERN.fullmatch(value.strip()):
+            collector.add(
+                line=line,
+                column=column,
+                message=f"E-mail invalido: '{value}'",
+                severity=self.severity,
+                value=value,
+            )
+
+
+# ============================================================
+# PhoneValidator — telefone brasileiro
+# ============================================================
+
+
+@dataclass(frozen=True, slots=True)
+class PhoneValidator:
+    """
+    Valida telefone brasileiro (fixo ou celular).
+
+    Wrapper de `is_valid_phone_br`. Aceita com ou sem mascara e com ou
+    sem +55. Ignora valores vazios.
+
+    Attributes:
+        severity: Severidade (default ERROR).
+    """
+
+    severity: IssueSeverity = IssueSeverity.ERROR
+
+    def validate(
+        self,
+        value: str,
+        *,
+        line: int,
+        column: str,
+        collector: IssueCollector,
+    ) -> None:
+        if _is_empty(value):
+            return
+
+        if not is_valid_phone_br(value):
+            collector.add(
+                line=line,
+                column=column,
+                message=f"Telefone invalido: '{value}'",
+                severity=self.severity,
+                value=value,
+            )
+
+
+# ============================================================
+# MinLengthValidator — comprimento minimo
+# ============================================================
+
+
+@dataclass(frozen=True, slots=True)
+class MinLengthValidator:
+    """
+    Valida que o valor tem um comprimento minimo (apos strip).
+
+    Util pra campos como "nome", que nao podem ter 1 caractere. Ignora
+    valores vazios — obrigatoriedade e do schema (nullable).
+
+    Attributes:
+        min_length: Comprimento minimo (inclusive).
+        severity: Severidade (default ERROR).
+    """
+
+    min_length: int
+    severity: IssueSeverity = IssueSeverity.ERROR
+
+    def validate(
+        self,
+        value: str,
+        *,
+        line: int,
+        column: str,
+        collector: IssueCollector,
+    ) -> None:
+        if _is_empty(value):
+            return
+
+        length = len(value.strip())
+        if length < self.min_length:
+            collector.add(
+                line=line,
+                column=column,
+                message=(
+                    f"Valor muito curto: '{value}' tem {length} caractere(s), "
+                    f"minimo {self.min_length}"
+                ),
+                severity=self.severity,
+                value=value,
+            )
+
+
 __all__ = [
     "CNPJValidator",
     "CPFValidator",
+    "EmailValidator",
     "EnumValidator",
+    "MinLengthValidator",
+    "PhoneValidator",
     "RangeValidator",
     "RegexValidator",
     "TypeValidator",
