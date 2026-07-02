@@ -294,7 +294,7 @@ disallow_untyped_defs = false
 
 # Libs sem stubs disponíveis (ignorar imports)
 [[tool.mypy.overrides]]
-module = ["faker.*", "tenacity.*", "aiosmtpd.*", "bs4.*"]
+module = ["faker.*", "tenacity.*", "aiosmtpd.*", "bs4.*", "openpyxl.*"]
 ignore_missing_imports = true
 
 

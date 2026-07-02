@@ -39,6 +39,7 @@ from autotarefas.tasks.report import (
     write_csv_report,
     write_json_report,
 )
+from autotarefas.tasks.report_xlsx import XLSX_NAME, write_xlsx_report
 from autotarefas.tasks.validate import ValidateTask, ValidationMode, load_schema
 
 
@@ -81,8 +82,8 @@ from autotarefas.tasks.validate import ValidateTask, ValidationMode, load_schema
     type=click.Path(file_okay=False, path_type=Path),
     default=None,
     help=(
-        "Diretorio de saida para os artefatos. Gera registros_validos.csv "
-        "e registros_invalidos.csv (com coluna 'motivo')."
+        "Diretorio de saida para os artefatos. Gera registros_validos.csv, "
+        "registros_invalidos.csv e planilha_validada.xlsx."
     ),
 )
 @click.option(
@@ -182,18 +183,22 @@ def validate(  # noqa: PLR0912, PLR0915
 
     if out_dir is not None:
         if ctx.dry_run:
-            console.warning(f"[DRY-RUN] Geraria os CSVs de separacao em: {out_dir}")
+            console.warning(f"[DRY-RUN] Geraria os artefatos em: {out_dir}")
         elif task.processed_dataframe is None:
-            console.warning("Nao foi possivel separar validos/invalidos (dados nao processados).")
+            console.warning("Nao foi possivel gerar artefatos (dados nao processados).")
         else:
             try:
                 valid_path, invalid_path = write_separation_csvs(
                     task.processed_dataframe, result, out_dir
                 )
+                xlsx_path = out_dir / XLSX_NAME
+                write_xlsx_report(task.processed_dataframe, result, xlsx_path)
+
                 console.success(f"Registros validos:   {valid_path}")
                 console.success(f"Registros invalidos: {invalid_path}")
+                console.success(f"Planilha validada:   {xlsx_path}")
             except OSError as e:
-                console.error(f"Erro ao gerar CSVs de separacao: {e}")
+                console.error(f"Erro ao gerar artefatos: {e}")
 
     if report_json is not None or report_csv is not None or out_dir is not None:
         console.info("")
