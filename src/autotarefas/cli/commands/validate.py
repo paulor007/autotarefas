@@ -32,6 +32,7 @@ import click
 from autotarefas.cli.console import Console
 from autotarefas.cli.context import CLIContext
 from autotarefas.core.exceptions import AutoTarefasError
+from autotarefas.tasks.artifacts import write_separation_csvs
 from autotarefas.tasks.report import (
     generate_cleaning_summary,
     generate_summary,
@@ -76,6 +77,15 @@ from autotarefas.tasks.validate import ValidateTask, ValidationMode, load_schema
     help="Salva relatorio compacto em CSV (Excel-friendly).",
 )
 @click.option(
+    "--out-dir",
+    type=click.Path(file_okay=False, path_type=Path),
+    default=None,
+    help=(
+        "Diretorio de saida para os artefatos. Gera registros_validos.csv "
+        "e registros_invalidos.csv (com coluna 'motivo')."
+    ),
+)
+@click.option(
     "--max-issues",
     "-m",
     type=click.IntRange(min=0),
@@ -106,6 +116,7 @@ def validate(  # noqa: PLR0912, PLR0915
     schema: Path,
     report_json: Path | None,
     report_csv: Path | None,
+    out_dir: Path | None,
     max_issues: int,
     mode: str,
     strict_warnings: bool,
@@ -169,7 +180,22 @@ def validate(  # noqa: PLR0912, PLR0915
             except OSError as e:
                 console.error(f"Erro ao salvar CSV: {e}")
 
-    if report_json is not None or report_csv is not None:
+    if out_dir is not None:
+        if ctx.dry_run:
+            console.warning(f"[DRY-RUN] Geraria os CSVs de separacao em: {out_dir}")
+        elif task.processed_dataframe is None:
+            console.warning("Nao foi possivel separar validos/invalidos (dados nao processados).")
+        else:
+            try:
+                valid_path, invalid_path = write_separation_csvs(
+                    task.processed_dataframe, result, out_dir
+                )
+                console.success(f"Registros validos:   {valid_path}")
+                console.success(f"Registros invalidos: {invalid_path}")
+            except OSError as e:
+                console.error(f"Erro ao gerar CSVs de separacao: {e}")
+
+    if report_json is not None or report_csv is not None or out_dir is not None:
         console.info("")
 
     # ============================================================

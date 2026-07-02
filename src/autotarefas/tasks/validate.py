@@ -41,6 +41,7 @@ import yaml
 from pydantic import BaseModel, Field
 
 from autotarefas.core import BaseTask, TaskResult, TaskStatus, ValidationError
+from autotarefas.tasks.artifacts import count_issues_by_category
 from autotarefas.tasks.cleaning import CleaningChange, clean_cell
 from autotarefas.tasks.duplicates import (
     find_duplicate_rows,
@@ -326,6 +327,9 @@ class ValidateTask(BaseTask):
         self.file_path = file_path
         self.schema = schema
         self.mode = mode
+        #: DataFrame apos processamento (normalizado no modo limpeza).
+        #: Preenchido em execute(); usado pelo CLI para gerar artefatos.
+        self.processed_dataframe: pd.DataFrame | None = None
 
     def execute(self) -> TaskResult:
         """Executa a validacao."""
@@ -374,13 +378,22 @@ class ValidateTask(BaseTask):
         if self.mode == "limpeza":
             df, cleaning_changes = self._clean_dataframe(df)
 
+        # Guarda o DataFrame processado (normalizado no modo limpeza) para
+        # o CLI poder gerar os artefatos de separacao (validos/invalidos).
+        self.processed_dataframe = df
+
         # 5. Validacao de conteudo
         collector = self._validate_content(df)
 
         # 5b. Deteccao de duplicatas (cross-row)
         self._validate_duplicates(df, collector)
 
-        # 6. Monta resultado final
+        # 6. Separacao: uma linha e invalida se tem >=1 problema ERROR.
+        error_lines = {i.line for i in collector.errors if i.line >= 2}  # noqa: PLR2004
+        total_invalid = len(error_lines)
+
+        # 7. Monta resultado final
+        issue_dicts = [self._issue_to_dict(i) for i in collector.issues]
         base_data: dict[str, Any] = {
             "file": str(self.file_path),
             "mode": self.mode,
@@ -389,7 +402,10 @@ class ValidateTask(BaseTask):
             "total_issues": len(collector),
             "total_errors": len(collector.errors),
             "total_warnings": len(collector.warnings),
-            "issues": [self._issue_to_dict(i) for i in collector.issues],
+            "total_valid": len(df) - total_invalid,
+            "total_invalid": total_invalid,
+            "issues": issue_dicts,
+            "issues_by_category": count_issues_by_category(issue_dicts),
             "cleaning_changes": [self._change_to_dict(c) for c in cleaning_changes],
             "total_cleaned": len(cleaning_changes),
         }

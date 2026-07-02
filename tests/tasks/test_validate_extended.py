@@ -141,3 +141,15 @@ class TestModoAuditoria:
         result = ValidateTask(file_path=csv, schema=schema).run()
         assert result.data["total_cleaned"] == 0
         assert result.data["cleaning_changes"] == []
+
+
+class TestSeparacaoNoResultado:
+    def test_total_valid_invalid_e_categorias(self, tmp_path: Path) -> None:
+        csv = _make_csv(tmp_path, "email\nana@example.com\nbruno-invalido\ncarla@example.com\n")
+        schema = Schema(columns=[ColumnSchema(name="email", format="email")])
+        result = ValidateTask(file_path=csv, schema=schema).run()
+        # 3 linhas: 1 invalida (email ruim), 2 validas
+        assert result.data["rows"] == 3
+        assert result.data["total_invalid"] == 1
+        assert result.data["total_valid"] == 2
+        assert result.data["issues_by_category"].get("email") == 1
