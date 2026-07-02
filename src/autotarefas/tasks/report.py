@@ -37,6 +37,11 @@ from autotarefas.core.base import TaskResult
 # ============================================================
 
 
+#: Nome fixo do relatorio JSON gerado pelo --out-dir (artefato canonico
+#: da Auditoria de planilha; o frontend do Live le este arquivo).
+JSON_REPORT_NAME = "validacao_report.json"
+
+
 def write_json_report(result: TaskResult, output_path: Path) -> None:
     """
     Salva relatorio em JSON estruturado.
@@ -218,6 +223,7 @@ def generate_cleaning_summary(result: TaskResult, *, max_changes_shown: int = 10
 
 __all__ = [
     "CSV_FIELDNAMES",
+    "JSON_REPORT_NAME",
     "generate_cleaning_summary",
     "generate_summary",
     "write_csv_report",

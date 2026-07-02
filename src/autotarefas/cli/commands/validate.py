@@ -34,6 +34,7 @@ from autotarefas.cli.context import CLIContext
 from autotarefas.core.exceptions import AutoTarefasError
 from autotarefas.tasks.artifacts import write_separation_csvs
 from autotarefas.tasks.report import (
+    JSON_REPORT_NAME,
     generate_cleaning_summary,
     generate_summary,
     write_csv_report,
@@ -82,8 +83,9 @@ from autotarefas.tasks.validate import ValidateTask, ValidationMode, load_schema
     type=click.Path(file_okay=False, path_type=Path),
     default=None,
     help=(
-        "Diretorio de saida para os artefatos. Gera registros_validos.csv, "
-        "registros_invalidos.csv e planilha_validada.xlsx."
+        "Diretorio de saida dos 4 artefatos: registros_validos.csv, "
+        "registros_invalidos.csv (com coluna 'motivo'), "
+        "planilha_validada.xlsx e validacao_report.json."
     ),
 )
 @click.option(
@@ -183,20 +185,24 @@ def validate(  # noqa: PLR0912, PLR0915
 
     if out_dir is not None:
         if ctx.dry_run:
-            console.warning(f"[DRY-RUN] Geraria os artefatos em: {out_dir}")
+            console.warning(f"[DRY-RUN] Geraria os 4 artefatos em: {out_dir}")
         elif task.processed_dataframe is None:
-            console.warning("Nao foi possivel gerar artefatos (dados nao processados).")
+            console.warning("Nao foi possivel separar validos/invalidos (dados nao processados).")
         else:
             try:
                 valid_path, invalid_path = write_separation_csvs(
                     task.processed_dataframe, result, out_dir
                 )
-                xlsx_path = out_dir / XLSX_NAME
-                write_xlsx_report(task.processed_dataframe, result, xlsx_path)
-
                 console.success(f"Registros validos:   {valid_path}")
                 console.success(f"Registros invalidos: {invalid_path}")
+
+                xlsx_path = out_dir / XLSX_NAME
+                write_xlsx_report(task.processed_dataframe, result, xlsx_path)
                 console.success(f"Planilha validada:   {xlsx_path}")
+
+                json_path = out_dir / JSON_REPORT_NAME
+                write_json_report(result, json_path)
+                console.success(f"Relatorio JSON:      {json_path}")
             except OSError as e:
                 console.error(f"Erro ao gerar artefatos: {e}")
 
