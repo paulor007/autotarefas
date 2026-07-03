@@ -72,7 +72,12 @@ def test_validate_stream_caught_issue(client: TestClient) -> None:
     result = _run_and_collect(client, "validate", use_sample="true")
     assert result["outcome"] == "caught_issue"
     assert result["exit_code"] == VALIDATE_FAIL_EXIT
-    assert "validate_report.json" in [a["name"] for a in result["artifacts"]]
+    names = [a["name"] for a in result["artifacts"]]
+    # Auditoria de planilha gera os 4 artefatos no out/
+    assert "validacao_report.json" in names
+    assert "planilha_validada.xlsx" in names
+    assert "registros_validos.csv" in names
+    assert "registros_invalidos.csv" in names
 
 
 def test_backup_stream_zip(client: TestClient) -> None:
@@ -130,3 +135,60 @@ def test_recipe_send_telegram_argv(tmp_path: Path) -> None:
     assert "--base-url" in argv
     assert any("contatos_demo.csv" in part for part in argv)
     assert any(part.endswith("send_telegram_report.json") for part in argv)
+
+
+def test_recipe_validate_argv(tmp_path: Path) -> None:
+    argv = recipes.build_argv("validate", tmp_path, [tmp_path / "in" / "clientes.csv"])
+    assert "validate" in argv
+    assert "--mode" in argv
+    assert "limpeza" in argv
+    assert "--out-dir" in argv
+    assert any(part.endswith("out") for part in argv)
+
+
+def test_catalogo_validate_reposicionado(client: TestClient) -> None:
+    catalog = client.get("/api/catalog").json()
+    validate = next(a for a in catalog["automations"] if a["id"] == "validate")
+    assert validate["title"] == "Auditoria de planilha"
+    assert validate["upload"] == "spreadsheet"
+    assert ".xlsx" in validate["upload_hint"]
+
+
+def test_upload_xlsx_roda_auditoria(client: TestClient) -> None:
+    """Planilha .xlsx do visitante roda de ponta a ponta (upload liberado)."""
+    import io
+
+    from openpyxl import Workbook
+
+    wb = Workbook()
+    ws = wb.active
+    ws.append(["nome", "email", "telefone", "cpf", "idade"])
+    ws.append(["Ana Lima", "ana.lima@example.com", "(11) 98765-4321", "104.332.181-00", 34])
+    buffer = io.BytesIO()
+    wb.save(buffer)
+
+    files = {
+        "files": (
+            "minha_planilha.xlsx",
+            buffer.getvalue(),
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
+    }
+    started = client.post("/api/run/validate", files=files)
+    assert started.status_code == HTTP_OK, started.text
+    token = started.json()["token"]
+
+    with client.stream("GET", f"/api/stream/{token}") as response:
+        lines = list(response.iter_lines())
+    for index, line in enumerate(lines):
+        if line.startswith("event: done"):
+            result = json.loads(lines[index + 1][len(DATA_PREFIX) :])
+            break
+    else:
+        pytest.fail("stream sem evento final")
+
+    # planilha limpa: exit 0 e os 4 artefatos gerados
+    assert result["outcome"] == "ok"
+    names = [a["name"] for a in result["artifacts"]]
+    assert "validacao_report.json" in names
+    assert "planilha_validada.xlsx" in names

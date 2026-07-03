@@ -37,6 +37,13 @@ _SSE_HEADERS = {
 
 _background_tasks: set[asyncio.Task[None]] = set()
 
+#: Extensoes aceitas por tipo de upload do catalogo. Tipos ausentes
+#: (ex. "folder") caem na allowlist geral de settings.
+_UPLOAD_EXTS: dict[str, tuple[str, ...]] = {
+    "csv": (".csv",),
+    "spreadsheet": (".csv", ".xlsx"),
+}
+
 
 def _browser_available() -> bool:
     """True se o Playwright/Chromium esta instalado (RPA e scraping-JS)."""
@@ -178,7 +185,7 @@ async def run_automation(
                 inputs = samples.copy_sample_to(automation_id, workspace / "in")
             else:
                 inputs = await uploads.save_uploads(
-                    files, workspace / "in", require_csv=(item.upload == "csv")
+                    files, workspace / "in", allowed_exts=_UPLOAD_EXTS.get(item.upload)
                 )
     except uploads.UploadError as exc:
         shutil.rmtree(workspace, ignore_errors=True)

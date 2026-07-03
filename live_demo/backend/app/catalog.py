@@ -11,7 +11,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Literal
 
-UploadKind = Literal["none", "csv", "folder"]
+UploadKind = Literal["none", "csv", "spreadsheet", "folder"]
 OutputKind = Literal["report", "file", "zip", "html"]
 
 # (key, titulo, resumo) — espelha as categorias do runs.json
@@ -53,13 +53,14 @@ AUTOMATIONS: tuple[Automation, ...] = (
     Automation(
         "validate",
         "validacao",
-        "Validar planilha",
-        "CSV contra schema YAML",
-        "Confere cada linha de um CSV contra um schema e aponta os erros - "
-        "sem deixar dado invalido passar.",
+        "Auditoria de planilha",
+        "Valida, limpa e separa antes de importar",
+        "Confere uma planilha de clientes, leads ou contatos, aponta os erros, "
+        "normaliza o que e seguro (nada de dado inventado) e separa registros "
+        "validos dos invalidos - o pre-voo antes de qualquer importacao.",
         False,
-        "csv",
-        "Envie um arquivo .csv (ou use o de exemplo).",
+        "spreadsheet",
+        "Envie um arquivo .csv ou .xlsx (ou use o de exemplo).",
         "report",
     ),
     Automation(

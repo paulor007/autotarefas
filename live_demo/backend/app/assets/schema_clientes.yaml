@@ -1,14 +1,24 @@
-# Schema de validacao dos clientes (demo — dados ficticios)
+# Schema da Auditoria de planilha (demo — dados ficticios).
+# Regras de qualidade que o pre-voo confere antes de qualquer importacao.
+detect_duplicate_rows: true
 columns:
   - name: nome
     type: str
     required: true
+    min_length: 3
   - name: email
     type: str
     required: true
+    format: email
+    unique: true
+  - name: telefone
+    type: str
+    required: true
+    format: phone
   - name: cpf
     type: str
     required: true
     validator_br: cpf
+    unique: true
   - name: idade
     type: int

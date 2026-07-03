@@ -33,15 +33,17 @@ def build_argv(  # noqa: PLR0911
     out_dir = workspace / "out"
 
     if automation_id == "validate":
-        csv = inputs[0]
+        planilha = inputs[0]
         return [
             *base,
             "validate",
-            str(csv),
+            str(planilha),
             "-s",
             str(_SCHEMA),
-            "--report-json",
-            str(out_dir / "validate_report.json"),
+            "--mode",
+            "limpeza",
+            "--out-dir",
+            str(out_dir),
         ]
     if automation_id == "backup":
         return [*base, "backup", str(in_dir), "-o", str(out_dir / "backup.zip")]

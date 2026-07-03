@@ -42,16 +42,25 @@ async def save_uploads(
     files: list[UploadFile],
     in_dir: Path,
     *,
-    require_csv: bool = False,
+    allowed_exts: tuple[str, ...] | None = None,
 ) -> list[Path]:
-    """Valida e salva os uploads em `in_dir`. Retorna os caminhos salvos."""
+    """
+    Valida e salva os uploads em `in_dir`. Retorna os caminhos salvos.
+
+    Args:
+        files: Arquivos enviados pelo visitante.
+        in_dir: Diretorio `in/` do workspace.
+        allowed_exts: Extensoes aceitas para esta automacao (ex.
+            ``(".csv", ".xlsx")``). Se None, vale a allowlist geral
+            de `settings.allowed_upload_extensions`.
+    """
     if not files:
         raise UploadError(400, "nenhum arquivo enviado")
     if len(files) > settings.max_upload_files:
         raise UploadError(413, f"maximo de {settings.max_upload_files} arquivos por envio")
 
     max_bytes = settings.max_upload_mb * 1024 * 1024
-    allowed = (".csv",) if require_csv else settings.allowed_upload_extensions
+    allowed = allowed_exts if allowed_exts is not None else settings.allowed_upload_extensions
     saved: list[Path] = []
     total = 0
 
