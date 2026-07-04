@@ -9,6 +9,7 @@ import Navbar from "./components/Navbar";
 import StatusBar from "./components/StatusBar";
 import TerminalView, { type TerminalLine } from "./components/TerminalView";
 import { useExecution } from "./hooks/useExecution";
+import { useValidationReport } from "./hooks/useValidationReport";
 import {
   getCatalog,
   getHealth,
@@ -18,19 +19,33 @@ import {
 } from "./lib/api";
 
 // Saida de exemplo: linhas reais representativas do stdout do AutoTarefas
-// (validate com o clientes.csv de exemplo). Some na 1a execucao real, quando o
-// terminal passa a receber o stdout ao vivo do SSE (/api/stream/{token}).
+// (Auditoria de planilha com o clientes.csv de exemplo). Some na 1a execucao
+// real, quando o terminal recebe o stdout ao vivo do SSE (/api/stream/{token}).
 const SAMPLE_LINES: TerminalLine[] = [
-  { kind: "command", text: "autotarefas validate clientes.csv" },
   {
-    kind: "plain",
-    text: "Carregando schema: live_demo/backend/app/assets/schema_clientes.yaml",
+    kind: "command",
+    text: "autotarefas validate clientes.csv --mode limpeza --out-dir out/",
   },
-  { kind: "plain", text: "Schema carregado: 4 coluna(s) declarada(s)." },
+  { kind: "plain", text: "Schema carregado: 5 coluna(s) declarada(s)." },
+  { kind: "plain", text: "Modo: limpeza" },
   { kind: "plain", text: "Validando arquivo: clientes.csv" },
-  { kind: "plain", text: "Encontrados 1 problema(s):" },
-  { kind: "error", text: "[ERROR] Linha 6, coluna 'cpf': CPF invalido" },
-  { kind: "ok", text: "[OK] Relatorio JSON salvo: out/validate_report.json" },
+  { kind: "plain", text: "Encontrados 6 problema(s):" },
+  {
+    kind: "error",
+    text: "[ERROR] Linha 7, coluna 'cpf': CPF invalido: '111.111.111-11'",
+  },
+  {
+    kind: "error",
+    text: "[ERROR] Linha 8, coluna 'cpf': Valor duplicado na coluna 'cpf' (linhas 3, 8)",
+  },
+  {
+    kind: "warn",
+    text: "[LIMPEZA] 6 valor(es) normalizado(s) com seguranca (nenhum dado foi inventado)",
+  },
+  { kind: "ok", text: "[OK] Registros validos:   out/registros_validos.csv" },
+  { kind: "ok", text: "[OK] Registros invalidos: out/registros_invalidos.csv" },
+  { kind: "ok", text: "[OK] Planilha validada:   out/planilha_validada.xlsx" },
+  { kind: "ok", text: "[OK] Relatorio JSON:      out/validacao_report.json" },
 ];
 
 export default function App() {
@@ -42,6 +57,7 @@ export default function App() {
   const [hasInteracted, setHasInteracted] = useState(false);
 
   const exec = useExecution();
+  const validationReport = useValidationReport(exec.result);
 
   useEffect(() => {
     let cancelled = false;
@@ -127,7 +143,7 @@ export default function App() {
         sample={!hasInteracted}
         onClear={hasInteracted ? exec.reset : undefined}
       />
-      <Artifacts result={exec.result} />
+      <Artifacts result={exec.result} report={validationReport} />
       <Footer />
     </div>
   );

@@ -13,8 +13,23 @@ const SAMPLE_IDS = new Set(["validate", "backup", "organize", "send_api"]);
 const FOLDER_ACCEPT =
   ".csv,.tsv,.txt,.pdf,.docx,.xlsx,.jpg,.jpeg,.png,.json,.yaml,.yml";
 
+// accept para upload do tipo "spreadsheet" (Auditoria de planilha).
+const SPREADSHEET_ACCEPT = ".csv,.xlsx";
+
+function uploadLabel(upload: string): string {
+  if (upload === "csv") return "(.csv)";
+  if (upload === "spreadsheet") return "(.csv ou .xlsx)";
+  return "(um ou mais arquivos)";
+}
+
+function uploadAccept(upload: string): string {
+  if (upload === "csv") return ".csv";
+  if (upload === "spreadsheet") return SPREADSHEET_ACCEPT;
+  return FOLDER_ACCEPT;
+}
+
 const STEPS = [
-  { num: 1, title: "Escolher AutomaÃ§Ã£o", desc: "Selecione no catÃ¡logo" },
+  { num: 1, title: "Escolher Automação", desc: "Selecione no catálogo" },
   { num: 2, title: "Enviar Arquivo", desc: "Upload ou usar exemplo" },
   { num: 3, title: "Executar", desc: "Rodar no sandbox" },
   { num: 4, title: "Terminal ao Vivo", desc: "Acompanhar stdout" },
@@ -77,8 +92,8 @@ export default function ExecutionPanel({
     <section id="execucao" className="bg-elevated py-20">
       <div className="container-page">
         <SectionHeader
-          title="Painel de ExecuÃ§Ã£o"
-          subtitle="Configure e execute automaÃ§Ãµes em tempo real"
+          title="Painel de Execução"
+          subtitle="Configure e execute automações em tempo real"
         />
 
         <div className="overflow-hidden rounded-2xl border border-white/6 bg-surface">
@@ -119,7 +134,7 @@ export default function ExecutionPanel({
           <div className="space-y-6 p-6 sm:p-8">
             <div>
               <span className="mb-2 block text-xs font-semibold uppercase tracking-wider text-muted">
-                AutomaÃ§Ã£o selecionada
+                Automação selecionada
               </span>
               <div className="rounded-lg border border-white/6 bg-ink p-3 text-sm">
                 {selected ? (
@@ -128,7 +143,7 @@ export default function ExecutionPanel({
                   </span>
                 ) : (
                   <span className="text-muted">
-                    Nenhuma selecionada â€” escolha uma no catÃ¡logo acima
+                    Nenhuma selecionada — escolha uma no catálogo acima
                   </span>
                 )}
               </div>
@@ -137,11 +152,10 @@ export default function ExecutionPanel({
             {selected && needsFile && (
               <div>
                 <span className="mb-2 block text-xs font-semibold uppercase tracking-wider text-muted">
-                  Arquivo de entrada{" "}
-                  {upload === "csv" ? "(.csv)" : "(um ou mais arquivos)"}
+                  Arquivo de entrada {uploadLabel(upload)}
                 </span>
                 <FileDrop
-                  accept={upload === "csv" ? ".csv" : FOLDER_ACCEPT}
+                  accept={uploadAccept(upload)}
                   multiple={upload === "folder"}
                   files={files}
                   onChange={setFiles}
@@ -154,8 +168,8 @@ export default function ExecutionPanel({
               <div className="flex items-start gap-3 rounded-lg border border-cyan/20 bg-cyan/6 px-4 py-3">
                 <Info className="mt-0.5 h-4 w-4 shrink-0 text-cyan" />
                 <p className="text-sm text-muted">
-                  Esta automaÃ§Ã£o nÃ£o precisa de upload â€” roda direto no sandbox
-                  contra os serviÃ§os internos.
+                  Esta automação não precisa de upload — roda direto no sandbox
+                  contra os serviços internos.
                 </p>
               </div>
             )}
@@ -183,7 +197,7 @@ export default function ExecutionPanel({
                   <Play className="h-4 w-4 fill-current" />
                 )}
                 {busy
-                  ? "Executandoâ€¦"
+                  ? "Executando…"
                   : needsFile
                     ? "Executar com arquivo"
                     : "Executar agora"}

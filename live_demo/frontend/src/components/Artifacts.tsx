@@ -7,8 +7,9 @@
   type LucideIcon,
 } from "lucide-react";
 
-import type { Artifact, RunResult } from "../lib/api";
+import type { Artifact, RunResult, ValidationReport } from "../lib/api";
 import SectionHeader from "./SectionHeader";
+import ValidationSummary from "./ValidationSummary";
 
 function iconForFile(name: string): LucideIcon {
   const n = name.toLowerCase();
@@ -25,7 +26,13 @@ function humanSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-export default function Artifacts({ result }: { result: RunResult | null }) {
+export default function Artifacts({
+  result,
+  report,
+}: {
+  result: RunResult | null;
+  report?: ValidationReport | null;
+}) {
   const artifacts: Artifact[] = result?.artifacts ?? [];
 
   return (
@@ -33,7 +40,7 @@ export default function Artifacts({ result }: { result: RunResult | null }) {
       <div className="container-page">
         <SectionHeader
           title="Artefatos Gerados"
-          subtitle="Resultados prontos para download apÃ³s a execuÃ§Ã£o"
+          subtitle="Resultados prontos para download após a execução"
         />
 
         {!result ? (
@@ -43,8 +50,8 @@ export default function Artifacts({ result }: { result: RunResult | null }) {
             </div>
             <p className="text-sm font-medium text-fg">Nenhum artefato ainda</p>
             <p className="max-w-sm text-sm text-muted">
-              Os artefatos aparecerÃ£o aqui apÃ³s uma execuÃ§Ã£o. Use o painel acima
-              para executar uma automaÃ§Ã£o.
+              Os artefatos aparecerão aqui após uma execução. Use o painel acima
+              para executar uma automação.
             </p>
           </div>
         ) : (
@@ -64,20 +71,22 @@ export default function Artifacts({ result }: { result: RunResult | null }) {
                   {result.outcome}
                 </span>
               </span>
-              <span className="opacity-30">Â·</span>
+              <span className="opacity-30">·</span>
               <span>
                 exit{" "}
                 <span className="font-mono text-fg">{result.exit_code}</span>
               </span>
-              <span className="opacity-30">Â·</span>
+              <span className="opacity-30">·</span>
               <span className="font-mono text-fg">
                 {(result.duration_ms / 1000).toFixed(1)}s
               </span>
             </div>
 
+            {report && <ValidationSummary report={report} />}
+
             {artifacts.length === 0 ? (
               <p className="text-center text-sm text-muted">
-                ExecuÃ§Ã£o concluÃ­da sem artefatos para download.
+                Execução concluída sem artefatos para download.
               </p>
             ) : (
               <div className="mx-auto grid max-w-3xl grid-cols-1 gap-3 sm:grid-cols-2">
