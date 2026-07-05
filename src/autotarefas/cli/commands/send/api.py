@@ -6,7 +6,7 @@ Subcomando `send api`: envio em massa de uma planilha via API REST.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 from urllib.parse import urlparse
 
 import click
@@ -29,6 +29,41 @@ _SEP = "=" * 60
 def _is_localhost(url: str) -> bool:
     """True se a URL aponta para um host local."""
     return urlparse(url).hostname in _LOCAL_HOSTS
+
+
+def _imprimir_resumo(result_data: dict[str, Any]) -> None:
+    """Imprime o resumo final do envio (totais, categorias, dica)."""
+    total = result_data.get("total", 0)
+    enviados = result_data.get("enviados", 0)
+    falhas = result_data.get("falhas", 0)
+    reenviaveis = result_data.get("reenviaveis", 0)
+    por_categoria: dict[str, int] = result_data.get("falhas_por_categoria", {})
+
+    click.echo(f"Total:    {total}")
+    click.secho(f"Enviados: {enviados}", fg="green")
+    if falhas:
+        click.secho(f"Falhas:   {falhas}", fg="red")
+        detalhe = ", ".join(f"{cat}: {n}" for cat, n in por_categoria.items())
+        if detalhe:
+            click.echo(f"          ({detalhe})")
+        cor_reenvio = "yellow" if reenviaveis else None
+        click.secho(f"Reenviaveis: {reenviaveis}", fg=cor_reenvio)
+    else:
+        click.echo(f"Falhas:   {falhas}")
+    if result_data.get("report_path"):
+        click.echo(f"Relatorio: {result_data['report_path']}")
+    click.echo(_SEP)
+
+    # Dica de produto: falha dominada por erro de validacao -> a Auditoria
+    # de planilha resolve (formata CPF/telefone/e-mail e separa os validos).
+    falhas_validacao = por_categoria.get("validacao", 0)
+    if falhas and falhas_validacao * 2 >= falhas:
+        click.secho(
+            "Dica: rode a Auditoria de planilha antes "
+            "(autotarefas validate -s schema.yaml --mode limpeza --out-dir out/) "
+            "para preparar os dados e enviar apenas os registros validos.",
+            fg="cyan",
+        )
 
 
 @click.command(name="api")
@@ -144,6 +179,9 @@ def api_command(
         click.echo(
             f"  [{info['linha']}/{info['total']}] [{marca}] {info['mensagem']}",
         )
+        tentativas = info.get("tentativas")
+        if isinstance(tentativas, int) and tentativas > 1:
+            click.secho(f"      ({tentativas} tentativas)", fg="yellow")
 
     # Cria a task (ValidationError -> exit 2)
     try:
@@ -177,19 +215,7 @@ def api_command(
         click.echo(_SEP)
         return
 
-    total = result.data.get("total", 0)
-    enviados = result.data.get("enviados", 0)
-    falhas = result.data.get("falhas", 0)
-
-    click.echo(f"Total:    {total}")
-    click.secho(f"Enviados: {enviados}", fg="green")
-    if falhas:
-        click.secho(f"Falhas:   {falhas}", fg="red")
-    else:
-        click.echo(f"Falhas:   {falhas}")
-    if result.data.get("report_path"):
-        click.echo(f"Relatorio: {result.data['report_path']}")
-    click.echo(_SEP)
+    _imprimir_resumo(result.data)
 
     if result.status == TaskStatus.PARTIAL:
         click.secho(

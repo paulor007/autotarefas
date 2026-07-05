@@ -41,6 +41,13 @@ from tenacity import (
 from autotarefas.core.base import BaseTask, TaskResult, TaskStatus
 from autotarefas.core.exceptions import ValidationError
 from autotarefas.core.logger import logger
+from autotarefas.tasks.send_result import (
+    ItemEnvio,
+    classify_status,
+    extract_external_id,
+    falhas_por_categoria,
+    total_reenviaveis,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -170,6 +177,9 @@ class SendApiTask(BaseTask):
         self.max_retries = max_retries
         self.report_path = report_path
         self.on_progress = on_progress
+        #: DataFrame lido da planilha (preenchido no execute); usado pela
+        #: geracao de artefatos (fase 4), como na Auditoria de planilha.
+        self.processed_dataframe: pd.DataFrame | None = None
 
     # --------------------------------------------------------
     # Planilha
@@ -211,15 +221,18 @@ class SendApiTask(BaseTask):
         response.raise_for_status()
         return response
 
-    def _post_with_retry(self, payload: dict[str, Any]) -> httpx.Response:
-        """POST com retry (backoff exponencial) em erros temporarios."""
-        retryer = Retrying(
+    def _retryer(self) -> Retrying:
+        """Retryer de erros temporarios (backoff exponencial)."""
+        return Retrying(
             stop=stop_after_attempt(self.max_retries),
             wait=wait_exponential(multiplier=0.5, min=0.5, max=5.0),
             retry=retry_if_exception(_is_retryable),
             reraise=True,
         )
-        result: httpx.Response = retryer(self._post, payload)
+
+    def _post_with_retry(self, payload: dict[str, Any]) -> httpx.Response:
+        """POST com retry (backoff exponencial) em erros temporarios."""
+        result: httpx.Response = self._retryer()(self._post, payload)
         return result
 
     def _extrair_erro(self, response: httpx.Response) -> str:
@@ -242,43 +255,85 @@ class SendApiTask(BaseTask):
         fallback_text: str = response.text
         return fallback_text[:_ERROR_TEXT_LIMIT]
 
-    def _enviar_um(self, payload: dict[str, Any]) -> tuple[bool, str]:
-        """
-        Envia um registro. Retorna (sucesso, mensagem).
+    @staticmethod
+    def _attempts_of(retryer: Retrying) -> int:
+        """Numero de tentativas feitas pelo retryer (1 = de primeira)."""
+        value = retryer.statistics.get("attempt_number", 1)
+        return int(value) if isinstance(value, (int, float)) else 1
 
-        - 2xx: (True, "criado")
-        - 4xx: (False, "HTTP 4xx: ...") - nao foi retentado
-        - 5xx apos retries / erro de conexao: (False, "...")
+    def _enviar_um(self, payload: dict[str, Any], *, linha: int) -> ItemEnvio:
         """
+        Envia um registro e devolve o resultado ESTRUTURADO da linha.
+
+        - 2xx: sucesso; captura o id criado pelo sistema (se o corpo trouxer).
+        - 4xx: falha definitiva classificada (validacao/duplicado/rate_limit/
+          outro) — nao foi retentado (dado ou configuracao e o problema).
+        - 5xx apos retries: falha temporaria (pode reenviar).
+        - Sem resposta (timeout/rede): falha de conexao (pode reenviar).
+        """
+        retryer = self._retryer()
         try:
-            self._post_with_retry(payload)
+            response = retryer(self._post, payload)
         except httpx.HTTPStatusError as exc:
             status = int(exc.response.status_code)
-            return False, f"HTTP {status}: {self._extrair_erro(exc.response)}"
+            categoria, pode_reenviar = classify_status(status)
+            return ItemEnvio(
+                linha=linha,
+                status_http=status,
+                categoria=categoria,
+                sucesso=False,
+                mensagem=f"HTTP {status}: {self._extrair_erro(exc.response)}",
+                id_externo=None,
+                tentativas=self._attempts_of(retryer),
+                pode_reenviar=pode_reenviar,
+            )
         except httpx.HTTPError as exc:
-            return False, f"erro de conexao: {exc}"
-        return True, "criado"
+            return ItemEnvio(
+                linha=linha,
+                status_http=None,
+                categoria="conexao",
+                sucesso=False,
+                mensagem=f"erro de conexao: {exc}",
+                id_externo=None,
+                tentativas=self._attempts_of(retryer),
+                pode_reenviar=True,
+            )
+
+        try:
+            body = response.json()
+        except ValueError:
+            body = None
+        id_externo = extract_external_id(body)
+
+        mensagem = "criado" if id_externo is None else f"criado (id {id_externo})"
+        return ItemEnvio(
+            linha=linha,
+            status_http=int(response.status_code),
+            categoria="sucesso",
+            sucesso=True,
+            mensagem=mensagem,
+            id_externo=id_externo,
+            tentativas=self._attempts_of(retryer),
+            pode_reenviar=False,
+        )
 
     # --------------------------------------------------------
     # Progresso
     # --------------------------------------------------------
 
-    def _notify(
-        self,
-        linha: int,
-        total: int,
-        *,
-        sucesso: bool,
-        mensagem: str,
-    ) -> None:
+    def _notify(self, posicao: int, total: int, item: ItemEnvio) -> None:
         """Chama o callback de progresso (se houver), sem propagar erro."""
         if self.on_progress is None:
             return
         info: ProgressInfo = {
-            "linha": linha,
+            "linha": posicao,
             "total": total,
-            "sucesso": sucesso,
-            "mensagem": mensagem,
+            "sucesso": item.sucesso,
+            "mensagem": item.mensagem,
+            "status_http": item.status_http,
+            "categoria": item.categoria,
+            "id_externo": item.id_externo,
+            "tentativas": item.tentativas,
         }
         try:
             self.on_progress(info)
@@ -309,6 +364,19 @@ class SendApiTask(BaseTask):
     # Execute
     # --------------------------------------------------------
 
+    @staticmethod
+    def _registro_legado(payload: dict[str, Any], item: ItemEnvio) -> dict[str, Any]:
+        """Linha do relatorio por item (payload + colunas de resultado)."""
+        registro = dict(payload)
+        registro["_resultado"] = "ok" if item.sucesso else "erro"
+        registro["_mensagem"] = item.mensagem
+        registro["_status_http"] = item.status_http
+        registro["_categoria"] = item.categoria
+        registro["_id_externo"] = item.id_externo
+        registro["_tentativas"] = item.tentativas
+        registro["_pode_reenviar"] = item.pode_reenviar
+        return registro
+
     def execute(self) -> TaskResult:  # noqa: PLR0912
         """Executa o envio."""
         started_at = datetime.now(UTC)
@@ -326,6 +394,10 @@ class SendApiTask(BaseTask):
 
         total = len(df)
         rows = df.to_dict("records")
+
+        # Guarda o DataFrame lido para a geracao de artefatos (fase 4),
+        # mesma convencao do processed_dataframe da Auditoria.
+        self.processed_dataframe = df
 
         auth_note = ""
         if self.api_key or self.bearer_token:
@@ -364,24 +436,24 @@ class SendApiTask(BaseTask):
 
         # Envio real
         resultados: list[dict[str, Any]] = []
+        items: list[ItemEnvio] = []
         enviados = 0
         falhas = 0
 
         for idx, row in enumerate(rows, start=1):
             payload = {str(k): v for k, v in row.items()}
-            sucesso, mensagem = self._enviar_um(payload)
+            # linha FISICA na planilha (cabecalho = 1; 1a de dados = 2),
+            # mesma convencao da Auditoria de planilha.
+            item = self._enviar_um(payload, linha=idx + 1)
+            items.append(item)
+            resultados.append(self._registro_legado(payload, item))
 
-            registro = dict(payload)
-            registro["_resultado"] = "ok" if sucesso else "erro"
-            registro["_mensagem"] = mensagem
-            resultados.append(registro)
-
-            if sucesso:
+            if item.sucesso:
                 enviados += 1
             else:
                 falhas += 1
 
-            self._notify(idx, total, sucesso=sucesso, mensagem=mensagem)
+            self._notify(idx, total, item)
 
             if self.delay_s > 0 and idx < total:
                 time.sleep(self.delay_s)
@@ -413,6 +485,9 @@ class SendApiTask(BaseTask):
                 "total": total,
                 "enviados": enviados,
                 "falhas": falhas,
+                "reenviaveis": total_reenviaveis(items),
+                "falhas_por_categoria": falhas_por_categoria(items),
+                "items": [item.to_dict() for item in items],
                 "url": self.url,
                 "planilha": str(self.planilha_path),
                 "report_path": report_saved,
