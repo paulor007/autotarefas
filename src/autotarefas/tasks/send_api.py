@@ -11,9 +11,13 @@ que automacao via navegador).
 
 Recursos:
 - Tolerancia a falhas POR LINHA (uma linha ruim nao para as outras)
-- Retry com backoff exponencial (tenacity) em erros TEMPORARIOS
-  (timeout, conexao, HTTP 5xx). Erros 4xx (400/409/422) NAO sao
-  retentados: sao erros do dado, registrados como falha da linha.
+- Retry inteligente (tenacity) em erros TEMPORARIOS: timeout/conexao,
+  HTTP 5xx e HTTP 429 (rate limit). A espera respeita o Retry-After da
+  API quando informado; sem o header, backoff exponencial com jitter.
+  Erros de dado/configuracao (400/409/422/...) NAO sao retentados.
+- Idempotencia: cada registro envia um header Idempotency-Key
+  deterministico (mesma linha = mesma chave, em toda tentativa e em
+  todo reenvio) — sistemas compativeis nao duplicam o cadastro.
 - Rate limiting (delay configuravel entre envios)
 - Autenticacao opcional: header X-API-Key e/ou Bearer token
 - Relatorio opcional (CSV/XLSX/JSON) com o resultado de cada linha
@@ -32,10 +36,11 @@ from typing import TYPE_CHECKING, Any
 import httpx
 import pandas as pd
 from tenacity import (
+    RetryCallState,
     Retrying,
     retry_if_exception,
     stop_after_attempt,
-    wait_exponential,
+    wait_exponential_jitter,
 )
 
 from autotarefas.core.base import BaseTask, TaskResult, TaskStatus
@@ -46,6 +51,8 @@ from autotarefas.tasks.send_result import (
     classify_status,
     extract_external_id,
     falhas_por_categoria,
+    idempotency_key,
+    parse_retry_after,
     total_reenviaveis,
 )
 
@@ -59,7 +66,12 @@ if TYPE_CHECKING:
 _DEFAULT_TIMEOUT_S = 30.0
 _DEFAULT_MAX_RETRIES = 3
 _HTTP_SERVER_ERROR = 500
+_HTTP_TOO_MANY_REQUESTS = 429
 _ERROR_TEXT_LIMIT = 120
+
+#: Teto para o Retry-After informado pela API (defesa contra travar o
+#: lote por causa de um header exagerado; o restante fica p/ reenvio).
+_RETRY_AFTER_CAP_S = 30.0
 
 _PLANILHA_FORMATS = (".csv", ".xlsx", ".xls")
 _REPORT_FORMATS = (".csv", ".xlsx", ".xls", ".json")
@@ -68,7 +80,7 @@ ProgressInfo = dict[str, Any]
 
 
 # ============================================================
-# Predicado de retry
+# Predicado de retry e espera inteligente
 # ============================================================
 
 
@@ -78,20 +90,42 @@ def _is_retryable(exc: BaseException) -> bool:
 
     Retry em erros TEMPORARIOS:
     - httpx.TransportError: timeout e erros de rede/conexao
-    - httpx.HTTPStatusError com status >= 500: erro do servidor
+    - HTTP 429 (rate limit): o servidor pediu calma, nao recusou o dado
+    - HTTP >= 500: erro do servidor
 
-    NAO faz retry em 4xx (400/409/422): sao erros do dado enviado,
-    tentar de novo nao mudaria o resultado.
-
-    (Mesma logica da ExtractApiTask; duplicada de proposito para nao
-    acoplar as duas tasks. Poderia virar um helper compartilhado.)
+    NAO faz retry nos 4xx de dado/configuracao (400/409/422/...):
+    reenviar o mesmo conteudo nao mudaria o resultado.
     """
     if isinstance(exc, httpx.TransportError):
         return True
     if isinstance(exc, httpx.HTTPStatusError):
         status_code = int(exc.response.status_code)
-        return status_code >= _HTTP_SERVER_ERROR
+        return status_code == _HTTP_TOO_MANY_REQUESTS or status_code >= _HTTP_SERVER_ERROR
     return False
+
+
+#: Backoff exponencial com jitter (espalha as retentativas no tempo,
+#: evitando que varias linhas martelam a API no mesmo instante).
+_FALLBACK_WAIT = wait_exponential_jitter(initial=0.5, max=5.0)
+
+
+def _smart_wait(retry_state: RetryCallState) -> float:
+    """
+    Espera entre tentativas: respeita o Retry-After da API quando houver.
+
+    Se a falha foi um 429 (ou qualquer HTTPStatusError) com header
+    ``Retry-After: <segundos>``, aguarda exatamente o que a API pediu
+    (limitado a `_RETRY_AFTER_CAP_S`). Sem o header, cai no backoff
+    exponencial com jitter.
+    """
+    outcome = retry_state.outcome
+    if outcome is not None and outcome.failed:
+        exc = outcome.exception()
+        if isinstance(exc, httpx.HTTPStatusError):
+            seconds = parse_retry_after(exc.response.headers.get("Retry-After"))
+            if seconds is not None:
+                return min(seconds, _RETRY_AFTER_CAP_S)
+    return float(_FALLBACK_WAIT(retry_state))
 
 
 # ============================================================
@@ -210,29 +244,37 @@ class SendApiTask(BaseTask):
             headers["Authorization"] = f"Bearer {self.bearer_token}"
         return headers
 
-    def _post(self, payload: dict[str, Any]) -> httpx.Response:
-        """POST de um registro (sem retry). Levanta em status >= 400."""
+    def _post(self, payload: dict[str, Any], idem_key: str) -> httpx.Response:
+        """
+        POST de um registro (sem retry). Levanta em status >= 400.
+
+        Envia o header ``Idempotency-Key`` em TODA tentativa — inclusive
+        nas retentativas do mesmo registro (mesma chave), para que
+        sistemas compativeis nao dupliquem o cadastro.
+        """
+        headers = self._headers()
+        headers["Idempotency-Key"] = idem_key
         response = httpx.post(
             self.url,
             json=payload,
-            headers=self._headers(),
+            headers=headers,
             timeout=self.timeout_s,
         )
         response.raise_for_status()
         return response
 
     def _retryer(self) -> Retrying:
-        """Retryer de erros temporarios (backoff exponencial)."""
+        """Retryer de erros temporarios (Retry-After ou backoff+jitter)."""
         return Retrying(
             stop=stop_after_attempt(self.max_retries),
-            wait=wait_exponential(multiplier=0.5, min=0.5, max=5.0),
+            wait=_smart_wait,
             retry=retry_if_exception(_is_retryable),
             reraise=True,
         )
 
     def _post_with_retry(self, payload: dict[str, Any]) -> httpx.Response:
-        """POST com retry (backoff exponencial) em erros temporarios."""
-        result: httpx.Response = self._retryer()(self._post, payload)
+        """POST com retry inteligente em erros temporarios."""
+        result: httpx.Response = self._retryer()(self._post, payload, idempotency_key(payload))
         return result
 
     def _extrair_erro(self, response: httpx.Response) -> str:
@@ -272,8 +314,9 @@ class SendApiTask(BaseTask):
         - Sem resposta (timeout/rede): falha de conexao (pode reenviar).
         """
         retryer = self._retryer()
+        idem_key = idempotency_key(payload)
         try:
-            response = retryer(self._post, payload)
+            response = retryer(self._post, payload, idem_key)
         except httpx.HTTPStatusError as exc:
             status = int(exc.response.status_code)
             categoria, pode_reenviar = classify_status(status)
@@ -284,6 +327,7 @@ class SendApiTask(BaseTask):
                 sucesso=False,
                 mensagem=f"HTTP {status}: {self._extrair_erro(exc.response)}",
                 id_externo=None,
+                idempotency_key=idem_key,
                 tentativas=self._attempts_of(retryer),
                 pode_reenviar=pode_reenviar,
             )
@@ -295,6 +339,7 @@ class SendApiTask(BaseTask):
                 sucesso=False,
                 mensagem=f"erro de conexao: {exc}",
                 id_externo=None,
+                idempotency_key=idem_key,
                 tentativas=self._attempts_of(retryer),
                 pode_reenviar=True,
             )
@@ -313,6 +358,7 @@ class SendApiTask(BaseTask):
             sucesso=True,
             mensagem=mensagem,
             id_externo=id_externo,
+            idempotency_key=idem_key,
             tentativas=self._attempts_of(retryer),
             pode_reenviar=False,
         )
@@ -373,6 +419,7 @@ class SendApiTask(BaseTask):
         registro["_status_http"] = item.status_http
         registro["_categoria"] = item.categoria
         registro["_id_externo"] = item.id_externo
+        registro["_idempotency_key"] = item.idempotency_key
         registro["_tentativas"] = item.tentativas
         registro["_pode_reenviar"] = item.pode_reenviar
         return registro

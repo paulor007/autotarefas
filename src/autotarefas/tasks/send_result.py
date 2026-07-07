@@ -26,8 +26,13 @@ pelos artefatos (fase 4) e pelo Live.
 
 from __future__ import annotations
 
+import hashlib
+import json
 from dataclasses import dataclass
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping
 
 #: Categorias de resultado de um envio (a de sucesso + as de falha).
 CategoriaEnvio = Literal[
@@ -66,6 +71,10 @@ class ItemEnvio:
         mensagem: Descricao legivel do resultado.
         id_externo: ID criado pelo sistema de destino (quando o corpo
             do 2xx o informa). E a prova de cadastro do registro.
+        idempotency_key: Chave de idempotencia enviada com o registro
+            (header ``Idempotency-Key``). Deterministica: a mesma linha
+            gera sempre a mesma chave, entao reenviar o arquivo nao
+            duplica em sistemas que suportam o header.
         tentativas: Quantas tentativas foram feitas (1 = de primeira).
         pode_reenviar: True quando reenviar o MESMO dado pode dar certo
             (falha temporaria/conexao/rate limit). False quando nao
@@ -78,6 +87,7 @@ class ItemEnvio:
     sucesso: bool
     mensagem: str
     id_externo: str | None
+    idempotency_key: str
     tentativas: int
     pode_reenviar: bool
 
@@ -90,6 +100,7 @@ class ItemEnvio:
             "sucesso": self.sucesso,
             "mensagem": self.mensagem,
             "id_externo": self.id_externo,
+            "idempotency_key": self.idempotency_key,
             "tentativas": self.tentativas,
             "pode_reenviar": self.pode_reenviar,
         }
@@ -144,6 +155,45 @@ def extract_external_id(body: Any) -> str | None:
     return None
 
 
+def idempotency_key(payload: Mapping[str, Any]) -> str:
+    """
+    Gera a chave de idempotencia DETERMINISTICA de um registro.
+
+    Serializa o payload de forma canonica (chaves ordenadas) e aplica
+    SHA-256. A mesma linha gera SEMPRE a mesma chave — entre tentativas,
+    entre execucoes e entre maquinas. Enviada no header
+    ``Idempotency-Key``, permite que sistemas compativeis reconhecam o
+    reenvio do mesmo registro e nao dupliquem o cadastro.
+
+    Nota: linhas 100% identicas na planilha compartilham a chave — o que
+    e o comportamento desejado (a MESMA informacao so entra uma vez).
+    """
+    canonical = json.dumps(
+        dict(payload),
+        sort_keys=True,
+        ensure_ascii=True,
+        separators=(",", ":"),
+        default=str,
+    )
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:32]
+
+
+def parse_retry_after(value: str | None) -> float | None:
+    """
+    Interpreta o header ``Retry-After`` em segundos.
+
+    Cobre a forma em segundos (ex. ``"2"``), que e a usada por APIs de
+    rate limit. A forma HTTP-date fica fora do escopo (raro em 429);
+    nesses casos retorna None e o backoff padrao assume.
+    """
+    if value is None:
+        return None
+    text = value.strip()
+    if not text.isdigit():
+        return None
+    return float(text)
+
+
 def falhas_por_categoria(items: list[ItemEnvio]) -> dict[str, int]:
     """Conta as FALHAS por categoria (sucessos ficam de fora)."""
     counts: dict[str, int] = {}
@@ -165,5 +215,7 @@ __all__ = [
     "classify_status",
     "extract_external_id",
     "falhas_por_categoria",
+    "idempotency_key",
+    "parse_retry_after",
     "total_reenviaveis",
 ]

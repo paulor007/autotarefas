@@ -9,6 +9,8 @@ from autotarefas.tasks.send_result import (
     classify_status,
     extract_external_id,
     falhas_por_categoria,
+    idempotency_key,
+    parse_retry_after,
     total_reenviaveis,
 )
 
@@ -63,6 +65,7 @@ def _item(categoria: str, *, sucesso: bool, pode_reenviar: bool) -> ItemEnvio:
         sucesso=sucesso,
         mensagem="",
         id_externo=None,
+        idempotency_key="k",
         tentativas=1,
         pode_reenviar=pode_reenviar,
     )
@@ -95,6 +98,7 @@ class TestAgregadores:
             sucesso=True,
             mensagem="criado (id 9)",
             id_externo="9",
+            idempotency_key="abc123",
             tentativas=2,
             pode_reenviar=False,
         )
@@ -102,5 +106,43 @@ class TestAgregadores:
         assert d["linha"] == 3
         assert d["status_http"] == 201
         assert d["id_externo"] == "9"
+        assert d["idempotency_key"] == "abc123"
         assert d["tentativas"] == 2
         assert d["pode_reenviar"] is False
+
+
+class TestIdempotencyKey:
+    def test_deterministica(self) -> None:
+        payload = {"nome": "Ana", "cpf": "529.982.247-25"}
+        assert idempotency_key(payload) == idempotency_key(payload)
+
+    def test_ordem_das_chaves_nao_importa(self) -> None:
+        a = {"nome": "Ana", "cpf": "1"}
+        b = {"cpf": "1", "nome": "Ana"}
+        assert idempotency_key(a) == idempotency_key(b)
+
+    def test_payload_diferente_chave_diferente(self) -> None:
+        assert idempotency_key({"nome": "Ana"}) != idempotency_key({"nome": "Bia"})
+
+    def test_formato_hex_32(self) -> None:
+        key = idempotency_key({"nome": "Ana"})
+        assert len(key) == 32
+        assert all(c in "0123456789abcdef" for c in key)
+
+
+class TestParseRetryAfter:
+    @pytest.mark.parametrize(
+        ("valor", "esperado"),
+        [
+            ("2", 2.0),
+            ("0", 0.0),
+            (" 10 ", 10.0),
+            (None, None),
+            ("", None),
+            ("abc", None),
+            ("-1", None),
+            ("1.5", None),  # forma em segundos e inteira na RFC
+        ],
+    )
+    def test_interpretacao(self, valor: str | None, esperado: float | None) -> None:
+        assert parse_retry_after(valor) == esperado
