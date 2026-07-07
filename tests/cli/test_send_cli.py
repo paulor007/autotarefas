@@ -104,6 +104,7 @@ def mock_task(monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
                 raise holder["raise_on_init"]
             holder["init_kwargs"] = kwargs
             self.on_progress = kwargs.get("on_progress")
+            self.processed_dataframe = holder.get("processed_dataframe")
 
         def run(self) -> TaskResult:
             return cast("TaskResult", holder["result"])
@@ -426,3 +427,98 @@ class TestSecurity:
             ],
         )
         assert "Aviso" not in result.output
+
+
+# ============================================================
+# --out-dir (4 artefatos)
+# ============================================================
+
+
+def _data_com_items() -> dict[str, Any]:
+    return {
+        "total": 2,
+        "enviados": 1,
+        "falhas": 1,
+        "reenviaveis": 0,
+        "falhas_por_categoria": {"validacao": 1},
+        "url": URL,
+        "planilha": "leads.csv",
+        "report_path": None,
+        "items": [
+            {
+                "linha": 2,
+                "status_http": 201,
+                "categoria": "sucesso",
+                "sucesso": True,
+                "mensagem": "criado (id 7)",
+                "id_externo": "7",
+                "idempotency_key": "k1",
+                "tentativas": 1,
+                "pode_reenviar": False,
+            },
+            {
+                "linha": 3,
+                "status_http": 422,
+                "categoria": "validacao",
+                "sucesso": False,
+                "mensagem": "HTTP 422: Validacao falhou",
+                "id_externo": None,
+                "idempotency_key": "k2",
+                "tentativas": 1,
+                "pode_reenviar": False,
+            },
+        ],
+    }
+
+
+class TestOutDir:
+    def test_out_dir_gera_os_quatro_artefatos(
+        self,
+        runner: CliRunner,
+        csv_path: Path,
+        mock_task: dict[str, Any],
+        tmp_path: Path,
+    ) -> None:
+        import pandas as pd
+
+        mock_task["processed_dataframe"] = pd.DataFrame(
+            [
+                {"nome": "Ana", "email": "a@x.com"},
+                {"nome": "Bruno", "email": "b@x.com"},
+            ]
+        )
+        mock_task["result"] = make_result(
+            TaskStatus.PARTIAL, data=_data_com_items(), rows_affected=1, rows_failed=1
+        )
+        out = tmp_path / "saida"
+
+        result = runner.invoke(
+            cli,
+            ["send", "api", "-p", str(csv_path), "-u", URL, "--out-dir", str(out)],
+        )
+
+        assert result.exit_code == 0, result.output
+        assert (out / "registros_enviados.csv").exists()
+        assert (out / "registros_falhos.csv").exists()
+        assert (out / "importacao_resultado.xlsx").exists()
+        assert (out / "importacao_report.json").exists()
+        assert "Registros enviados:" in result.output
+
+    def test_dry_run_nao_gera_artefatos(
+        self,
+        runner: CliRunner,
+        csv_path: Path,
+        mock_task: dict[str, Any],
+        tmp_path: Path,
+    ) -> None:
+        mock_task["result"] = make_result(TaskStatus.SUCCESS, data={"would_send": 2})
+        out = tmp_path / "saida"
+
+        result = runner.invoke(
+            cli,
+            ["--dry-run", "send", "api", "-p", str(csv_path), "-u", URL, "--out-dir", str(out)],
+        )
+
+        assert result.exit_code == 0, result.output
+        assert "Geraria os 4 artefatos" in result.output
+        assert not out.exists()

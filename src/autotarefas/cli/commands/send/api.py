@@ -14,9 +14,11 @@ import click
 from autotarefas.core.base import TaskStatus
 from autotarefas.core.exceptions import ValidationError
 from autotarefas.tasks.send_api import SendApiTask
+from autotarefas.tasks.send_artifacts import write_send_artifacts
 
 if TYPE_CHECKING:
     from autotarefas.cli.context import CLIContext
+    from autotarefas.core.base import TaskResult
 
 # Exit codes
 _EXIT_USAGE = 2
@@ -64,6 +66,22 @@ def _imprimir_resumo(result_data: dict[str, Any]) -> None:
             "para preparar os dados e enviar apenas os registros validos.",
             fg="cyan",
         )
+
+
+def _gerar_artefatos(task: SendApiTask, result: TaskResult, out_dir: Path) -> None:
+    """Gera os 4 artefatos canonicos e imprime os caminhos."""
+    if task.processed_dataframe is None:
+        click.secho("Sem dados processados: artefatos nao gerados.", fg="yellow")
+        return
+    try:
+        sent, failed, xlsx, report = write_send_artifacts(task.processed_dataframe, result, out_dir)
+    except OSError as exc:
+        click.secho(f"Erro ao gerar artefatos: {exc}", fg="red", err=True)
+        return
+    click.secho(f"Registros enviados:  {sent}", fg="green")
+    click.secho(f"Registros falhos:    {failed}", fg="green")
+    click.secho(f"Resultado (Excel):   {xlsx}", fg="green")
+    click.secho(f"Relatorio JSON:      {report}", fg="green")
 
 
 @click.command(name="api")
@@ -119,6 +137,16 @@ def _imprimir_resumo(result_data: dict[str, Any]) -> None:
     type=click.Path(dir_okay=False, path_type=Path),
     help="Arquivo de relatorio por linha (.csv/.xlsx/.json).",
 )
+@click.option(
+    "--out-dir",
+    default=None,
+    type=click.Path(file_okay=False, path_type=Path),
+    help=(
+        "Diretorio de saida dos 4 artefatos: registros_enviados.csv, "
+        "registros_falhos.csv (reenviavel), importacao_resultado.xlsx "
+        "e importacao_report.json."
+    ),
+)
 @click.pass_obj
 def api_command(
     ctx: CLIContext,
@@ -130,6 +158,7 @@ def api_command(
     timeout: float,
     max_retries: int,
     report: Path | None,
+    out_dir: Path | None,
 ) -> None:
     """
     Envia os registros de uma planilha para uma API (POST por linha).
@@ -208,12 +237,18 @@ def api_command(
     click.echo(_SEP)
 
     if dry_run:
+        if out_dir is not None:
+            click.secho(f"[dry-run] Geraria os 4 artefatos em: {out_dir}", fg="cyan")
         click.secho(
             f"[dry-run] Enviaria {result.data.get('would_send')} registros",
             fg="cyan",
         )
         click.echo(_SEP)
         return
+
+    if out_dir is not None:
+        _gerar_artefatos(task, result, out_dir)
+        click.echo(_SEP)
 
     _imprimir_resumo(result.data)
 

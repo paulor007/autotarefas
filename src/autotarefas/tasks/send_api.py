@@ -488,7 +488,11 @@ class SendApiTask(BaseTask):
         falhas = 0
 
         for idx, row in enumerate(rows, start=1):
-            payload = {str(k): v for k, v in row.items()}
+            # Colunas iniciadas por "_" sao metadado dos artefatos do
+            # AutoTarefas (ex. _motivo do registros_falhos.csv) e NAO
+            # fazem parte do registro: ignora-las torna o arquivo de
+            # falhos reenviavel com a MESMA Idempotency-Key.
+            payload = {str(k): v for k, v in row.items() if not str(k).startswith("_")}
             # linha FISICA na planilha (cabecalho = 1; 1a de dados = 2),
             # mesma convencao da Auditoria de planilha.
             item = self._enviar_um(payload, linha=idx + 1)
