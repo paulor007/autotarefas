@@ -21,6 +21,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+import httpx
+
 from . import recipes, sanitize
 from .config import settings
 
@@ -219,8 +221,27 @@ def _pump(
         loop.call_soon_threadsafe(done.set)
 
 
+async def _reset_demo_state(url: str) -> None:
+    """
+    Pre-hook: zera o estado do sistema de demonstracao antes da execucao.
+
+    Sem isso, a demo degrada sozinha (cadastros da execucao anterior
+    respondem 409 em cascata). Falha do reset nao derruba a execucao —
+    se o mock estiver fora do ar, o proprio run reportara o erro real.
+    """
+    try:
+        async with httpx.AsyncClient(timeout=3.0) as client:
+            await client.post(url)
+    except httpx.HTTPError:
+        pass  # nosec B110 - reset e melhor-esforco; o run reporta erros reais
+
+
 async def run_streaming(automation_id: str, inputs: list[Path], job: Job) -> RunResult:
     """Executa a automacao de verdade, transmitindo o stdout linha a linha."""
+    reset = recipes.reset_url(automation_id)
+    if reset is not None:
+        await _reset_demo_state(reset)
+
     argv = recipes.build_argv(automation_id, job.workspace, inputs)
     loop = asyncio.get_running_loop()
     start = time.monotonic()

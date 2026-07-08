@@ -44,6 +44,11 @@ from tools.demo_server.storage import Storage
 app = Flask(__name__)
 storage = Storage()
 
+#: Idempotency-Keys ja processadas -> registro criado (replay sem duplicar).
+_IDEMPOTENCY_SEEN: dict[str, dict[str, Any]] = {}
+#: Contador de hits do cenario "instavel" (429 na 1a tentativa) por chave.
+_RATE_LIMIT_HITS: dict[str, int] = {}
+
 fake = Faker("pt_BR")
 
 
@@ -160,8 +165,10 @@ def cadastros_json() -> Response:
 
 @app.route("/limpar", methods=["POST"])
 def limpar() -> Response:
-    """Apaga todos os cadastros. So usar em testes."""
+    """Apaga todos os cadastros e o estado de demo. So usar em testes."""
     storage.clear()
+    _IDEMPOTENCY_SEEN.clear()
+    _RATE_LIMIT_HITS.clear()
     return jsonify({"status": "ok", "message": "Cadastros removidos"})
 
 
@@ -238,18 +245,24 @@ def api_clientes() -> Response:
 @app.route("/api/clientes", methods=["POST"])
 def api_clientes_create() -> tuple[Response, int]:
     """
-    Cria um cliente via API (JSON).
+    Cria um cliente via API (JSON) — comporta-se como um CRM real.
 
     Body esperado:
         {"nome": ..., "email": ..., "cpf": ..., "telefone": ...}
 
     Respostas:
-        201: criado          -> {"status": "ok", "data": {...}}
+        201: criado                    -> {"status": "ok", "data": {...}}
+        200: replay idempotente        -> mesmo registro, sem duplicar
         400: JSON ausente/invalido
         422: validacao de campos falhou
-        409: CPF ja cadastrado
+        409: CPF ja cadastrado (com Idempotency-Key diferente)
+        429: rate limit (1a tentativa de registros "instaveis"),
+             com header Retry-After: 2
 
-    Reaproveita _validate_cadastro() e storage.find_by_cpf().
+    Idempotencia: se o header Idempotency-Key ja foi visto, devolve o
+    MESMO registro criado na primeira vez (nao duplica). Cenario de
+    demonstracao: nomes contendo "instavel" recebem 429 na primeira
+    tentativa e sucesso nas seguintes — para mostrar o retry ao vivo.
     """
     payload = request.get_json(silent=True)
     if not isinstance(payload, dict):
@@ -262,14 +275,35 @@ def api_clientes_create() -> tuple[Response, int]:
         "telefone": str(payload.get("telefone", "")).strip(),
     }
 
+    # Replay idempotente: mesma Idempotency-Key -> mesmo resultado,
+    # sem criar registro novo (e o que evita duplicidade em reenvios).
+    idem_key = request.headers.get("Idempotency-Key")
+    if idem_key and idem_key in _IDEMPOTENCY_SEEN:
+        record = _IDEMPOTENCY_SEEN[idem_key]
+        return jsonify({"status": "ok", "data": record, "idempotente": True}), 200
+
     errors = _validate_cadastro(data)
     if errors:
         return jsonify({"error": "Validacao falhou", "detalhes": errors}), 422
+
+    # Cenario de demonstracao: registro "instavel" leva 429 (rate limit)
+    # na primeira tentativa e passa nas seguintes. Deterministico por
+    # Idempotency-Key (ou CPF, se a chave nao vier).
+    if "instavel" in data["nome"].lower():
+        gatilho = idem_key or data["cpf"]
+        hits = _RATE_LIMIT_HITS.get(gatilho, 0) + 1
+        _RATE_LIMIT_HITS[gatilho] = hits
+        if hits == 1:
+            resp = jsonify({"error": "Limite de requisicoes, aguarde"})
+            resp.headers["Retry-After"] = "2"
+            return resp, 429
 
     if storage.find_by_cpf(data["cpf"]) is not None:
         return jsonify({"error": "CPF ja cadastrado", "cpf": data["cpf"]}), 409
 
     record = storage.create(data)
+    if idem_key:
+        _IDEMPOTENCY_SEEN[idem_key] = record
     return jsonify({"status": "ok", "data": record}), 201
 
 

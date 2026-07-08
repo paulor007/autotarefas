@@ -125,7 +125,15 @@ def test_recipe_send_api_argv(tmp_path: Path) -> None:
     assert "send" in argv
     assert "api" in argv
     assert any("/api/clientes" in part for part in argv)
-    assert any(part.endswith("send_api_report.json") for part in argv)
+    assert "--out-dir" in argv
+    assert any(part.endswith("out") for part in argv)
+
+
+def test_reset_url_send_api() -> None:
+    url = recipes.reset_url("send_api")
+    assert url is not None
+    assert url.endswith("/limpar")
+    assert recipes.reset_url("validate") is None
 
 
 def test_recipe_send_telegram_argv(tmp_path: Path) -> None:
@@ -192,3 +200,90 @@ def test_upload_xlsx_roda_auditoria(client: TestClient) -> None:
     names = [a["name"] for a in result["artifacts"]]
     assert "validacao_report.json" in names
     assert "planilha_validada.xlsx" in names
+
+
+def test_catalogo_send_api_reposicionado(client: TestClient) -> None:
+    catalog = client.get("/api/catalog").json()
+    send = next(a for a in catalog["automations"] if a["id"] == "send_api")
+    assert send["title"] == "Cadastro automatico via planilha"
+    assert send["upload"] == "spreadsheet"
+    assert "Auditoria" in send["upload_hint"]
+
+
+@pytest.fixture(scope="module")
+def demo_crm() -> Iterator[None]:
+    """
+    Sobe o CRM de demonstracao (tools.demo_server) na porta primaria.
+
+    Os E2E do send_api conversam com o mock DE VERDADE (validacao, 409,
+    429 com Retry-After, idempotencia). O conftest desliga o autostart
+    (DEMO_SERVERS_AUTOSTART=0), entao esta fixture sobe o servidor so
+    para os testes que precisam dele.
+    """
+    import subprocess
+    import sys
+    import time as time_module
+
+    import httpx
+
+    from live_demo.backend.app.config import settings
+
+    port = settings.demo_primary_port
+    proc = subprocess.Popen(
+        [sys.executable, "-m", "tools.demo_server.app"],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    try:
+        base = f"http://127.0.0.1:{port}"
+        for _ in range(30):
+            try:
+                if httpx.get(f"{base}/health", timeout=1.0).status_code == 200:
+                    break
+            except httpx.HTTPError:
+                pass
+            time_module.sleep(0.5)
+        else:
+            pytest.fail("demo_server nao subiu para os testes E2E do send_api")
+        yield
+    finally:
+        proc.terminate()
+        proc.wait(timeout=10)
+
+
+def _baixar_report(client: TestClient, result: dict[str, Any]) -> dict[str, Any]:
+    art = next(a for a in result["artifacts"] if a["name"] == "importacao_report.json")
+    report: dict[str, Any] = client.get(art["download_url"]).json()
+    return report
+
+
+@pytest.mark.usefixtures("demo_crm")
+def test_send_api_stream_gera_artefatos(client: TestClient) -> None:
+    result = _run_and_collect(client, "send_api", use_sample="true")
+    # 2 falhas propositais no sample -> envio PARCIAL (exit 0 / outcome ok)
+    assert result["outcome"] == "ok"
+    names = sorted(a["name"] for a in result["artifacts"])
+    assert names == [
+        "importacao_report.json",
+        "importacao_resultado.xlsx",
+        "registros_enviados.csv",
+        "registros_falhos.csv",
+    ]
+    report = _baixar_report(client, result)
+    assert report["total"] == 8
+    assert report["enviados"] == 6
+    assert report["falhas"] == 2
+    assert report["falhas_por_categoria"] == {"validacao": 1, "duplicado": 1}
+    # o registro "instavel" recuperou no retry (2 tentativas)
+    instavel = next(i for i in report["items"] if i["linha"] == 6)
+    assert instavel["sucesso"] is True
+    assert instavel["tentativas"] == 2
+
+
+@pytest.mark.usefixtures("demo_crm")
+def test_send_api_duas_execucoes_consistentes(client: TestClient) -> None:
+    """O reset automatico impede a demo de degradar (409 em cascata)."""
+    primeira = _baixar_report(client, _run_and_collect(client, "send_api", use_sample="true"))
+    segunda = _baixar_report(client, _run_and_collect(client, "send_api", use_sample="true"))
+    assert (primeira["enviados"], primeira["falhas"]) == (6, 2)
+    assert (segunda["enviados"], segunda["falhas"]) == (6, 2)

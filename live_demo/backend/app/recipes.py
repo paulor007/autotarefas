@@ -87,8 +87,8 @@ def build_argv(  # noqa: PLR0911
             str(planilha),
             "-u",
             f"{_PRIMARY}/api/clientes",
-            "-r",
-            str(out_dir / "send_api_report.json"),
+            "--out-dir",
+            str(out_dir),
         ]
     if automation_id == "send_telegram":
         return [
@@ -107,3 +107,20 @@ def build_argv(  # noqa: PLR0911
             str(out_dir / "send_telegram_report.json"),
         ]
     raise KeyError(automation_id)
+
+
+def reset_url(automation_id: str) -> str | None:
+    """
+    URL de reset do sistema de demonstracao para uma automacao.
+
+    O mock do CRM guarda cadastros entre execucoes; sem reset, a 2a demo
+    seguida do Cadastro automatico responderia 409 em cascata (todos os
+    CPFs "ja cadastrados"). O engine chama esta URL (POST) antes de rodar
+    a automacao, garantindo que cada execucao comece do zero.
+
+    Returns:
+        URL para POST, ou None se a automacao nao precisa de reset.
+    """
+    if automation_id == "send_api":
+        return f"{_PRIMARY}/limpar"
+    return None

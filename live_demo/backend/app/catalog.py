@@ -88,12 +88,15 @@ AUTOMATIONS: tuple[Automation, ...] = (
     Automation(
         "send_api",
         "integracao",
-        "Enviar via API",
-        "POST por linha",
-        "Envia cada linha do CSV como um POST para uma API REST (mock interno seguro).",
+        "Cadastro automatico via planilha",
+        "Envia dados validados para um sistema com relatorio de envio",
+        "Cadastre clientes, leads ou contatos a partir de uma planilha validada. "
+        "O AutoTarefas envia cada registro para um sistema via API, mostra o que "
+        "foi cadastrado, o que falhou e por que - evitando digitacao manual, "
+        "duplicidade e retrabalho.",
         False,
-        "csv",
-        "Envie um .csv (ou use o de exemplo).",
+        "spreadsheet",
+        "Envie .csv ou .xlsx - ideal: o registros_validos.csv da Auditoria de planilha.",
         "report",
     ),
     Automation(
