@@ -9,6 +9,7 @@ import Navbar from "./components/Navbar";
 import StatusBar from "./components/StatusBar";
 import TerminalView, { type TerminalLine } from "./components/TerminalView";
 import { useExecution } from "./hooks/useExecution";
+import { useImportReport } from "./hooks/useImportReport";
 import { useValidationReport } from "./hooks/useValidationReport";
 import {
   getCatalog,
@@ -19,33 +20,37 @@ import {
 } from "./lib/api";
 
 // Saida de exemplo: linhas reais representativas do stdout do AutoTarefas
-// (Auditoria de planilha com o clientes.csv de exemplo). Some na 1a execucao
-// real, quando o terminal recebe o stdout ao vivo do SSE (/api/stream/{token}).
+// (Cadastro automatico via planilha com o leads.csv de exemplo). Some na 1a
+// execucao real, quando o terminal recebe o stdout ao vivo do SSE
+// (/api/stream/{token}). Mostra o momento do retry (registro que se recupera
+// sozinho) e os 4 artefatos gerados.
 const SAMPLE_LINES: TerminalLine[] = [
   {
     kind: "command",
-    text: "autotarefas validate clientes.csv --mode limpeza --out-dir out/",
+    text: "autotarefas send api registros_validos.csv --out-dir envio/",
   },
-  { kind: "plain", text: "Schema carregado: 5 coluna(s) declarada(s)." },
-  { kind: "plain", text: "Modo: limpeza" },
-  { kind: "plain", text: "Validando arquivo: clientes.csv" },
-  { kind: "plain", text: "Encontrados 6 problema(s):" },
+  {
+    kind: "plain",
+    text: "Enviando 8 registros para o sistema (com Idempotency-Key)",
+  },
+  { kind: "ok", text: "  [1/8] [OK] criado (id 1)" },
+  { kind: "ok", text: "  [4/8] [OK] criado (id 4)" },
+  { kind: "warn", text: "  [5/8] [OK] criado (id 5)  (2 tentativas)" },
   {
     kind: "error",
-    text: "[ERROR] Linha 7, coluna 'cpf': CPF invalido: '111.111.111-11'",
+    text: "  [6/8] [FALHA] HTTP 422: CPF invalido: '111.111.111'",
   },
+  { kind: "error", text: "  [7/8] [FALHA] HTTP 409: CPF ja cadastrado" },
+  { kind: "ok", text: "[OK] Enviados:  envio/registros_enviados.csv" },
   {
-    kind: "error",
-    text: "[ERROR] Linha 8, coluna 'cpf': Valor duplicado na coluna 'cpf' (linhas 3, 8)",
+    kind: "ok",
+    text: "[OK] Falhos:    envio/registros_falhos.csv (reenviavel)",
   },
+  { kind: "ok", text: "[OK] Relatorio: envio/importacao_report.json" },
   {
-    kind: "warn",
-    text: "[LIMPEZA] 6 valor(es) normalizado(s) com seguranca (nenhum dado foi inventado)",
+    kind: "done",
+    text: "Total: 8 | Enviados: 6 | Falhas: 2 (validacao 1, duplicado 1)",
   },
-  { kind: "ok", text: "[OK] Registros validos:   out/registros_validos.csv" },
-  { kind: "ok", text: "[OK] Registros invalidos: out/registros_invalidos.csv" },
-  { kind: "ok", text: "[OK] Planilha validada:   out/planilha_validada.xlsx" },
-  { kind: "ok", text: "[OK] Relatorio JSON:      out/validacao_report.json" },
 ];
 
 export default function App() {
@@ -58,6 +63,7 @@ export default function App() {
 
   const exec = useExecution();
   const validationReport = useValidationReport(exec.result);
+  const importReport = useImportReport(exec.result);
 
   useEffect(() => {
     let cancelled = false;
@@ -143,7 +149,12 @@ export default function App() {
         sample={!hasInteracted}
         onClear={hasInteracted ? exec.reset : undefined}
       />
-      <Artifacts result={exec.result} report={validationReport} />
+      <Artifacts
+        result={exec.result}
+        report={validationReport}
+        importReport={importReport}
+        onNextStep={() => handleSelect("send_api")}
+      />
       <Footer />
     </div>
   );

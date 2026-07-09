@@ -7,7 +7,13 @@
   type LucideIcon,
 } from "lucide-react";
 
-import type { Artifact, RunResult, ValidationReport } from "../lib/api";
+import type {
+  Artifact,
+  ImportReport,
+  RunResult,
+  ValidationReport,
+} from "../lib/api";
+import ImportSummary from "./ImportSummary";
 import SectionHeader from "./SectionHeader";
 import ValidationSummary from "./ValidationSummary";
 
@@ -29,9 +35,13 @@ function humanSize(bytes: number): string {
 export default function Artifacts({
   result,
   report,
+  importReport,
+  onNextStep,
 }: {
   result: RunResult | null;
   report?: ValidationReport | null;
+  importReport?: ImportReport | null;
+  onNextStep?: () => void;
 }) {
   const artifacts: Artifact[] = result?.artifacts ?? [];
 
@@ -44,8 +54,8 @@ export default function Artifacts({
         />
 
         {!result ? (
-          <div className="mx-auto flex max-w-lg flex-col items-center gap-3 rounded-2xl border border-dashed border-white/8 bg-surface px-6 py-14 text-center">
-            <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-white/4 text-muted">
+          <div className="mx-auto flex max-w-lg flex-col items-center gap-3 rounded-2xl border border-dashed border-white/[0.08] bg-surface px-6 py-14 text-center">
+            <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-white/[0.04] text-muted">
               <File className="h-6 w-6" />
             </div>
             <p className="text-sm font-medium text-fg">Nenhum artefato ainda</p>
@@ -82,7 +92,10 @@ export default function Artifacts({
               </span>
             </div>
 
-            {report && <ValidationSummary report={report} />}
+            {report && (
+              <ValidationSummary report={report} onNextStep={onNextStep} />
+            )}
+            {importReport && <ImportSummary report={importReport} />}
 
             {artifacts.length === 0 ? (
               <p className="text-center text-sm text-muted">
@@ -95,12 +108,12 @@ export default function Artifacts({
                   return (
                     <div
                       key={art.name}
-                      className="flex items-center gap-3 rounded-xl border border-white/6 bg-surface p-4 transition-colors hover:border-white/12"
+                      className="flex items-center gap-3 rounded-xl border border-white/[0.06] bg-surface p-4 transition-colors hover:border-white/[0.12]"
                     >
                       <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-cyan/10 text-cyan">
                         <Icon className="h-5 w-5" />
                       </div>
-                      <div className="flex min-w-0 grow flex-col">
+                      <div className="flex min-w-0 flex-grow flex-col">
                         <span className="truncate font-mono text-sm text-fg">
                           {art.name}
                         </span>

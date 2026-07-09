@@ -1,27 +1,20 @@
 import {
   AlertTriangle,
-  ArrowRight,
   CheckCircle2,
-  ShieldCheck,
-  Sparkles,
+  RefreshCw,
+  Send,
   Table2,
 } from "lucide-react";
 
-import type { ValidationReport } from "../lib/api";
+import type { ImportReport } from "../lib/api";
 
-// Rotulos legiveis para as categorias de erro (espelha o XLSX do backend).
+// Rotulos legiveis das categorias de falha (espelha o XLSX do backend).
 const CATEGORY_LABELS: Record<string, string> = {
-  cpf: "CPF inválido",
-  cnpj: "CNPJ inválido",
-  email: "E-mail inválido",
-  telefone: "Telefone inválido",
-  obrigatorio: "Campo obrigatório vazio",
-  duplicado: "Duplicados",
-  tamanho: "Texto muito curto",
-  intervalo: "Fora do intervalo",
-  enum: "Valor não permitido",
-  tipo: "Tipo inválido",
-  formato: "Formato inválido",
+  validacao: "Dados inválidos",
+  duplicado: "Já cadastrado",
+  rate_limit: "Limite de requisições",
+  temporario: "Instabilidade",
+  conexao: "Conexão",
   outro: "Outros",
 };
 
@@ -60,28 +53,20 @@ function SummaryCard({ label, value, tone, icon: Icon }: CardProps) {
   );
 }
 
-export default function ValidationSummary({
-  report,
-  onNextStep,
-}: {
-  report: ValidationReport;
-  onNextStep?: () => void;
-}) {
-  const categories = Object.entries(report.issues_by_category);
-  const clean = report.total_invalid === 0;
-  const temValidos = report.total_valid > 0;
+export default function ImportSummary({ report }: { report: ImportReport }) {
+  const categories = Object.entries(report.falhas_por_categoria);
+  const semFalhas = report.falhas === 0;
 
   return (
     <div className="mx-auto mb-8 max-w-3xl space-y-4">
-      {/* Banner: normalizacao segura (regra de ouro da Auditoria) */}
+      {/* Banner: reenvio seguro por idempotencia (regra de ouro do Cadastro) */}
       <div className="flex items-start gap-3 rounded-xl border border-cyan/20 bg-cyan/[0.06] px-4 py-3">
-        <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-cyan" />
+        <RefreshCw className="mt-0.5 h-4 w-4 shrink-0 text-cyan" />
         <p className="text-sm text-muted">
-          <span className="font-semibold text-fg">Normalização segura:</span> o
-          sistema não inventa dados — só padroniza o que é determinístico
-          (espaços extras, e-mail em minúsculo, máscara de CPF/telefone quando
-          os dígitos já são válidos). Todo ajuste fica registrado na aba
-          Auditoria da planilha.
+          <span className="font-semibold text-fg">Reenvio seguro:</span> o{" "}
+          <span className="font-mono text-fg">registros_falhos.csv</span> pode
+          ser corrigido e reenviado direto — a chave de idempotência de cada
+          registro garante que quem já entrou não é cadastrado em duplicidade.
         </p>
       </div>
 
@@ -89,44 +74,43 @@ export default function ValidationSummary({
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <SummaryCard
           label="Registros"
-          value={report.rows}
+          value={report.total}
           tone="neutral"
           icon={Table2}
         />
         <SummaryCard
-          label="Válidos"
-          value={report.total_valid}
+          label="Enviados"
+          value={report.enviados}
           tone="ok"
           icon={CheckCircle2}
         />
         <SummaryCard
-          label="Inválidos"
-          value={report.total_invalid}
+          label="Falhos"
+          value={report.falhas}
           tone="danger"
           icon={AlertTriangle}
         />
         <SummaryCard
-          label="Normalizados"
-          value={report.total_cleaned}
+          label="Reenviáveis"
+          value={report.reenviaveis}
           tone="signal"
-          icon={Sparkles}
+          icon={RefreshCw}
         />
       </div>
 
-      {/* Erros por categoria (ou estado positivo) */}
-      {clean ? (
+      {/* Falhas por categoria (ou estado positivo) */}
+      {semFalhas ? (
         <div className="flex items-center gap-2 rounded-xl border border-ok/20 bg-ok/[0.06] px-4 py-3 text-sm">
           <CheckCircle2 className="h-4 w-4 shrink-0 text-ok" />
           <span className="text-fg">
-            Nenhum registro inválido — base pronta para o próximo passo
-            (importar, enviar via API…).
+            Todos os registros foram cadastrados com sucesso — nenhuma falha.
           </span>
         </div>
       ) : (
         categories.length > 0 && (
           <div className="rounded-xl border border-white/[0.06] bg-surface p-4">
             <div className="mb-3 text-xs font-semibold uppercase tracking-wider text-muted">
-              Problemas por categoria
+              Falhas por categoria
             </div>
             <div className="flex flex-wrap gap-2">
               {categories.map(([key, count]) => (
@@ -142,33 +126,24 @@ export default function ValidationSummary({
               ))}
             </div>
             <p className="mt-3 text-xs text-muted">
-              Os motivos linha a linha estão em{" "}
-              <span className="font-mono text-fg">registros_invalidos.csv</span>{" "}
-              e na planilha validada.
+              Cada linha enviada com o ID criado está em{" "}
+              <span className="font-mono text-fg">registros_enviados.csv</span>;
+              os motivos das falhas, em{" "}
+              <span className="font-mono text-fg">registros_falhos.csv</span>.
             </p>
           </div>
         )
       )}
 
-      {/* Próximo passo do pipeline: enviar os validos ao sistema */}
-      {onNextStep && temValidos && (
-        <button
-          type="button"
-          onClick={onNextStep}
-          className="group flex w-full items-center justify-between gap-3 rounded-xl border border-cyan/30 bg-cyan/[0.06] px-4 py-3 text-left transition-colors hover:bg-cyan/10"
-        >
-          <span className="text-sm">
-            <span className="font-semibold text-fg">Próximo passo:</span>{" "}
-            <span className="text-muted">
-              cadastrar os {report.total_valid} registros válidos em um sistema
-            </span>
-          </span>
-          <span className="inline-flex shrink-0 items-center gap-1.5 font-mono text-xs font-semibold text-cyan">
-            Cadastro automático
-            <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" />
-          </span>
-        </button>
-      )}
+      {/* Rodape: ponte de volta ao inicio do pipeline */}
+      <div className="flex items-start gap-2 text-xs text-muted">
+        <Send className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted" />
+        <span>
+          Enviou uma base ainda não validada? Rode a{" "}
+          <span className="text-fg">Auditoria de planilha</span> antes para
+          reduzir as falhas de dados inválidos.
+        </span>
+      </div>
     </div>
   );
 }
