@@ -36,6 +36,7 @@ if TYPE_CHECKING:
 api_module = importlib.import_module("autotarefas.cli.commands.extract.api")
 
 URL = "http://localhost:5555/api/clientes"
+_EXIT_USAGE_TEST = 2
 
 
 # ============================================================
@@ -100,6 +101,7 @@ def mock_task(monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
                 raise holder["raise_on_init"]
             holder["init_kwargs"] = kwargs
             self.on_progress = kwargs.get("on_progress")
+            self.extracted_records = holder.get("extracted_records", [])
 
         def run(self) -> TaskResult:
             return cast("TaskResult", holder["result"])
@@ -442,3 +444,75 @@ class TestSecurity:
             ],
         )
         assert "Aviso" not in result.output
+
+
+# ============================================================
+# --out-dir (3 artefatos)
+# ============================================================
+
+
+class TestOutDir:
+    def test_out_dir_gera_os_tres_artefatos(
+        self,
+        runner: CliRunner,
+        mock_task: dict[str, Any],
+        tmp_path: Path,
+    ) -> None:
+        mock_task["extracted_records"] = [
+            {"id": 1, "nome": "Ana", "email": "ana@x.com"},
+            {"id": 2, "nome": "Bruno", "email": "bruno@x.com"},
+        ]
+        mock_task["result"] = make_result(
+            TaskStatus.SUCCESS,
+            data={"saved": True, "total_pages": 1, "url": URL},
+            rows_affected=2,
+        )
+        out = tmp_path / "saida"
+
+        result = runner.invoke(cli, ["extract", "api", "-u", URL, "--out-dir", str(out)])
+
+        assert result.exit_code == 0, result.output
+        assert (out / "dados_extraidos.csv").exists()
+        assert (out / "dados_extraidos.xlsx").exists()
+        assert (out / "extracao_report.json").exists()
+        assert "Dados (CSV):" in result.output
+
+    def test_sem_destino_erro_de_uso(self, runner: CliRunner, mock_task: dict[str, Any]) -> None:
+        # nem --output nem --out-dir -> exit 2
+        result = runner.invoke(cli, ["extract", "api", "-u", URL])
+        assert result.exit_code == _EXIT_USAGE_TEST
+        assert "pelo menos um destino" in result.output
+
+    def test_output_sozinho_continua_funcionando(
+        self,
+        runner: CliRunner,
+        mock_task: dict[str, Any],
+        tmp_path: Path,
+    ) -> None:
+        # compatibilidade: -o sem --out-dir mantem o comportamento legado
+        mock_task["result"] = make_result(
+            TaskStatus.SUCCESS,
+            data={"saved": True, "output_path": str(tmp_path / "d.csv")},
+            rows_affected=3,
+        )
+        result = runner.invoke(cli, ["extract", "api", "-u", URL, "-o", str(tmp_path / "d.csv")])
+        assert result.exit_code == 0, result.output
+        assert "Arquivo:" in result.output
+
+    def test_dry_run_nao_gera_artefatos(
+        self,
+        runner: CliRunner,
+        mock_task: dict[str, Any],
+        tmp_path: Path,
+    ) -> None:
+        mock_task["result"] = make_result(
+            TaskStatus.SUCCESS,
+            data={"dry_run": True, "would_extract": 47, "total_pages": 5},
+        )
+        out = tmp_path / "saida"
+        result = runner.invoke(
+            cli, ["--dry-run", "extract", "api", "-u", URL, "--out-dir", str(out)]
+        )
+        assert result.exit_code == 0, result.output
+        assert "Geraria os artefatos" in result.output
+        assert not out.exists()

@@ -20,6 +20,7 @@ from autotarefas.tasks.extract_api import ExtractApiTask
 
 if TYPE_CHECKING:
     from autotarefas.cli.context import CLIContext
+    from autotarefas.core.base import TaskResult
 
 # Exit codes
 _EXIT_USAGE = 2
@@ -34,6 +35,50 @@ def _is_localhost(url: str) -> bool:
     return urlparse(url).hostname in _LOCAL_HOSTS
 
 
+def _gerar_artefatos(task: ExtractApiTask, result: TaskResult, out_dir: Path) -> None:
+    """Gera os 3 artefatos da Exportacao e imprime os caminhos."""
+    from autotarefas.tasks.extract_artifacts import write_extract_artifacts
+
+    try:
+        csv_path, xlsx_path, report = write_extract_artifacts(
+            task.extracted_records, result, out_dir
+        )
+    except OSError as exc:
+        click.secho(f"Erro ao gerar artefatos: {exc}", fg="red", err=True)
+        return
+    click.secho(f"Dados (CSV):    {csv_path}", fg="green")
+    click.secho(f"Dados (Excel):  {xlsx_path}", fg="green")
+    click.secho(f"Relatorio JSON: {report}", fg="green")
+
+
+def _imprimir_sucesso(
+    result: TaskResult,
+    task: ExtractApiTask,
+    out_dir: Path | None,
+    output: Path | None,
+    *,
+    dry_run: bool,
+) -> None:
+    """Imprime o desfecho de uma extracao bem-sucedida (e gera artefatos)."""
+    if dry_run:
+        click.secho(
+            f"[dry-run] Extrairia {result.data.get('would_extract')} "
+            f"registros em {result.data.get('total_pages')} paginas",
+            fg="cyan",
+        )
+        if out_dir is not None:
+            click.secho(f"[dry-run] Geraria os artefatos em: {out_dir}", fg="cyan")
+        return
+    if result.data.get("saved"):
+        click.secho(f"Extraidos {result.rows_affected} registros", fg="green")
+        if out_dir is not None:
+            _gerar_artefatos(task, result, out_dir)
+        else:
+            click.secho(f"Arquivo: {result.data.get('output_path')}", fg="green")
+        return
+    click.secho("Nenhum registro retornado pela API (nada salvo).", fg="yellow")
+
+
 @click.command(name="api")
 @click.option(
     "--url",
@@ -45,9 +90,18 @@ def _is_localhost(url: str) -> bool:
     "--output",
     "-o",
     "output",
-    required=True,
+    default=None,
     type=click.Path(dir_okay=False, path_type=Path),
-    help="Arquivo de saida (.csv, .xlsx ou .json).",
+    help="Arquivo de saida unico (.csv, .xlsx ou .json).",
+)
+@click.option(
+    "--out-dir",
+    default=None,
+    type=click.Path(file_okay=False, path_type=Path),
+    help=(
+        "Diretorio de saida do pacote de artefatos: dados_extraidos.csv, "
+        "dados_extraidos.xlsx e extracao_report.json."
+    ),
 )
 @click.option(
     "--per-page",
@@ -91,7 +145,8 @@ def _is_localhost(url: str) -> bool:
 def api_command(
     ctx: CLIContext,
     url: str,
-    output: Path,
+    output: Path | None,
+    out_dir: Path | None,
     per_page: int,
     max_pages: int | None,
     delay: float,
@@ -103,13 +158,23 @@ def api_command(
     Extrai dados de uma API REST paginada e salva em arquivo.
 
     A API deve retornar JSON com 'data' (lista) e 'has_next' (bool).
-    O formato de saida e definido pela extensao do --output.
+    Informe --out-dir (pacote de artefatos: CSV + XLSX + report JSON) e/ou
+    --output (arquivo unico, formato pela extensao). Pelo menos um dos dois.
 
     \b
     Exemplos:
-      autotarefas extract api -u http://localhost:5555/api/clientes -o saida.csv
+      autotarefas extract api -u http://localhost:5555/api/clientes --out-dir saida/
       autotarefas extract api -u https://api.exemplo.com/itens -o dados.xlsx --delay 0.5
     """
+    # Precisa de ao menos um destino (erro de uso -> exit 2)
+    if output is None and out_dir is None:
+        click.secho(
+            "Erro: informe --out-dir e/ou --output (pelo menos um destino).",
+            fg="red",
+            err=True,
+        )
+        raise SystemExit(_EXIT_USAGE)
+
     # Validacao de URL (erro de uso -> exit 2)
     if not url.startswith(("http://", "https://")):
         click.secho(
@@ -130,12 +195,22 @@ def api_command(
 
     dry_run = bool(ctx.dry_run)
 
+    # A task exige um output_path. Se so --out-dir foi dado, a extracao usa
+    # o CSV canonico do pacote como destino "primario"; o XLSX/JSON saem na
+    # geracao de artefatos. Se --output foi dado, ele manda.
+    from autotarefas.tasks.extract_artifacts import DATA_CSV_NAME
+
+    primary_output = output if output is not None else (out_dir / DATA_CSV_NAME)  # type: ignore[operator]
+
     # Header
     click.echo(_SEP)
-    click.secho(" Extracao via API", bold=True)
+    click.secho(" Exportacao automatica de dados", bold=True)
     click.echo(_SEP)
     click.echo(f"URL:    {url}")
-    click.echo(f"Saida:  {output}")
+    if out_dir is not None:
+        click.echo(f"Saida:  {out_dir} (pacote de artefatos)")
+    else:
+        click.echo(f"Saida:  {output}")
     modo = "dry-run (preview, nao salva)" if dry_run else "normal"
     click.echo(f"Modo:   {modo}")
     click.echo("")
@@ -151,7 +226,7 @@ def api_command(
     try:
         task = ExtractApiTask(
             url=url,
-            output_path=output,
+            output_path=primary_output,
             per_page=per_page,
             max_pages=max_pages,
             delay_s=delay,
@@ -172,22 +247,7 @@ def api_command(
     click.echo(_SEP)
 
     if result.status == TaskStatus.SUCCESS:
-        if dry_run:
-            click.secho(
-                f"[dry-run] Extrairia {result.data.get('would_extract')} "
-                f"registros em {result.data.get('total_pages')} paginas",
-                fg="cyan",
-            )
-        elif result.data.get("saved"):
-            click.secho(
-                f"Extraidos {result.rows_affected} registros -> {result.data.get('output_path')}",
-                fg="green",
-            )
-        else:
-            click.secho(
-                "Nenhum registro retornado pela API (nada salvo).",
-                fg="yellow",
-            )
+        _imprimir_sucesso(result, task, out_dir, output, dry_run=dry_run)
         click.echo(_SEP)
         return
 

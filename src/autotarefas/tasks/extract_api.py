@@ -170,6 +170,11 @@ class ExtractApiTask(BaseTask):
         self.timeout_s = timeout_s
         self.max_retries = max_retries
         self.on_progress = on_progress
+        #: Registros extraidos (preenchido no execute); usado pela geracao
+        #: de artefatos (--out-dir), como o processed_dataframe do Cadastro.
+        self.extracted_records: list[dict[str, Any]] = []
+        #: Paginas efetivamente percorridas na ultima extracao.
+        self._pages_fetched = 0
 
     # --------------------------------------------------------
     # HTTP
@@ -242,9 +247,12 @@ class ExtractApiTask(BaseTask):
         """Percorre todas as paginas e acumula os registros."""
         all_records: list[dict[str, Any]] = []
         page = 1
+        #: Quantas paginas foram efetivamente percorridas (p/ o relatorio).
+        self._pages_fetched = 0
 
         while True:
             payload = self._fetch_page_with_retry(page)
+            self._pages_fetched = page
             page_data: list[dict[str, Any]] = payload.get(_DATA_KEY, [])
             all_records.extend(page_data)
 
@@ -358,6 +366,9 @@ class ExtractApiTask(BaseTask):
                 error_message=f"Erro ao acessar a API: {exc}",
             )
 
+        # Expoe os registros para a geracao de artefatos (--out-dir).
+        self.extracted_records = records
+
         # 0 registros nao eh erro - a API so nao tinha dados
         if not records:
             logger.warning("Nenhum registro retornado pela API")
@@ -397,6 +408,7 @@ class ExtractApiTask(BaseTask):
                 "url": self.url,
                 "output_path": str(self.output_path),
                 "output_format": self.output_path.suffix.lower().lstrip("."),
+                "total_pages": self._pages_fetched,
                 "saved": True,
             },
         )
