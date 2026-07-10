@@ -9,6 +9,7 @@ import Navbar from "./components/Navbar";
 import StatusBar from "./components/StatusBar";
 import TerminalView, { type TerminalLine } from "./components/TerminalView";
 import { useExecution } from "./hooks/useExecution";
+import { useExtractReport } from "./hooks/useExtractReport";
 import { useImportReport } from "./hooks/useImportReport";
 import { useValidationReport } from "./hooks/useValidationReport";
 import {
@@ -20,36 +21,26 @@ import {
 } from "./lib/api";
 
 // Saida de exemplo: linhas reais representativas do stdout do AutoTarefas
-// (Cadastro automatico via planilha com o leads.csv de exemplo). Some na 1a
-// execucao real, quando o terminal recebe o stdout ao vivo do SSE
-// (/api/stream/{token}). Mostra o momento do retry (registro que se recupera
-// sozinho) e os 4 artefatos gerados.
+// (Exportacao automatica de dados com o catalogo de demonstracao). Some na
+// 1a execucao real, quando o terminal recebe o stdout ao vivo do SSE
+// (/api/stream/{token}). A Exportacao e a origem do pipeline: puxa a base
+// de um sistema, paginando, e gera os artefatos.
 const SAMPLE_LINES: TerminalLine[] = [
   {
     kind: "command",
-    text: "autotarefas send api registros_validos.csv --out-dir envio/",
+    text: "autotarefas extract api -u .../api/catalogo --out-dir saida/",
   },
-  {
-    kind: "plain",
-    text: "Enviando 8 registros para o sistema (com Idempotency-Key)",
-  },
-  { kind: "ok", text: "  [1/8] [OK] criado (id 1)" },
-  { kind: "ok", text: "  [4/8] [OK] criado (id 4)" },
-  { kind: "warn", text: "  [5/8] [OK] criado (id 5)  (2 tentativas)" },
-  {
-    kind: "error",
-    text: "  [6/8] [FALHA] HTTP 422: CPF invalido: '111.111.111'",
-  },
-  { kind: "error", text: "  [7/8] [FALHA] HTTP 409: CPF ja cadastrado" },
-  { kind: "ok", text: "[OK] Enviados:  envio/registros_enviados.csv" },
-  {
-    kind: "ok",
-    text: "[OK] Falhos:    envio/registros_falhos.csv (reenviavel)",
-  },
-  { kind: "ok", text: "[OK] Relatorio: envio/importacao_report.json" },
+  { kind: "plain", text: "Extraindo de http://.../api/catalogo" },
+  { kind: "plain", text: "  Pagina 1/5 ... 10 registros (total: 10)" },
+  { kind: "plain", text: "  Pagina 3/5 ... 10 registros (total: 30)" },
+  { kind: "plain", text: "  Pagina 5/5 ... 7 registros (total: 47)" },
+  { kind: "ok", text: "Extraidos 47 registros" },
+  { kind: "ok", text: "[OK] Dados (CSV):    saida/dados_extraidos.csv" },
+  { kind: "ok", text: "[OK] Dados (Excel):  saida/dados_extraidos.xlsx" },
+  { kind: "ok", text: "[OK] Relatorio JSON: saida/extracao_report.json" },
   {
     kind: "done",
-    text: "Total: 8 | Enviados: 6 | Falhas: 2 (validacao 1, duplicado 1)",
+    text: "47 registros em 5 paginas -> prontos para a Auditoria de planilha",
   },
 ];
 
@@ -64,6 +55,7 @@ export default function App() {
   const exec = useExecution();
   const validationReport = useValidationReport(exec.result);
   const importReport = useImportReport(exec.result);
+  const extractReport = useExtractReport(exec.result);
 
   useEffect(() => {
     let cancelled = false;
@@ -153,7 +145,9 @@ export default function App() {
         result={exec.result}
         report={validationReport}
         importReport={importReport}
+        extractReport={extractReport}
         onNextStep={() => handleSelect("send_api")}
+        onNextStepAudit={() => handleSelect("validate")}
       />
       <Footer />
     </div>
