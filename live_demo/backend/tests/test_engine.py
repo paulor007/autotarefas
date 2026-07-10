@@ -120,6 +120,15 @@ def test_resolve_artifact_barra_traversal() -> None:
     assert engine.resolve_artifact("a" * 32, "naoexiste.csv") is None
 
 
+def test_recipe_extract_api_argv(tmp_path: Path) -> None:
+    argv = recipes.build_argv("extract_api", tmp_path, [])
+    assert "extract" in argv
+    assert "api" in argv
+    assert any("/api/catalogo" in part for part in argv)
+    assert "--out-dir" in argv
+    assert any(part.endswith("out") for part in argv)
+
+
 def test_recipe_send_api_argv(tmp_path: Path) -> None:
     argv = recipes.build_argv("send_api", tmp_path, [tmp_path / "in" / "leads.csv"])
     assert "send" in argv
@@ -287,3 +296,39 @@ def test_send_api_duas_execucoes_consistentes(client: TestClient) -> None:
     segunda = _baixar_report(client, _run_and_collect(client, "send_api", use_sample="true"))
     assert (primeira["enviados"], primeira["falhas"]) == (6, 2)
     assert (segunda["enviados"], segunda["falhas"]) == (6, 2)
+
+
+def test_catalogo_extract_api_reposicionado(client: TestClient) -> None:
+    catalog = client.get("/api/catalog").json()
+    extract = next(a for a in catalog["automations"] if a["id"] == "extract_api")
+    assert extract["title"] == "Exportacao automatica de dados"
+    assert extract["output"] == "report"
+
+
+@pytest.mark.usefixtures("demo_crm")
+def test_extract_api_stream_gera_artefatos(client: TestClient) -> None:
+    result = _run_and_collect(client, "extract_api", use_sample="true")
+    assert result["outcome"] == "ok"
+    names = sorted(a["name"] for a in result["artifacts"])
+    assert names == [
+        "dados_extraidos.csv",
+        "dados_extraidos.xlsx",
+        "extracao_report.json",
+    ]
+    art = next(a for a in result["artifacts"] if a["name"] == "extracao_report.json")
+    report = client.get(art["download_url"]).json()
+    # dataset-semente fixo: 47 produtos em 5 paginas (per_page=10)
+    assert report["total_registros"] == 47
+    assert report["paginas"] == 5
+
+
+@pytest.mark.usefixtures("demo_crm")
+def test_extract_api_independente_do_cadastro(client: TestClient) -> None:
+    """A Exportacao usa dataset proprio: nao e afetada pelo reset do Cadastro."""
+    # roda o Cadastro (que reseta o storage de clientes)...
+    _run_and_collect(client, "send_api", use_sample="true")
+    # ...e a Exportacao continua trazendo os 47 produtos do catalogo fixo
+    result = _run_and_collect(client, "extract_api", use_sample="true")
+    art = next(a for a in result["artifacts"] if a["name"] == "extracao_report.json")
+    report = client.get(art["download_url"]).json()
+    assert report["total_registros"] == 47

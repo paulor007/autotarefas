@@ -73,9 +73,11 @@ def build_argv(  # noqa: PLR0911
             "extract",
             "api",
             "-u",
-            f"{_PRIMARY}/api/clientes",
-            "-o",
-            str(out_dir / "extract_api.csv"),
+            f"{_PRIMARY}/api/catalogo",
+            "--out-dir",
+            str(out_dir),
+            "--per-page",
+            "10",
         ]
     if automation_id == "send_api":
         planilha = inputs[0]

@@ -49,6 +49,37 @@ _IDEMPOTENCY_SEEN: dict[str, dict[str, Any]] = {}
 #: Contador de hits do cenario "instavel" (429 na 1a tentativa) por chave.
 _RATE_LIMIT_HITS: dict[str, int] = {}
 
+
+def _build_catalogo_demo() -> list[dict[str, Any]]:
+    """
+    Dataset FIXO e DETERMINISTICO para a Exportacao automatica de dados.
+
+    Simula o catalogo de produtos de um ERP. E independente do storage
+    de cadastros (que o Cadastro automatico reseta) — a Exportacao sempre
+    traz exatamente estes registros, tornando a demo previsivel.
+    """
+    categorias = ["Bebidas", "Limpeza", "Higiene", "Mercearia", "Hortifruti"]
+    unidades = ["un", "cx", "kg", "L", "pct"]
+    registros: list[dict[str, Any]] = []
+    for i in range(1, 48):  # 47 produtos -> pagina de forma "redonda"
+        registros.append(
+            {
+                "id": i,
+                "sku": f"PRD-{i:04d}",
+                "produto": f"Produto {i:02d}",
+                "categoria": categorias[i % len(categorias)],
+                "preco": round(5 + (i * 3.7) % 90, 2),
+                "estoque": (i * 7) % 200,
+                "unidade": unidades[i % len(unidades)],
+                "ativo": (i % 9) != 0,
+            }
+        )
+    return registros
+
+
+#: Catalogo-semente da Exportacao (imutavel; construido uma vez).
+_CATALOGO_DEMO: list[dict[str, Any]] = _build_catalogo_demo()
+
 fake = Faker("pt_BR")
 
 
@@ -194,6 +225,45 @@ def _gerar_cliente_fake() -> dict[str, str]:
     }
 
 
+def _paginate(records: list[dict[str, Any]], page: int, per_page: int) -> Response:
+    """Monta a resposta paginada padrao (data/page/total/has_next)."""
+    page = max(page, 1)
+    if per_page < 1:
+        per_page = 10
+    per_page = min(per_page, 100)
+
+    total = len(records)
+    total_pages = (total + per_page - 1) // per_page  # ceil
+    start = (page - 1) * per_page
+    end = start + per_page
+
+    return jsonify(
+        {
+            "data": records[start:end],
+            "page": page,
+            "per_page": per_page,
+            "total": total,
+            "total_pages": total_pages,
+            "has_next": page < total_pages,
+        }
+    )
+
+
+@app.route("/api/catalogo")
+def api_catalogo() -> Response:
+    """
+    API paginada do catalogo de produtos (dataset FIXO de demonstracao).
+
+    Endpoint da Exportacao automatica de dados. Independente do storage
+    de cadastros — sempre retorna o mesmo catalogo (47 produtos), o que
+    torna a demo deterministica. Mesmos query params e formato da rota
+    de clientes (page, per_page -> data/total/total_pages/has_next).
+    """
+    page = request.args.get("page", 1, type=int)
+    per_page = request.args.get("per_page", 10, type=int)
+    return _paginate(_CATALOGO_DEMO, page, per_page)
+
+
 @app.route("/api/clientes")
 def api_clientes() -> Response:
     """
@@ -215,31 +285,7 @@ def api_clientes() -> Response:
     """
     page = request.args.get("page", 1, type=int)
     per_page = request.args.get("per_page", 10, type=int)
-
-    # Sanitiza
-    page = max(page, 1)
-    if per_page < 1:
-        per_page = 10
-    per_page = min(per_page, 100)
-
-    all_records = storage.list_all()
-    total = len(all_records)
-    total_pages = (total + per_page - 1) // per_page  # ceil
-
-    start = (page - 1) * per_page
-    end = start + per_page
-    page_data = all_records[start:end]
-
-    return jsonify(
-        {
-            "data": page_data,
-            "page": page,
-            "per_page": per_page,
-            "total": total,
-            "total_pages": total_pages,
-            "has_next": page < total_pages,
-        }
-    )
+    return _paginate(storage.list_all(), page, per_page)
 
 
 @app.route("/api/clientes", methods=["POST"])

@@ -102,13 +102,15 @@ AUTOMATIONS: tuple[Automation, ...] = (
     Automation(
         "extract_api",
         "integracao",
-        "Coletar via API",
-        "GET paginado",
-        "Coleta registros de uma API REST paginada (mock interno) e monta um CSV.",
+        "Exportacao automatica de dados",
+        "De um sistema via API para uma planilha pronta para uso",
+        "Puxe dados que estao em um sistema - clientes, pedidos ou produtos - "
+        "direto pela API e receba uma planilha organizada, pronta para analise, "
+        "conferencia, backup ou para alimentar a Auditoria de planilha.",
         False,
         "none",
         "",
-        "file",
+        "report",
     ),
     Automation(
         "sync_api",
