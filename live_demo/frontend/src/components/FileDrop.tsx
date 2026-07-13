@@ -59,11 +59,11 @@ export default function FileDrop({
     for (const file of incoming) {
       const ext = extOf(file.name);
       if (acceptExts.length > 0 && !acceptExts.includes(ext)) {
-        setWarn(`Arquivo "${file.name}" nÃ£o Ã© do tipo aceito (${accept}).`);
+        setWarn(`Arquivo "${file.name}" não é do tipo aceito (${accept}).`);
         continue;
       }
       if (!ALLOWED.includes(ext)) {
-        setWarn(`ExtensÃ£o ${ext || "?"} nÃ£o permitida.`);
+        setWarn(`Extensão ${ext || "?"} não permitida.`);
         continue;
       }
       if (file.size > MAX_BYTES) {
@@ -130,7 +130,7 @@ export default function FileDrop({
           selecionar
         </span>
         <span className="text-xs text-muted">
-          Aceita {accept} Â· atÃ© 10 MB cada
+          Aceita {accept} · até 10 MB cada
         </span>
         <input
           ref={inputRef}

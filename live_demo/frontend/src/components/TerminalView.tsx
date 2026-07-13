@@ -46,10 +46,10 @@ function badgeFor(
       return { text: "erro", cls: "text-danger" };
     case "done":
       if (outcome === "caught_issue")
-        return { text: "concluÃ­do Â· com avisos", cls: "text-signal" };
+        return { text: "concluído · com avisos", cls: "text-signal" };
       if (outcome === "error")
-        return { text: "concluÃ­do Â· com erros", cls: "text-danger" };
-      return { text: "concluÃ­do", cls: "text-ok" };
+        return { text: "concluído · com erros", cls: "text-danger" };
+      return { text: "concluído", cls: "text-ok" };
     default:
       return null;
   }
@@ -102,7 +102,7 @@ export default function TerminalView({
       <div className="container-page">
         <SectionHeader
           title="Terminal ao Vivo"
-          subtitle="SaÃ­da em tempo real da execuÃ§Ã£o no sandbox"
+          subtitle="Saída em tempo real da execução no sandbox"
         />
 
         <div className="overflow-hidden rounded-2xl border border-white/6 bg-terminal shadow-[0_20px_60px_rgba(0,0,0,0.4)]">
@@ -134,7 +134,7 @@ export default function TerminalView({
 
             {sample && status === "idle" && (
               <span className="mr-3 rounded bg-white/5 px-2 py-0.5 font-mono text-[0.6rem] uppercase tracking-wider text-muted">
-                saÃ­da de exemplo
+                saída de exemplo
               </span>
             )}
 
@@ -142,7 +142,7 @@ export default function TerminalView({
               <button
                 type="button"
                 onClick={handleCopy}
-                aria-label="Copiar saÃ­da do terminal"
+                aria-label="Copiar saída do terminal"
                 className="rounded p-1 text-muted transition-colors hover:bg-white/5 hover:text-fg"
               >
                 {copied ? (
@@ -174,7 +174,7 @@ export default function TerminalView({
           >
             {lines.length === 0 && !busy && (
               <div className="text-muted">
-                Selecione uma automaÃ§Ã£o e execute para ver o stdout real aqui.
+                Selecione uma automação e execute para ver o stdout real aqui.
               </div>
             )}
             {lines.map((line, i) => (

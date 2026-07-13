@@ -9,6 +9,7 @@ de extracao (rede) ficam no roteiro de validacao manual.
 from __future__ import annotations
 
 import json
+import re
 import warnings
 from collections.abc import Iterator
 from pathlib import Path
@@ -214,7 +215,7 @@ def test_upload_xlsx_roda_auditoria(client: TestClient) -> None:
 def test_catalogo_send_api_reposicionado(client: TestClient) -> None:
     catalog = client.get("/api/catalog").json()
     send = next(a for a in catalog["automations"] if a["id"] == "send_api")
-    assert send["title"] == "Cadastro automatico via planilha"
+    assert send["title"] == "Cadastro automático via planilha"
     assert send["upload"] == "spreadsheet"
     assert "Auditoria" in send["upload_hint"]
 
@@ -301,8 +302,13 @@ def test_send_api_duas_execucoes_consistentes(client: TestClient) -> None:
 def test_catalogo_extract_api_reposicionado(client: TestClient) -> None:
     catalog = client.get("/api/catalog").json()
     extract = next(a for a in catalog["automations"] if a["id"] == "extract_api")
-    assert extract["title"] == "Exportacao automatica de dados"
+    assert extract["title"] == "Exportação automática de dados"
     assert extract["output"] == "report"
+    # sem upload -> o catalogo descreve a ORIGEM dos dados para o visitante
+    assert extract["upload"] == "none"
+    assert extract["upload_hint"]  # explicacao da demo (nao vazia)
+    assert extract["source_label"] == "Catálogo empresarial simulado"
+    assert "API interna segura" in extract["source_detail"]
 
 
 @pytest.mark.usefixtures("demo_crm")
@@ -332,3 +338,21 @@ def test_extract_api_independente_do_cadastro(client: TestClient) -> None:
     art = next(a for a in result["artifacts"] if a["name"] == "extracao_report.json")
     report = client.get(art["download_url"]).json()
     assert report["total_registros"] == 47
+
+
+@pytest.mark.usefixtures("demo_crm")
+def test_origem_da_demo_bate_com_a_extracao_real(client: TestClient) -> None:
+    """
+    Guarda anti-deriva: os numeros que o catalogo PROMETE ao visitante
+    ("47 produtos - 5 paginas") tem que ser os que a execucao ENTREGA.
+    Se o dataset do mock mudar, este teste quebra junto.
+    """
+    catalog = client.get("/api/catalog").json()
+    extract = next(a for a in catalog["automations"] if a["id"] == "extract_api")
+    prometidos = [int(n) for n in re.findall(r"\d+", extract["source_detail"])]
+
+    result = _run_and_collect(client, "extract_api", use_sample="true")
+    art = next(a for a in result["artifacts"] if a["name"] == "extracao_report.json")
+    report = client.get(art["download_url"]).json()
+
+    assert prometidos == [report["total_registros"], report["paginas"]]

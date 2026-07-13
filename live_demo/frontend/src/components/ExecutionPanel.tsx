@@ -1,8 +1,9 @@
 ﻿import { useEffect, useState } from "react";
-import { FileUp, Info, Loader2, Play } from "lucide-react";
+import { FileUp, Loader2, Play } from "lucide-react";
 
 import type { RunStatus } from "../hooks/useExecution";
-import type { Automation } from "../lib/api";
+import type { Automation, UploadKind } from "../lib/api";
+import DemoSource from "./DemoSource";
 import FileDrop from "./FileDrop";
 import SectionHeader from "./SectionHeader";
 
@@ -28,22 +29,41 @@ function uploadAccept(upload: string): string {
   return FOLDER_ACCEPT;
 }
 
-const STEPS = [
-  { num: 1, title: "Escolher Automação", desc: "Selecione no catálogo" },
-  { num: 2, title: "Enviar Arquivo", desc: "Upload ou usar exemplo" },
-  { num: 3, title: "Executar", desc: "Rodar no sandbox" },
-  { num: 4, title: "Terminal ao Vivo", desc: "Acompanhar stdout" },
-  { num: 5, title: "Baixar Artefatos", desc: "Download dos resultados" },
-];
+// A etapa 2 depende do TIPO DE ENTRADA da automacao, nao do id dela:
+// quem recebe arquivo envia um arquivo; quem nao recebe (upload "none")
+// roda contra um servico de demonstracao interno — a "entrada" e a origem.
+function inputStep(upload: UploadKind): { title: string; desc: string } {
+  if (upload === "none") {
+    return { title: "Selecionar origem", desc: "Usar serviço de demonstração" };
+  }
+  return { title: "Enviar arquivo", desc: "Upload ou usar exemplo" };
+}
+
+function buildSteps(
+  upload: UploadKind,
+): { num: number; title: string; desc: string }[] {
+  const entrada = inputStep(upload);
+  return [
+    { num: 1, title: "Escolher Automação", desc: "Selecione no catálogo" },
+    { num: 2, title: entrada.title, desc: entrada.desc },
+    { num: 3, title: "Executar", desc: "Rodar no sandbox" },
+    { num: 4, title: "Terminal ao Vivo", desc: "Acompanhar stdout" },
+    { num: 5, title: "Baixar Artefatos", desc: "Download dos resultados" },
+  ];
+}
 
 function activeStep(
   status: RunStatus,
   hasSelection: boolean,
   hasInput: boolean,
+  needsFile: boolean,
 ): number {
   if (status === "starting" || status === "running") return 3;
   if (status === "done" || status === "timeout") return 5;
   if (!hasSelection) return 1;
+  // Sem upload, a origem ja esta definida (servico de demonstracao):
+  // o visitante ja pode executar.
+  if (!needsFile) return 3;
   return hasInput ? 3 : 2;
 }
 
@@ -75,7 +95,8 @@ export default function ExecutionPanel({
   const needsFile = upload !== "none";
   const hasSample = selected ? SAMPLE_IDS.has(selected.id) : false;
   const canRunFile = !!selected && (!needsFile || files.length > 0) && !busy;
-  const step = activeStep(status, !!selected, files.length > 0);
+  const steps = buildSteps(upload);
+  const step = activeStep(status, !!selected, files.length > 0, needsFile);
 
   const runFile = () => {
     if (selected && canRunFile) {
@@ -99,7 +120,7 @@ export default function ExecutionPanel({
         <div className="overflow-hidden rounded-2xl border border-white/6 bg-surface">
           {/* Stepper */}
           <div className="flex gap-2 overflow-x-auto border-b border-white/6 p-5">
-            {STEPS.map((s) => {
+            {steps.map((s) => {
               const isActive = s.num === step;
               return (
                 <div
@@ -165,12 +186,11 @@ export default function ExecutionPanel({
             )}
 
             {selected && !needsFile && (
-              <div className="flex items-start gap-3 rounded-lg border border-cyan/20 bg-cyan/6 px-4 py-3">
-                <Info className="mt-0.5 h-4 w-4 shrink-0 text-cyan" />
-                <p className="text-sm text-muted">
-                  Esta automação não precisa de upload — roda direto no sandbox
-                  contra os serviços internos.
-                </p>
+              <div>
+                <span className="mb-2 block text-xs font-semibold uppercase tracking-wider text-muted">
+                  Origem dos dados
+                </span>
+                <DemoSource automation={selected} />
               </div>
             )}
 

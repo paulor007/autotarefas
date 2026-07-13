@@ -18,19 +18,19 @@ OutputKind = Literal["report", "file", "zip", "html"]
 CATEGORIES: tuple[tuple[str, str, str], ...] = (
     (
         "validacao",
-        "Validacao & Qualidade",
+        "Validação & Qualidade",
         "Confere planilhas contra um schema antes de qualquer processamento.",
     ),
     ("arquivos", "Backup & Organizacao", "Compacta com hash e organiza arquivos por tipo."),
-    ("integracao", "Integracao de API", "Envia, coleta e sincroniza dados com APIs REST."),
-    ("notificacoes", "Notificacoes", "Dispara e-mails e mensagens a partir de uma planilha."),
+    ("integracao", "Integração de API", "Envia, coleta e sincroniza dados com APIs REST."),
+    ("notificacoes", "Notificações", "Dispara e-mails e mensagens a partir de uma planilha."),
     (
         "scraping",
         "Web Scraping",
-        "Extrai dados de paginas, inclusive renderizadas por JavaScript.",
+        "Extrai dados de páginas, inclusive renderizadas por JavaScript.",
     ),
-    ("rpa", "RPA (Navegador)", "Automatiza um navegador real para preencher formularios."),
-    ("auditoria", "Auditoria", "Relatorios e painel da trilha append-only."),
+    ("rpa", "RPA (Navegador)", "Automatiza um navegador real para preencher formulários."),
+    ("auditoria", "Auditoria", "Relatórios e painel da trilha append-only."),
 )
 
 
@@ -47,6 +47,12 @@ class Automation:
     upload: UploadKind
     upload_hint: str
     output: OutputKind
+    #: Automacoes sem upload rodam contra um servico de demonstracao interno.
+    #: Estes dois campos descrevem ESSA origem para o visitante (o front
+    #: renderiza o bloco "Origem da demonstracao" sempre que preenchidos).
+    #: Vazios = sem bloco de origem (o front cai na mensagem generica).
+    source_label: str = ""
+    source_detail: str = ""
 
 
 AUTOMATIONS: tuple[Automation, ...] = (
@@ -56,8 +62,8 @@ AUTOMATIONS: tuple[Automation, ...] = (
         "Auditoria de planilha",
         "Valida, limpa e separa antes de importar",
         "Confere uma planilha de clientes, leads ou contatos, aponta os erros, "
-        "normaliza o que e seguro (nada de dado inventado) e separa registros "
-        "validos dos invalidos - o pre-voo antes de qualquer importacao.",
+        "normaliza o que é seguro (nada de dado inventado) e separa registros "
+        "válidos dos inválidos - o pré-voo antes de qualquer importação.",
         False,
         "spreadsheet",
         "Envie um arquivo .csv ou .xlsx (ou use o de exemplo).",
@@ -71,7 +77,7 @@ AUTOMATIONS: tuple[Automation, ...] = (
         "Compacta os arquivos enviados num .zip e calcula o hash SHA-256 do pacote.",
         False,
         "folder",
-        "Envie uma pasta ou varios arquivos (ou use os de exemplo).",
+        "Envie uma pasta ou vários arquivos (ou use os de exemplo).",
         "zip",
     ),
     Automation(
@@ -79,20 +85,20 @@ AUTOMATIONS: tuple[Automation, ...] = (
         "arquivos",
         "Organizar por tipo",
         "Separa em subpastas",
-        "Classifica os arquivos enviados em subpastas por tipo (imagens, videos, documentos...).",
+        "Classifica os arquivos enviados em subpastas por tipo (imagens, vídeos, documentos...).",
         False,
         "folder",
-        "Envie a pasta baguncada (ou use a de exemplo).",
+        "Envie a pasta bagunçada (ou use a de exemplo).",
         "zip",
     ),
     Automation(
         "send_api",
         "integracao",
-        "Cadastro automatico via planilha",
-        "Envia dados validados para um sistema com relatorio de envio",
+        "Cadastro automático via planilha",
+        "Envia dados validados para um sistema com relatório de envio",
         "Cadastre clientes, leads ou contatos a partir de uma planilha validada. "
         "O AutoTarefas envia cada registro para um sistema via API, mostra o que "
-        "foi cadastrado, o que falhou e por que - evitando digitacao manual, "
+        "foi cadastrado, o que falhou e por que - evitando digitação manual, "
         "duplicidade e retrabalho.",
         False,
         "spreadsheet",
@@ -102,15 +108,22 @@ AUTOMATIONS: tuple[Automation, ...] = (
     Automation(
         "extract_api",
         "integracao",
-        "Exportacao automatica de dados",
+        "Exportação automática de dados",
         "De um sistema via API para uma planilha pronta para uso",
-        "Puxe dados que estao em um sistema - clientes, pedidos ou produtos - "
-        "direto pela API e receba uma planilha organizada, pronta para analise, "
-        "conferencia, backup ou para alimentar a Auditoria de planilha.",
+        "Puxe dados que estão em um sistema - clientes, pedidos ou produtos - "
+        "direto pela API e receba uma planilha organizada, pronta para análise, "
+        "conferência, backup ou para alimentar a Auditoria de planilha.",
         False,
         "none",
-        "",
+        # Sem upload: a "entrada" e a origem dos dados. O texto abaixo explica
+        # de onde eles vem na demo — e o que seria diferente num uso real.
+        "O AutoTarefas consulta a API página por página e transforma os registros "
+        "que ela devolve em CSV e Excel. Não existe planilha pronta para baixar: "
+        "a planilha é montada na hora. Em uma integração real, a origem seria a "
+        "API autorizada do sistema da empresa.",
         "report",
+        source_label="Catálogo empresarial simulado",
+        source_detail="47 produtos · 5 páginas · API interna segura",
     ),
     Automation(
         "sync_api",
@@ -127,7 +140,7 @@ AUTOMATIONS: tuple[Automation, ...] = (
         "send_email",
         "notificacoes",
         "Disparar e-mails",
-        "SMTP de demonstracao",
+        "SMTP de demonstração",
         "Gera um e-mail por linha do CSV e entrega num servidor SMTP de teste "
         "(nada sai para fora).",
         False,
@@ -139,7 +152,7 @@ AUTOMATIONS: tuple[Automation, ...] = (
         "send_telegram",
         "notificacoes",
         "Mensagens no Telegram",
-        "Bot de demonstracao",
+        "Bot de demonstração",
         "Monta uma mensagem por contato e envia para um bot mock (nada sai para fora).",
         False,
         "none",
@@ -149,9 +162,9 @@ AUTOMATIONS: tuple[Automation, ...] = (
     Automation(
         "extract_web",
         "scraping",
-        "Scraping de catalogo",
+        "Scraping de catálogo",
         "HTML paginado",
-        "Percorre um catalogo HTML paginado (mock interno) e extrai os produtos para CSV.",
+        "Percorre um catálogo HTML paginado (mock interno) e extrai os produtos para CSV.",
         False,
         "none",
         "",
@@ -162,7 +175,7 @@ AUTOMATIONS: tuple[Automation, ...] = (
         "scraping",
         "Scraping com JavaScript",
         "Via navegador",
-        "Extrai um catalogo renderizado por JavaScript usando um navegador real (Chromium).",
+        "Extrai um catálogo renderizado por JavaScript usando um navegador real (Chromium).",
         True,
         "none",
         "",
@@ -172,8 +185,8 @@ AUTOMATIONS: tuple[Automation, ...] = (
         "rpa_cadastro",
         "rpa",
         "RPA de cadastro",
-        "Preenche formulario",
-        "Abre um navegador real e preenche um formulario de cadastro a partir do CSV.",
+        "Preenche formulário",
+        "Abre um navegador real e preenche um formulário de cadastro a partir do CSV.",
         True,
         "none",
         "",
@@ -182,9 +195,9 @@ AUTOMATIONS: tuple[Automation, ...] = (
     Automation(
         "report",
         "auditoria",
-        "Relatorio de auditoria",
+        "Relatório de auditoria",
         "Resumo do trilho",
-        "Resume as execucoes registradas na trilha de auditoria append-only.",
+        "Resume as execuções registradas na trilha de auditoria append-only.",
         False,
         "none",
         "",
@@ -195,7 +208,7 @@ AUTOMATIONS: tuple[Automation, ...] = (
         "auditoria",
         "Painel de auditoria",
         "HTML autocontido",
-        "Gera um painel HTML com as execucoes registradas na trilha.",
+        "Gera um painel HTML com as execuções registradas na trilha.",
         False,
         "none",
         "",
@@ -227,6 +240,8 @@ def public_catalog() -> dict[str, Any]:
             "upload": a.upload,
             "upload_hint": a.upload_hint,
             "output": a.output,
+            "source_label": a.source_label,
+            "source_detail": a.source_detail,
         }
         for a in AUTOMATIONS
     ]
