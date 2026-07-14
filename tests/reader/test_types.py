@@ -111,30 +111,32 @@ class TestSeparadorDecimal:
 
 class TestInferColumnType:
     def test_coluna_vazia(self) -> None:
-        tipo, _, obs = infer_column_type([RawCell(value=None), RawCell(value="")])
-        assert tipo == "vazio"
-        assert "vazia" in obs[0]
+        t = infer_column_type([RawCell(value=None), RawCell(value="")])
+        assert t.inferred_type == "vazio"
+        assert "vazia" in t.observations[0]
 
     def test_moeda_texto(self) -> None:
-        tipo, _, _ = infer_column_type(_texto("R$ 1.234,56", "R$ 89,90"))
-        assert tipo == "moeda"
+        assert infer_column_type(_texto("R$ 1.234,56", "R$ 89,90")).inferred_type == "moeda"
 
     def test_inteiro_e_decimal_juntos_viram_decimal(self) -> None:
         # numeros na mesma coluna nao sao "misto"
-        tipo, _, _ = infer_column_type(_numeros(1, 2.5, 3))
-        assert tipo == "decimal"
+        assert infer_column_type(_numeros(1, 2.5, 3)).inferred_type == "decimal"
 
     def test_tipos_realmente_misturados(self) -> None:
-        tipo, _, obs = infer_column_type(_texto("2", "uma duzia", "3"))
-        assert tipo == "misto"
-        assert "misturados" in obs[0]
+        t = infer_column_type(_texto("2", "uma duzia", "3"))
+        assert t.inferred_type == "misto"
+        assert "misturados" in t.observations[0]
+
+    def test_distribuicao_de_tipos_e_estruturada(self) -> None:
+        """A perfilagem precisa CONTAR os tipos — nao extrair numeros de uma frase."""
+        t = infer_column_type(_texto("2", "uma duzia", "3"))
+        assert t.type_counts == {"inteiro": 2, "texto": 1}
 
     def test_identificador_preservado(self) -> None:
-        tipo, _, _ = infer_column_type(_texto("00123", "00456"))
-        assert tipo == "identificador"
+        assert infer_column_type(_texto("00123", "00456")).inferred_type == "identificador"
 
     def test_numero_alta_cardinalidade_apenas_OBSERVA(self) -> None:
         """A decisao aprovada: o leitor observa, NAO conclui."""
-        tipo, _, obs = infer_column_type(_numeros(65014, 65016, 65018, 65019))
-        assert tipo == "inteiro"
-        assert any("possivel identificador" in o for o in obs)
+        t = infer_column_type(_numeros(65014, 65016, 65018, 65019))
+        assert t.inferred_type == "inteiro"
+        assert any("possivel identificador" in o for o in t.observations)

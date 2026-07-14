@@ -78,14 +78,14 @@ _SERIAL_DATE_MAX = 54789
 
 
 def _as_text(value: object) -> str:
-    """Representacao textual de uma celula (calculada UMA vez, no __post_init__)."""
+    """Representacao textual BRUTA de uma celula (sem strip)."""
     if value is None:
         return ""
     if isinstance(value, str):
-        return value.strip()
+        return value
     if isinstance(value, (datetime, date)):
         return value.isoformat()
-    return str(value).strip()
+    return str(value)
 
 
 @dataclass(frozen=True, slots=True)
@@ -99,13 +99,18 @@ class RawCell:
 
     #: Calculados uma unica vez. Eram propriedades — e o perfilador mostrou
     #: 4,7 MILHOES de recalculos numa planilha de 7 mil linhas.
+    raw: str = field(init=False, default="", compare=False)
+    """O texto EXATO do arquivo, com os espacos. Base do original_dataframe."""
     text: str = field(init=False, default="", compare=False)
+    """O texto sem espacos nas pontas. Base da classificacao e da conversao."""
     is_empty: bool = field(init=False, default=True, compare=False)
 
     def __post_init__(self) -> None:
-        texto = _as_text(self.value)
-        object.__setattr__(self, "text", texto)
-        object.__setattr__(self, "is_empty", texto == "")
+        bruto = _as_text(self.value)
+        limpo = bruto.strip()
+        object.__setattr__(self, "raw", bruto)
+        object.__setattr__(self, "text", limpo)
+        object.__setattr__(self, "is_empty", limpo == "")
 
 
 # --- Classificacao de UMA celula --------------------------------------------
@@ -338,21 +343,36 @@ def _merge_numeric(counts: dict[CellType, int]) -> dict[CellType, int]:
     return counts
 
 
-def infer_column_type(cells: list[RawCell]) -> tuple[CellType, float, list[str]]:
+@dataclass(frozen=True, slots=True)
+class ColumnTyping:
+    """O que a inferencia descobriu sobre uma coluna."""
+
+    inferred_type: CellType
+    confidence: float
+    observations: list[str]
+    type_counts: dict[str, int]
+    """Distribuicao dos tipos observados (ex.: {'inteiro': 95, 'texto': 5}).
+
+    Estruturado de proposito: a perfilagem precisa CONTAR os tipos, e
+    extrair numeros de uma frase seria fragil.
+    """
+
+
+def infer_column_type(cells: list[RawCell]) -> ColumnTyping:
     """
     Infere o tipo de uma coluna inteira.
 
     Returns:
-        (tipo, confianca, observacoes). Observacoes sao OBSERVACOES, nunca
-        conclusoes: ex. "possivel identificador (alta cardinalidade)" — quem
-        decide se aquilo e uma chave e o perfil/usuario, nao o leitor.
+        ColumnTyping. As observacoes sao OBSERVACOES, nunca conclusoes:
+        ex. "possivel identificador (alta cardinalidade)" — quem decide se
+        aquilo e uma chave e o perfil/usuario, nao o leitor.
     """
     observacoes: list[str] = []
     preenchidas = [c for c in cells if not c.is_empty]
     textos = [c.text for c in preenchidas]
 
     if not textos:
-        return "vazio", 1.0, ["coluna inteiramente vazia"]
+        return ColumnTyping("vazio", 1.0, ["coluna inteiramente vazia"], {})
 
     counts: dict[CellType, int] = {}
     for cell in preenchidas:
@@ -361,10 +381,13 @@ def infer_column_type(cells: list[RawCell]) -> tuple[CellType, float, list[str]]
 
     counts = _merge_numeric(counts)
     tipo, confianca = _dominant(counts, len(textos))
+    distribuicao = {str(k): v for k, v in sorted(counts.items())}
 
     if len(counts) > 1:
         detalhe = ", ".join(f"{k}: {v}" for k, v in sorted(counts.items()))
-        return "misto", confianca, [f"tipos misturados na coluna ({detalhe})"]
+        return ColumnTyping(
+            "misto", confianca, [f"tipos misturados na coluna ({detalhe})"], distribuicao
+        )
 
     # (a) IDENTIFICADOR so compete com numero e texto — nunca com data,
     # booleano ou erro. Sem esta guarda, "01/12/2019" casaria com a
@@ -376,7 +399,12 @@ def infer_column_type(cells: list[RawCell]) -> tuple[CellType, float, list[str]]
         veio_de_numeros = all(c.excel_type == "n" for c in preenchidas)
         e_id, motivo = looks_like_identifier(textos, from_numbers=veio_de_numeros)
         if e_id:
-            return "identificador", 1.0, [f"identificador ({motivo}); preservado como texto"]
+            return ColumnTyping(
+                "identificador",
+                1.0,
+                [f"identificador ({motivo}); preservado como texto"],
+                distribuicao,
+            )
 
     # (b) numero inteiro com cardinalidade alta -> OBSERVA, nao conclui
     if tipo == "inteiro":
@@ -394,7 +422,7 @@ def infer_column_type(cells: list[RawCell]) -> tuple[CellType, float, list[str]]
                 "nao declara data)"
             )
 
-    return tipo, confianca, observacoes
+    return ColumnTyping(tipo, confianca, observacoes, distribuicao)
 
 
 __all__ = [

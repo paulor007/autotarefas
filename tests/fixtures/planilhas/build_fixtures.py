@@ -411,6 +411,20 @@ def f27_valor_derivado_divergente() -> None:
     )
 
 
+def f29_espacos_extras() -> None:
+    """Espacos nas pontas e sequencias internas — detectados, nunca ignorados."""
+    _csv(
+        "29_espacos_extras.csv",
+        [
+            ["produto", "categoria"],
+            ["  Camisa", "Vestuario"],
+            ["Calca  ", " Vestuario "],
+            ["Meia   Longa", "Vestuario"],
+            ["Tenis", "Calcados"],
+        ],
+    )
+
+
 # --- VOLUME (espelha a estrutura de uma planilha empresarial real) -----------
 
 
@@ -517,6 +531,7 @@ FIXTURES = [
     f26_zeros_a_esquerda,
     f27_valor_derivado_divergente,
     f28_vendas_sintetica,
+    f29_espacos_extras,
 ]
 
 

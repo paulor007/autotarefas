@@ -145,8 +145,10 @@ def _convert(
         return _convert_number(cell, col_type, decimal_sep)
     if col_type == "booleano":
         return _convert_bool(cell)
-    # identificador, texto, erro, misto, vazio: preservados como estao
-    return cell.text, ""
+    # identificador, texto, erro, misto: o CONTEUDO e preservado; so os
+    # espacos das pontas saem — e isso e REGISTRADO como conversao.
+    regra = "espacos_nas_pontas" if cell.raw != cell.text else ""
+    return cell.text, regra
 
 
 def _convert_date(cell: RawCell) -> tuple[object, str]:
@@ -212,12 +214,13 @@ def normalize_column(
 
         if regra:
             novo = _normalized_text(valor)
-            if novo != cell.text:
+            # o "original" e o texto EXATO do arquivo (com espacos, se houver)
+            if novo != cell.raw:
                 conversoes.append(
                     Conversion(
                         row=first_data_row + offset,
                         column=col_name,
-                        original=cell.text,
+                        original=cell.raw,
                         normalized=novo,
                         rule=regra,
                     )

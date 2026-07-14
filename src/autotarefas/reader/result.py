@@ -85,6 +85,8 @@ class ColumnInfo:
     excel_number_format: str | None = None
     sample_values: list[str] = field(default_factory=list)
     empty_count: int = 0
+    type_counts: dict[str, int] = field(default_factory=dict)
+    """Distribuicao dos tipos observados (ex.: {'inteiro': 95, 'texto': 5})."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -118,6 +120,8 @@ class WorkbookReadResult:
     normalized_dataframe: pd.DataFrame | None = None
     conversions: list[Conversion] = field(default_factory=list)
     warnings: list[ReadWarning] = field(default_factory=list)
+    skipped_empty_rows: int = 0
+    """Linhas totalmente vazias na regiao de dados (nao sao registros)."""
     rejected_reason: str | None = None
     """Preenchido = o arquivo NAO foi processado (e o motivo)."""
     confidence: float = 0.0

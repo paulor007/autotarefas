@@ -343,7 +343,9 @@ def _build_result(  # noqa: PLR0913
     nomes = _unique_headers(linha_header)
     n_cols = len(nomes)
 
-    corpo = [r for r in grid[idx_header + 1 :] if any(not c.is_empty for c in r)]
+    regiao = grid[idx_header + 1 :]
+    corpo = [r for r in regiao if any(not c.is_empty for c in r)]
+    vazias_ignoradas = len(regiao) - len(corpo)
     if not corpo:
         return _rejected(
             path,
@@ -367,6 +369,17 @@ def _build_result(  # noqa: PLR0913
                     "confira antes de analisar)"
                 ),
                 row=len(grid),
+            )
+        )
+
+    if vazias_ignoradas:
+        avisos.append(
+            ReadWarning(
+                code="linhas_vazias_ignoradas",
+                message=(
+                    f"{vazias_ignoradas} linha(s) totalmente vazia(s) nao foram contadas "
+                    "como registro"
+                ),
             )
         )
 
@@ -404,6 +417,7 @@ def _build_result(  # noqa: PLR0913
         normalized_dataframe=normalizado,
         conversions=conversoes,
         warnings=avisos,
+        skipped_empty_rows=vazias_ignoradas,
         confidence=confianca,
     )
 
@@ -422,7 +436,8 @@ def _process_columns(
 
     for i, nome in enumerate(nomes):
         celulas = [(r[i] if i < len(r) else RawCell(value=None)) for r in corpo]
-        tipo, conf, observacoes = infer_column_type(celulas)
+        typing = infer_column_type(celulas)
+        tipo, conf, observacoes = typing.inferred_type, typing.confidence, typing.observations
 
         formatos = {c.number_format for c in celulas if c.number_format}
         formato = next(iter(formatos), None) if len(formatos) == 1 else None
@@ -437,6 +452,7 @@ def _process_columns(
                 excel_number_format=formato,
                 sample_values=[c.text for c in celulas if not c.is_empty][:_SAMPLE_SIZE],
                 empty_count=sum(1 for c in celulas if c.is_empty),
+                type_counts=typing.type_counts,
             )
         )
 
@@ -459,7 +475,8 @@ def _process_columns(
                 )
             )
 
-        dados_originais[nome] = [c.text for c in celulas]
+        # o original guarda o texto EXATO do arquivo, COM os espacos
+        dados_originais[nome] = [c.raw for c in celulas]
         valores, convs = normalize_column(celulas, tipo, nome, primeira_linha)
         dados_normalizados[nome] = valores
         conversoes.extend(convs)
