@@ -15,6 +15,7 @@ from __future__ import annotations
 import click
 
 from autotarefas import __version__
+from autotarefas.cli.commands.analisar import analisar
 from autotarefas.cli.commands.backup import backup
 from autotarefas.cli.commands.dashboard import dashboard
 from autotarefas.cli.commands.extract import extract
@@ -77,6 +78,7 @@ def cli(
 # Registro dos subcomandos
 # ============================================================
 
+cli.add_command(analisar)
 cli.add_command(backup)
 cli.add_command(dashboard)
 cli.add_command(info)

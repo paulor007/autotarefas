@@ -71,6 +71,8 @@ _NUMERIC_RE = re.compile(r"^[+-]?[\d.,]*\d$")
 
 _ID_MIN_LENGTH = 4
 _HIGH_CARDINALITY = 0.5
+#: Cardinalidade so e sinal com amostra suficiente (senao 4/4 = 100%).
+_MIN_ROWS_FOR_CARDINALITY = 20
 _THOUSAND_GROUP = 3
 #: Faixa dos seriais de data do Excel: 01/01/2000 a 01/01/2050.
 _SERIAL_DATE_MIN = 36526
@@ -406,10 +408,17 @@ def infer_column_type(cells: list[RawCell]) -> ColumnTyping:
                 distribuicao,
             )
 
-    # (b) numero inteiro com cardinalidade alta -> OBSERVA, nao conclui
+    # (b) numero inteiro com cardinalidade alta -> OBSERVA, nao conclui.
+    # A guarda de volume e essencial: numa tabela de 4 linhas, 4 valores
+    # distintos dao 100% de cardinalidade — e TODA coluna de inteiro viraria
+    # "possivel identificador". Cardinalidade so e sinal quando ha amostra.
     if tipo == "inteiro":
         distintos = len(set(textos))
-        if distintos / len(textos) > _HIGH_CARDINALITY and distintos > 1:
+        if (
+            len(textos) >= _MIN_ROWS_FOR_CARDINALITY
+            and distintos / len(textos) > _HIGH_CARDINALITY
+            and distintos > 1
+        ):
             observacoes.append("possivel identificador (alta cardinalidade, sem casas decimais)")
 
         # (c) numero na faixa dos seriais de data do Excel -> OBSERVA.

@@ -137,6 +137,16 @@ class TestInferColumnType:
 
     def test_numero_alta_cardinalidade_apenas_OBSERVA(self) -> None:
         """A decisao aprovada: o leitor observa, NAO conclui."""
-        t = infer_column_type(_numeros(65014, 65016, 65018, 65019))
+        t = infer_column_type(_numeros(*range(65014, 65064)))  # 50 valores distintos
         assert t.inferred_type == "inteiro"
         assert any("possivel identificador" in o for o in t.observations)
+
+    def test_cardinalidade_com_POUCAS_LINHAS_nao_gera_observacao(self) -> None:
+        """4 valores distintos em 4 linhas dao 100% — isso nao diz nada.
+
+        Sem esta guarda, uma coluna 'Saldo' de 4 linhas viraria
+        "possivel identificador".
+        """
+        t = infer_column_type(_numeros(1200, 940, 0, 35))
+        assert t.inferred_type == "inteiro"
+        assert t.observations == []

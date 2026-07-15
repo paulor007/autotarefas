@@ -425,6 +425,52 @@ def f29_espacos_extras() -> None:
     )
 
 
+# --- ANTI-OVERFITTING --------------------------------------------------------
+# Tres dominios que o AutoTarefas NUNCA viu. Se qualquer regra, texto ou
+# metrica tivesse sido escrita pensando na planilha de vendas do teste
+# manual, estas tres quebrariam. Elas sao a prova de que o produto e
+# generico — nao a fixture de vendas.
+
+
+def f30_administrativa() -> None:
+    _xlsx(
+        "30_administrativa.xlsx",
+        [
+            ["Funcionario", "Departamento", "Data de Admissao", "Status"],
+            ["Ana Souza", "Financeiro", datetime(2021, 3, 15), "Ativo"],
+            ["Bruno Lima", "Operacoes", datetime(2019, 8, 1), "Ativo"],
+            ["Carla Dias", "Financeiro", datetime(2022, 11, 20), "Afastado"],
+            ["Diego Alves", "TI", datetime(2020, 1, 6), "Ativo"],
+        ],
+    )
+
+
+def f31_estoque() -> None:
+    _xlsx(
+        "31_estoque.xlsx",
+        [
+            ["Codigo Interno", "Descricao", "Saldo", "Localizacao", "Ultima Atualizacao"],
+            ["INT-0001", "Parafuso M6", 1200, "Corredor A", datetime(2026, 1, 5)],
+            ["INT-0002", "Porca M6", 940, "Corredor A", datetime(2026, 1, 5)],
+            ["INT-0003", "Arruela", 0, "Corredor B", datetime(2026, 1, 7)],
+            ["INT-0004", "Chave inglesa", 35, "Corredor C", datetime(2026, 1, 9)],
+        ],
+    )
+
+
+def f32_servicos() -> None:
+    _csv(
+        "32_servicos.csv",
+        [
+            ["Numero", "Servico", "Responsavel", "Prazo", "Situacao"],
+            ["OS-100", "Troca de filtro", "Equipe A", "10/01/2026", "Concluido"],
+            ["OS-101", "Revisao eletrica", "Equipe B", "12/01/2026", "Em andamento"],
+            ["OS-102", "Pintura", "Equipe A", "20/01/2026", "Aguardando"],
+            ["OS-103", "Limpeza de calha", "Equipe C", "25/01/2026", "Aguardando"],
+        ],
+    )
+
+
 # --- VOLUME (espelha a estrutura de uma planilha empresarial real) -----------
 
 
@@ -532,6 +578,9 @@ FIXTURES = [
     f27_valor_derivado_divergente,
     f28_vendas_sintetica,
     f29_espacos_extras,
+    f30_administrativa,
+    f31_estoque,
+    f32_servicos,
 ]
 
 
