@@ -25,6 +25,7 @@ Uso:
 from __future__ import annotations
 
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import click
 
@@ -39,7 +40,15 @@ from autotarefas.profiling.report import (
     generate_summary,
     write_json_report,
 )
+from autotarefas.profiling.schema_suggestion import (
+    SCHEMA_SUGGESTION_NAME,
+    write_schema_suggestion,
+)
 from autotarefas.reader import ReaderError, read_workbook
+
+if TYPE_CHECKING:
+    from autotarefas.profiling.result import ProfileResult
+    from autotarefas.reader.result import WorkbookReadResult
 
 #: Exit codes — mesma convencao dos demais comandos (extract, sync, send).
 _EXIT_FAILURE = 1
@@ -88,6 +97,16 @@ _DEFAULT_PREVIEW = 5
     help="Quantas linhas mostrar na previa (0 desliga).",
 )
 @click.option(
+    "--schema-sugerido",
+    "schema_out",
+    type=click.Path(dir_okay=False, path_type=Path),
+    default=None,
+    help=(
+        "Gera um schema_sugerido.yaml (nome + tipo observados) para usar depois "
+        "no 'validate'. As regras de negocio vao comentadas, para voce decidir."
+    ),
+)
+@click.option(
     "--strict-warnings",
     is_flag=True,
     default=False,
@@ -102,6 +121,7 @@ def analisar(
     sheet: str | None,
     header_row: int | None,
     preview: int,
+    schema_out: Path | None,
     strict_warnings: bool,
 ) -> None:
     """Analisa uma planilha (CSV/XLSX) e descreve a estrutura e a qualidade dos dados."""
@@ -146,19 +166,14 @@ def analisar(
     console.info("")
 
     # ------------------------------------------------------------------
-    # 4. Relatorio
+    # 4. Artefatos (relatorio + schema sugerido, ambos opcionais)
     # ------------------------------------------------------------------
-    destino = _report_path(arquivo, out_dir, json_path, console)
-    if destino is not None:
-        if ctx.dry_run:
-            console.warning(f"[DRY-RUN] Geraria o relatorio em: {destino}")
-        else:
-            try:
-                escrito = write_json_report(build_report(leitura, perfil), destino)
-                console.success(f"Relatorio: {escrito}")
-            except OSError as exc:
-                console.error(f"Erro ao gravar o relatorio: {exc}")
-                raise click.exceptions.Exit(_EXIT_FAILURE) from exc
+    # Resolve o schema primeiro: o relatorio registra o NOME dele (so o fato).
+    alvo_schema = _schema_path(arquivo, out_dir, schema_out, console)
+    schema_nome = alvo_schema.name if alvo_schema is not None else None
+
+    _write_report(arquivo, out_dir, json_path, leitura, perfil, ctx, console, schema_nome)
+    _write_schema(alvo_schema, perfil, ctx, console)
 
     # ------------------------------------------------------------------
     # 5. Status final
@@ -178,6 +193,90 @@ def analisar(
         return  # exit 0
 
     console.success("Analise concluida.")
+
+
+def _schema_path(
+    arquivo: Path,
+    out_dir: Path | None,
+    schema_out: Path | None,
+    console: Console,
+) -> Path | None:
+    """
+    Onde gravar o schema sugerido (ou None: nao gerar).
+
+    --schema-sugerido da o caminho exato; --out-dir grava com o nome padrao.
+    Mesmas guardas do relatorio: nunca sobre a planilha de entrada, e avisa
+    antes de sobrescrever um schema existente (para nao apagar edicoes suas).
+    """
+    if schema_out is None and out_dir is None:
+        return None
+
+    destino = (
+        schema_out
+        if schema_out is not None
+        else (out_dir / SCHEMA_SUGGESTION_NAME if out_dir is not None else None)
+    )
+    # so gera pelo --out-dir quando o schema foi pedido explicitamente
+    if schema_out is None:
+        return None
+    if destino is None:
+        return None
+
+    if destino.resolve() == arquivo.resolve():
+        console.error("O schema sugerido nao pode sobrescrever a planilha de entrada.")
+        raise click.exceptions.Exit(_EXIT_USAGE)
+
+    if destino.exists():
+        console.warning(f"Sobrescrevendo o schema existente: {destino}")
+
+    return destino
+
+
+def _write_report(
+    arquivo: Path,
+    out_dir: Path | None,
+    json_path: Path | None,
+    leitura: WorkbookReadResult,
+    perfil: ProfileResult,
+    ctx: CLIContext,
+    console: Console,
+    schema_nome: str | None,
+) -> None:
+    """Grava o analise_report.json, se pedido."""
+    destino = _report_path(arquivo, out_dir, json_path, console)
+    if destino is None:
+        return
+    if ctx.dry_run:
+        console.warning(f"[DRY-RUN] Geraria o relatorio em: {destino}")
+        return
+    try:
+        payload = build_report(leitura, perfil, schema_filename=schema_nome)
+        escrito = write_json_report(payload, destino)
+        console.success(f"Relatorio: {escrito}")
+    except OSError as exc:
+        console.error(f"Erro ao gravar o relatorio: {exc}")
+        raise click.exceptions.Exit(_EXIT_FAILURE) from exc
+
+
+def _write_schema(
+    alvo: Path | None,
+    perfil: ProfileResult,
+    ctx: CLIContext,
+    console: Console,
+) -> None:
+    """Grava o schema_sugerido.yaml no caminho ja resolvido."""
+    if alvo is None:
+        return
+    if ctx.dry_run:
+        console.warning(f"[DRY-RUN] Geraria o schema sugerido em: {alvo}")
+        return
+    try:
+        escrito = write_schema_suggestion(perfil, alvo)
+        console.success(f"Schema sugerido: {escrito}")
+        console.info("  (contem so nome e tipo; as regras vao comentadas — revise antes de usar)")
+    except OSError as exc:
+        console.error(f"Erro ao gravar o schema sugerido: {exc}")
+        raise click.exceptions.Exit(_EXIT_FAILURE) from exc
 
 
 def _check_extension(arquivo: Path, console: Console) -> None:

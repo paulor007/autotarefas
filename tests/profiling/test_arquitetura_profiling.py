@@ -39,7 +39,6 @@ TERMOS_DE_DOMINIO = frozenset(
         "produto",
         "produtos",
         "preco",
-        "nota",
         "fiscal",
     }
 )

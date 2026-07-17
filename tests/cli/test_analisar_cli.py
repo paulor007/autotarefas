@@ -399,3 +399,72 @@ class TestCompatibilidade:
 
         assert "validate" in cli.commands
         assert "analisar" in cli.commands
+
+
+# ============================================================
+# Schema sugerido (integracao com o comando)
+# ============================================================
+
+
+class TestSchemaSugerido:
+    def test_gera_com_schema_sugerido(
+        self, runner: CliRunner, ctx: CLIContext, tmp_path: Path
+    ) -> None:
+        alvo = tmp_path / "schema.yaml"
+        r = rodar(runner, ctx, str(FIXTURES / "31_estoque.xlsx"), "--schema-sugerido", str(alvo))
+        assert r.exit_code == EXIT_OK
+        assert alvo.exists()
+        assert "Schema sugerido" in r.output
+
+    def test_nao_gera_schema_por_padrao(
+        self, runner: CliRunner, ctx: CLIContext, tmp_path: Path
+    ) -> None:
+        """Sem --schema-sugerido, nenhum YAML e criado."""
+        r = rodar(runner, ctx, str(FIXTURES / "02_xlsx_limpo.xlsx"), "--out-dir", str(tmp_path))
+        assert r.exit_code == EXIT_OK
+        assert not (tmp_path / "schema_sugerido.yaml").exists()
+
+    def test_json_registra_geracao_do_schema(
+        self, runner: CliRunner, ctx: CLIContext, tmp_path: Path
+    ) -> None:
+        alvo = tmp_path / "schema.yaml"
+        rodar(
+            runner,
+            ctx,
+            str(FIXTURES / "31_estoque.xlsx"),
+            "--out-dir",
+            str(tmp_path),
+            "--schema-sugerido",
+            str(alvo),
+        )
+        dados = json.loads((tmp_path / JSON_REPORT_NAME).read_text(encoding="utf-8"))
+        assert dados["schema_sugerido"]["generated"] is True
+        assert dados["schema_sugerido"]["filename"] == "schema.yaml"
+
+    def test_json_sem_schema_marca_generated_false(
+        self, runner: CliRunner, ctx: CLIContext, tmp_path: Path
+    ) -> None:
+        rodar(runner, ctx, str(FIXTURES / "02_xlsx_limpo.xlsx"), "--out-dir", str(tmp_path))
+        dados = json.loads((tmp_path / JSON_REPORT_NAME).read_text(encoding="utf-8"))
+        assert dados["schema_sugerido"]["generated"] is False
+
+    def test_schema_nao_sobrescreve_a_entrada(
+        self, runner: CliRunner, ctx: CLIContext, tmp_path: Path
+    ) -> None:
+        import shutil
+
+        copia = tmp_path / "entrada.csv"
+        shutil.copy(FIXTURES / "01_csv_limpo.csv", copia)
+        r = rodar(runner, ctx, str(copia), "--schema-sugerido", str(copia))
+        assert r.exit_code == EXIT_USAGE
+
+    def test_dry_run_nao_grava_schema(self, runner: CliRunner, tmp_path: Path) -> None:
+        alvo = tmp_path / "schema.yaml"
+        r = runner.invoke(
+            analisar,
+            [str(FIXTURES / "02_xlsx_limpo.xlsx"), "--schema-sugerido", str(alvo)],
+            obj=CLIContext(dry_run=True),
+        )
+        assert r.exit_code == EXIT_OK
+        assert not alvo.exists()
+        assert "DRY-RUN" in r.output

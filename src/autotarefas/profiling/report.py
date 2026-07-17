@@ -241,12 +241,21 @@ def _finding_payload(achado: Finding) -> dict[str, Any]:
     }
 
 
-def build_report(leitura: WorkbookReadResult, perfil: ProfileResult) -> dict[str, Any]:
+def build_report(
+    leitura: WorkbookReadResult,
+    perfil: ProfileResult,
+    *,
+    schema_filename: str | None = None,
+) -> dict[str, Any]:
     """
     Payload do relatorio. Estruturado, sem DataFrame, com amostras limitadas.
 
     O `source_file` guarda so o NOME do arquivo — o caminho completo do
     disco do cliente nao tem valor no relatorio e pode ser sensivel.
+
+    Args:
+        schema_filename: se um schema_sugerido.yaml foi gerado, o NOME dele
+            e registrado no JSON (so o fato — o conteudo nao e duplicado).
     """
     return {
         "metadata": {
@@ -300,6 +309,11 @@ def build_report(leitura: WorkbookReadResult, perfil: ProfileResult) -> dict[str
             for w in leitura.warnings
         ],
         "rejected_reason": perfil.rejected_reason,
+        "schema_sugerido": (
+            {"generated": True, "filename": schema_filename}
+            if schema_filename is not None
+            else {"generated": False}
+        ),
     }
 
 
