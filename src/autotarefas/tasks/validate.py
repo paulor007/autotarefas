@@ -33,12 +33,13 @@ from __future__ import annotations
 import csv
 import re
 from datetime import UTC, datetime
+from decimal import Decimal
 from pathlib import Path
 from typing import Any, ClassVar, Literal
 
 import pandas as pd
 import yaml
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from autotarefas.core import BaseTask, TaskResult, TaskStatus, ValidationError
 from autotarefas.tasks.artifacts import count_issues_by_category
@@ -49,10 +50,22 @@ from autotarefas.tasks.duplicates import (
     normalize_digits,
     normalize_text,
 )
+from autotarefas.tasks.expressions import (
+    ExpressionError,
+    columns_used,
+    parse_expression,
+)
 from autotarefas.tasks.issues import (
     IssueCollector,
     IssueSeverity,
     ValidationIssue,
+)
+from autotarefas.tasks.row_rules import (
+    MAX_LINES_PER_VARIANT,
+    GroupInconsistency,
+    apply_derived,
+    find_inconsistencies,
+    index_groups,
 )
 from autotarefas.tasks.validators import (
     CNPJValidator,
@@ -197,6 +210,110 @@ class ColumnSchema(BaseModel):
         return validators
 
 
+#: Severidade escolhida pelo usuario numa regra.
+RuleSeverity = Literal["error", "warning"]
+
+#: Modelos das regras NOVAS sao estritos: um campo escrito errado
+#: (`operaton:` em vez de `operation:`) e um erro de configuracao, nao
+#: algo a ignorar em silencio. O `Schema` raiz continua permissivo, para
+#: nao quebrar nenhum schema antigo que ja esteja em uso.
+_STRICT = ConfigDict(extra="forbid")
+
+
+class GroupKey(BaseModel):
+    """
+    Define o que forma um grupo de linhas relacionadas.
+
+    A chave pode ser uma coluna so ou varias (chave composta). Ela PODE e
+    normalmente VAI se repetir — e a repeticao que junta as linhas do
+    mesmo grupo. Isso nao tem nada a ver com `unique`, nem com linha
+    completamente duplicada.
+
+    Exemplo:
+        group_keys:
+          - name: lote
+            columns: ["Codigo", "Ano"]
+    """
+
+    model_config = _STRICT
+
+    name: str = Field(..., min_length=1)
+    columns: tuple[str, ...] = Field(..., min_length=1)
+
+
+class GroupCheck(BaseModel):
+    """
+    Exige que certas colunas concordem dentro de cada grupo.
+
+    Exemplo:
+        group_checks:
+          - name: coerencia_do_lote
+            group_key: lote
+            consistent: ["Responsavel", "Data"]
+    """
+
+    model_config = _STRICT
+
+    name: str = Field(..., min_length=1)
+    group_key: str = Field(..., min_length=1)
+    consistent: tuple[str, ...] = Field(..., min_length=1)
+    severity: RuleSeverity = "error"
+
+
+class DerivedCheck(BaseModel):
+    """
+    Exige que uma coluna corresponda a uma conta feita com outras colunas.
+
+    Exemplo:
+        derived_checks:
+          - name: total_da_linha
+            target: "Total"
+            expression: "[Base] * [Fator]"
+            tolerance: 0
+
+    Sobre `tolerance`: o padrao e ZERO — igualdade exata. As contas usam
+    Decimal, entao `1.1 * 3` da exatamente `3.3` e a igualdade exata e
+    alcancavel de verdade. Uma folga automatica aceitaria em silencio uma
+    diferenca que o usuario nunca autorizou; quem precisa de margem
+    (tipicamente por causa de divisao/arredondamento) declara.
+    """
+
+    model_config = _STRICT
+
+    name: str = Field(..., min_length=1)
+    target: str = Field(..., min_length=1)
+    expression: str = Field(..., min_length=1)
+    tolerance: Decimal = Decimal(0)
+    severity: RuleSeverity = "error"
+
+    @field_validator("tolerance", mode="before")
+    @classmethod
+    def _tolerance_exata(cls, valor: object) -> Decimal:
+        """Converte via str: `Decimal(0.01)` traria o lixo binario do float."""
+        if isinstance(valor, Decimal):
+            return valor
+        try:
+            convertido = Decimal(str(valor))
+        except (ArithmeticError, ValueError) as exc:
+            msg = f"tolerance invalida: {valor!r}"
+            raise ValueError(msg) from exc
+        if convertido < 0:
+            msg = f"tolerance nao pode ser negativa (recebido {convertido})"
+            raise ValueError(msg)
+        return convertido
+
+    @field_validator("expression")
+    @classmethod
+    def _expressao_analisavel(cls, texto: str) -> str:
+        """A expressao e analisada JA NA CARGA — erro aqui e de configuracao."""
+        try:
+            parse_expression(texto)
+        except ExpressionError as exc:
+            msg = f"expressao invalida ({exc})"
+            raise ValueError(msg) from exc
+        return texto
+
+
 class Schema(BaseModel):
     """
     Schema completo de validacao (carregado de YAML).
@@ -205,10 +322,78 @@ class Schema(BaseModel):
         columns: Lista de definicoes de coluna (minimo 1).
         detect_duplicate_rows: Se True, linhas 100% identicas viram
             warning (a 1a ocorrencia e considerada o original).
+        group_keys: Chaves que formam grupos de linhas relacionadas.
+        group_checks: Colunas que devem concordar dentro de cada grupo.
+        derived_checks: Colunas que devem bater com uma conta.
+
+    As tres ultimas sao OPCIONAIS e vazias por padrao — um schema antigo
+    carrega e se comporta exatamente como antes.
     """
 
     columns: list[ColumnSchema] = Field(..., min_length=1)
     detect_duplicate_rows: bool = False
+
+    group_keys: tuple[GroupKey, ...] = ()
+    group_checks: tuple[GroupCheck, ...] = ()
+    derived_checks: tuple[DerivedCheck, ...] = ()
+
+    @model_validator(mode="after")
+    def _regras_coerentes(self) -> Schema:
+        """
+        Confere as referencias entre as regras JA NA CARGA do schema.
+
+        Assim um erro de configuracao aparece antes de qualquer linha ser
+        lida, com o mesmo comportamento dos outros erros de schema.
+        """
+        declaradas = {c.name for c in self.columns}
+
+        nomes_chave = [k.name for k in self.group_keys]
+        if len(nomes_chave) != len(set(nomes_chave)):
+            msg = "ha group_keys com o mesmo nome"
+            raise ValueError(msg)
+
+        nomes_regra = [c.name for c in self.group_checks] + [d.name for d in self.derived_checks]
+        if len(nomes_regra) != len(set(nomes_regra)):
+            msg = "ha regras com o mesmo nome"
+            raise ValueError(msg)
+
+        for chave in self.group_keys:
+            faltando = [c for c in chave.columns if c not in declaradas]
+            if faltando:
+                msg = f"group_key '{chave.name}' usa coluna(s) que o schema nao declara: {faltando}"
+                raise ValueError(msg)
+
+        for check in self.group_checks:
+            if check.group_key not in set(nomes_chave):
+                msg = (
+                    f"group_check '{check.name}' aponta para a group_key "
+                    f"'{check.group_key}', que nao existe"
+                )
+                raise ValueError(msg)
+            faltando = [c for c in check.consistent if c not in declaradas]
+            if faltando:
+                msg = (
+                    f"group_check '{check.name}' usa coluna(s) que o schema nao declara: {faltando}"
+                )
+                raise ValueError(msg)
+
+        for derivada in self.derived_checks:
+            if derivada.target not in declaradas:
+                msg = (
+                    f"derived_check '{derivada.name}' aponta para a coluna "
+                    f"'{derivada.target}', que o schema nao declara"
+                )
+                raise ValueError(msg)
+            usadas = columns_used(parse_expression(derivada.expression))
+            faltando = sorted(u for u in usadas if u not in declaradas)
+            if faltando:
+                msg = (
+                    f"derived_check '{derivada.name}' usa na expressao coluna(s) que o "
+                    f"schema nao declara: {faltando}"
+                )
+                raise ValueError(msg)
+
+        return self
 
     @property
     def column_names(self) -> list[str]:
@@ -265,6 +450,32 @@ def load_schema(path: Path) -> Schema:
 # ============================================================
 # ValidateTask
 # ============================================================
+
+
+def _group_message(rule: str, key_name: str, achado: GroupInconsistency) -> str:
+    """
+    Mensagem de divergencia dentro de um grupo.
+
+    Mostra TODOS os valores encontrados e as linhas de cada um — e nao
+    elege nenhum como o correto. O AutoTarefas nao conhece a verdade do
+    negocio; quem decide e quem conhece.
+    """
+    chave = ", ".join(achado.key)
+    partes = []
+    for valor, linhas in achado.variants:
+        onde = ", ".join(str(i + 2) for i in linhas)
+        reticencias = "..." if len(linhas) >= MAX_LINES_PER_VARIANT else ""
+        mostrado = valor if valor else "(vazio)"
+        partes.append(f"'{mostrado}' (linha(s) {onde}{reticencias})")
+
+    restantes = achado.distinct_count - len(achado.variants)
+    extra = f" e mais {restantes} valor(es)" if restantes > 0 else ""
+
+    return (
+        f"Regra '{rule}': no grupo {key_name}=[{chave}] com {achado.group_size} registro(s), "
+        f"a coluna '{achado.column}' tem {achado.distinct_count} valores diferentes: "
+        f"{'; '.join(partes)}{extra}. Confira qual e o correto."
+    )
 
 
 class ValidateTask(BaseTask):
@@ -387,6 +598,25 @@ class ValidateTask(BaseTask):
 
         # 5b. Deteccao de duplicatas (cross-row)
         self._validate_duplicates(df, collector)
+
+        # 5c. Regras opcionais entre colunas e entre linhas do mesmo grupo.
+        # A configuracao e conferida ANTES de percorrer os registros: uma
+        # regra que nao pode rodar e um erro explicito, nunca um silencio.
+        erro_de_regra = self._missing_rule_columns(df)
+        if erro_de_regra is not None:
+            return self._make_result(
+                status=TaskStatus.FAILURE,
+                started_at=started_at,
+                error_message=erro_de_regra,
+                error_type="RuleConfigError",
+                data={
+                    "file": str(self.file_path),
+                    "actual_columns": list(df.columns),
+                },
+            )
+
+        self._validate_group_checks(df, collector)
+        self._validate_derived_checks(df, collector)
 
         # 6. Separacao: uma linha e invalida se tem >=1 problema ERROR.
         error_lines = {i.line for i in collector.errors if i.line >= 2}  # noqa: PLR2004
@@ -673,6 +903,144 @@ class ValidateTask(BaseTask):
                         message=f"Linha duplicada (identica a linha {original})",
                         severity=IssueSeverity.WARNING,
                     )
+
+    def _missing_rule_columns(self, df: pd.DataFrame) -> str | None:
+        """
+        Confere se as colunas usadas pelas regras existem NO ARQUIVO.
+
+        As referencias entre regras ja foram conferidas na carga do schema.
+        Aqui fica o que so o arquivo pode responder. Uma regra que nao pode
+        rodar e um ERRO DE CONFIGURACAO explicito — nunca uma regra
+        silenciosamente ignorada, senao o cliente ficaria achando que ela
+        passou.
+
+        Returns:
+            Mensagem do erro, ou None se estiver tudo no lugar.
+        """
+        presentes = set(df.columns)
+        chaves = {k.name: k for k in self.schema.group_keys}
+        faltas: list[str] = []
+
+        for check in self.schema.group_checks:
+            chave = chaves[check.group_key]
+            ausentes = [c for c in (*chave.columns, *check.consistent) if c not in presentes]
+            if ausentes:
+                faltas.append(f"group_check '{check.name}' precisa de {ausentes}")
+
+        for derivada in self.schema.derived_checks:
+            usadas = columns_used(parse_expression(derivada.expression))
+            ausentes = sorted(c for c in (derivada.target, *usadas) if c not in presentes)
+            if ausentes:
+                faltas.append(f"derived_check '{derivada.name}' precisa de {ausentes}")
+
+        if not faltas:
+            return None
+        return "Regras nao puderam ser aplicadas — coluna(s) ausente(s) no arquivo: " + "; ".join(
+            faltas
+        )
+
+    def _validate_group_checks(self, df: pd.DataFrame, collector: IssueCollector) -> None:
+        """
+        Confere a coerencia das colunas dentro de cada grupo.
+
+        Um issue por (grupo, coluna divergente) — nao um por linha. A
+        mensagem traz TODOS os valores encontrados e as linhas de cada um.
+        O AutoTarefas nao elege o valor certo: ele nao conhece a verdade do
+        negocio, e escolher seria inventar.
+
+        O issue e ancorado na primeira linha do grupo apenas para ter uma
+        posicao no relatorio — isso NAO significa que aquela linha e a errada.
+        """
+        chaves = {k.name: k for k in self.schema.group_keys}
+
+        for check in self.schema.group_checks:
+            chave = chaves[check.group_key]
+            severidade = IssueSeverity.ERROR if check.severity == "error" else IssueSeverity.WARNING
+
+            colunas_chave = list(chave.columns)
+            valores_chave = [
+                [self._cell_to_str(v) for v in linha]
+                for linha in df[colunas_chave].itertuples(index=False, name=None)
+            ]
+            grupos, fora = index_groups(valores_chave)
+
+            for solta in fora:
+                vazias = [colunas_chave[i] for i in solta.empty_positions]
+                detalhe = (
+                    f"a chave '{chave.name}' esta vazia em {vazias}"
+                    if solta.partial
+                    else f"a chave '{chave.name}' esta totalmente vazia"
+                )
+                collector.add(
+                    line=solta.index + 2,
+                    column=colunas_chave[0],
+                    message=(
+                        f"Regra '{check.name}' nao pode ser verificada nesta linha: "
+                        f"{detalhe} — a linha ficou fora do agrupamento"
+                    ),
+                    severity=IssueSeverity.WARNING,
+                )
+
+            valores_por_coluna = {
+                nome: [self._cell_to_str(v) for v in df[nome]] for nome in check.consistent
+            }
+
+            for achado in find_inconsistencies(grupos, valores_por_coluna, check.consistent):
+                collector.add(
+                    line=achado.anchor_index + 2,
+                    column=achado.column,
+                    message=_group_message(check.name, chave.name, achado),
+                    severity=severidade,
+                )
+
+    def _validate_derived_checks(self, df: pd.DataFrame, collector: IssueCollector) -> None:
+        """
+        Confere as contas entre colunas.
+
+        A expressao e analisada UMA vez por regra (nao por linha), e cada
+        linha e percorrida no maximo uma vez.
+
+        Duas situacoes diferentes, tratadas de forma diferente:
+          - a conta foi feita e DIVERGIU -> severidade escolhida pelo usuario
+          - a conta NAO PODE ser feita   -> sempre aviso. Dado faltando nao e
+            o mesmo que conta errada; e quem quiser rigor total continua tendo
+            o `--strict-warnings`.
+        """
+        for derivada in self.schema.derived_checks:
+            arvore = parse_expression(derivada.expression)
+            usadas = sorted(columns_used(arvore))
+            severidade = (
+                IssueSeverity.ERROR if derivada.severity == "error" else IssueSeverity.WARNING
+            )
+
+            alvo = list(df[derivada.target])
+            colunas = {nome: list(df[nome]) for nome in usadas}
+
+            for achado in apply_derived(arvore, alvo, colunas, derivada.tolerance):
+                linha = achado.index + 2
+
+                if achado.reason is not None:
+                    collector.add(
+                        line=linha,
+                        column=derivada.target,
+                        message=f"Regra '{derivada.name}' nao pode ser calculada: {achado.reason}",
+                        severity=IssueSeverity.WARNING,
+                        value=achado.observed,
+                    )
+                    continue
+
+                collector.add(
+                    line=linha,
+                    column=derivada.target,
+                    message=(
+                        f"Regra '{derivada.name}': o calculo nao confere — "
+                        f"'{derivada.target}' tem {achado.observed}, mas "
+                        f"{derivada.expression} da {achado.computed} "
+                        f"(diferenca de {achado.difference})"
+                    ),
+                    severity=severidade,
+                    value=achado.observed,
+                )
 
     @staticmethod
     def _cell_to_str(value: Any) -> str:

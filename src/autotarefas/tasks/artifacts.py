@@ -44,6 +44,11 @@ REASON_COLUMN = "motivo"
 #: de cpf/email/telefone porque a mensagem de duplicidade cita o nome da
 #: coluna (que pode conter "cpf", "email", etc.).
 _CATEGORY_RULES: tuple[tuple[tuple[str, ...], str], ...] = (
+    # As regras entre colunas/linhas vem primeiro: as mensagens delas citam
+    # a regra do usuario e poderiam casar por acidente com um termo generico
+    # mais abaixo (ex.: um nome de regra que contenha "formato").
+    (("valores diferentes", "fora do agrupamento"), "grupo"),
+    (("nao confere", "nao pode ser calculada"), "calculo"),
     (("duplicad",), "duplicado"),
     (("obrigat",), "obrigatorio"),
     (("cpf",), "cpf"),
