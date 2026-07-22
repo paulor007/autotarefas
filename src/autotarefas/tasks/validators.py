@@ -32,9 +32,9 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from datetime import datetime
 from typing import Literal, Protocol
 
+from autotarefas.core.dates import is_date_text
 from autotarefas.tasks.issues import IssueCollector, IssueSeverity
 from autotarefas.tasks.validators_br import is_valid_cnpj, is_valid_cpf, is_valid_phone_br
 
@@ -109,7 +109,7 @@ class TypeValidator:
     Tipos suportados:
     - ``int``    — `int(value)`
     - ``float``  — `float(value)`, aceita virgula ou ponto como decimal
-    - ``date``   — formato ISO (YYYY-MM-DD), via `datetime.fromisoformat`
+    - ``date``   — ISO e formatos brasileiros (dd/mm/aaaa), via `core.dates`
     - ``bool``   — aceita "true"/"false", "sim"/"nao", "1"/"0" (case-insensitive)
 
     Para tipo "str" nao ha validacao (qualquer string passa) — nao instancia.
@@ -155,7 +155,11 @@ class TypeValidator:
                 # Aceita decimal BR (virgula) e US (ponto)
                 float(value.strip().replace(",", "."))
             elif self.expected_type == "date":
-                datetime.fromisoformat(value.strip())
+                # Mesma interpretacao do leitor (`core.dates`) — antes daqui
+                # sair so ISO, uma data brasileira lida sem problema pelo
+                # leitor era recusada pelo validador na mesma celula.
+                if not is_date_text(value):
+                    return False
             elif self.expected_type == "bool" and value.strip().lower() not in {
                 "true",
                 "false",

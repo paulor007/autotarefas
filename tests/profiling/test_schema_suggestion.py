@@ -175,15 +175,17 @@ class TestNomesComplicados:
         assert "Codigo Venda" in nomes
         assert "Valor Unitario" in nomes
 
-    def test_data_nao_iso_vira_str_para_o_validate_aceitar(self) -> None:
-        """32_servicos tem Prazo em dd/mm/aaaa: o validate so aceita ISO.
+    def test_data_brasileira_vira_date(self) -> None:
+        """
+        32_servicos tem Prazo em dd/mm/aaaa.
 
-        Sugerir date quebraria o round-trip. Vira str + nota.
+        Ate a 1.5.1 isto era rebaixado para `str`, porque o validador so
+        aceitava ISO e o schema gerado quebraria no round-trip. Com a
+        interpretacao unificada, o tipo observado pode ser afirmado.
         """
         dados = parse("32_servicos.csv")
         prazo = next(c for c in dados["columns"] if c["name"] == "Prazo")
-        assert prazo["type"] == "str"
-        assert "nao estao em ISO" in bloco_de(gerar("32_servicos.csv"), "Prazo")
+        assert prazo["type"] == "date"
 
     def test_data_ISO_vira_date(self) -> None:
         """31_estoque tem datas nativas do Excel -> saem em ISO -> date."""

@@ -10,7 +10,10 @@ from autotarefas.tasks.issues import IssueCollector, IssueSeverity
 from autotarefas.tasks.validators import (
     CNPJValidator,
     CPFValidator,
+    EmailValidator,
     EnumValidator,
+    MinLengthValidator,
+    PhoneValidator,
     RangeValidator,
     RegexValidator,
     TypeValidator,
@@ -110,7 +113,13 @@ class TestTypeValidatorFloat:
 
 
 class TestTypeValidatorDate:
-    """Testes do TypeValidator para tipo date (formato ISO)."""
+    """
+    Testes do TypeValidator para tipo date.
+
+    Ate a 1.5.1 este validador so aceitava ISO — e uma data brasileira que
+    o LEITOR entendia sem problema era recusada aqui, na mesma celula.
+    Agora os dois usam `core.dates`.
+    """
 
     @pytest.mark.parametrize(
         "value",
@@ -118,6 +127,13 @@ class TestTypeValidatorDate:
             "2026-05-15",
             "2024-01-01",
             "1999-12-31",
+            # formatos brasileiros — recusados antes da 1.5.1
+            "15/05/2026",
+            "15-05-2026",
+            "15.05.2026",
+            "2026/05/15",
+            "15/05/2026 14:30",
+            "29/02/2024",  # bissexto
         ],
     )
     def test_date_iso_valida(self, collector: IssueCollector, value: str) -> None:
@@ -129,10 +145,13 @@ class TestTypeValidatorDate:
     @pytest.mark.parametrize(
         "value",
         [
-            "15/05/2026",  # formato BR — nao aceito
-            "2026/05/15",
             "abc",
             "2026-13-01",  # mes invalido
+            "31/02/2026",  # dia impossivel
+            "29/02/2023",  # nao e bissexto
+            "05/15/2026",  # padrao americano: RECUSADO, nao reinterpretado
+            "100",  # numero NAO e serial de data fora do leitor
+            "45000",
         ],
     )
     def test_date_invalida(self, collector: IssueCollector, value: str) -> None:
@@ -420,3 +439,120 @@ class TestAcumulacao:
     def test_collector_independente_entre_testes(self, collector: IssueCollector) -> None:
         """Fixture cria collector novo — nao tem residuo de outros testes."""
         assert len(collector) == 0
+
+
+# ============================================================
+# EmailValidator
+# ============================================================
+
+
+class TestEmailValidator:
+    """Validacao de formato de e-mail."""
+
+    @pytest.mark.parametrize(
+        "email",
+        [
+            "ana@example.com",
+            "ana.lima@example.com",
+            "joao_silva@empresa.io",
+            "a+tag@sub.dominio.com.br",
+            "nome123@host-x.co",
+        ],
+    )
+    def test_validos(self, email: str, collector: IssueCollector) -> None:
+        EmailValidator().validate(email, line=2, column="email", collector=collector)
+        assert collector.is_valid
+
+    @pytest.mark.parametrize(
+        "email",
+        [
+            "ana",
+            "ana@",
+            "@example.com",
+            "ana@dominio",
+            "ana@@example.com",
+            "ana lima@example.com",
+            "ana@exa mple.com",
+        ],
+    )
+    def test_invalidos(self, email: str, collector: IssueCollector) -> None:
+        EmailValidator().validate(email, line=2, column="email", collector=collector)
+        assert not collector.is_valid
+        assert len(collector.errors) == 1
+
+    def test_vazio_ignorado(self, collector: IssueCollector) -> None:
+        EmailValidator().validate("", line=2, column="email", collector=collector)
+        EmailValidator().validate("   ", line=3, column="email", collector=collector)
+        assert collector.total == 0
+
+
+# ============================================================
+# PhoneValidator
+# ============================================================
+
+
+class TestPhoneValidator:
+    """Validacao de telefone brasileiro (wrapper de is_valid_phone_br)."""
+
+    @pytest.mark.parametrize(
+        "phone",
+        [
+            "(11) 98765-4321",
+            "11987654321",
+            "+55 11 98765-4321",
+            "(21) 3334-4444",
+            "2133445566",
+        ],
+    )
+    def test_validos(self, phone: str, collector: IssueCollector) -> None:
+        PhoneValidator().validate(phone, line=2, column="telefone", collector=collector)
+        assert collector.is_valid
+
+    @pytest.mark.parametrize(
+        "phone",
+        [
+            "9999",
+            "(20) 98765-4321",
+            "1187654321",
+            "telefone",
+        ],
+    )
+    def test_invalidos(self, phone: str, collector: IssueCollector) -> None:
+        PhoneValidator().validate(phone, line=2, column="telefone", collector=collector)
+        assert not collector.is_valid
+        assert len(collector.errors) == 1
+
+    def test_vazio_ignorado(self, collector: IssueCollector) -> None:
+        PhoneValidator().validate("", line=2, column="telefone", collector=collector)
+        assert collector.total == 0
+
+
+# ============================================================
+# MinLengthValidator
+# ============================================================
+
+
+class TestMinLengthValidator:
+    """Comprimento minimo de texto (apos strip)."""
+
+    @pytest.mark.parametrize("value", ["Ana", "Maria Silva", "Jose"])
+    def test_validos(self, value: str, collector: IssueCollector) -> None:
+        MinLengthValidator(min_length=3).validate(value, line=2, column="nome", collector=collector)
+        assert collector.is_valid
+
+    @pytest.mark.parametrize("value", ["A", "Jo", " X "])
+    def test_invalidos(self, value: str, collector: IssueCollector) -> None:
+        MinLengthValidator(min_length=3).validate(value, line=2, column="nome", collector=collector)
+        assert not collector.is_valid
+        assert len(collector.errors) == 1
+
+    def test_vazio_ignorado(self, collector: IssueCollector) -> None:
+        MinLengthValidator(min_length=3).validate("", line=2, column="nome", collector=collector)
+        assert collector.total == 0
+
+    def test_strip_antes_de_medir(self, collector: IssueCollector) -> None:
+        # "  Ana  " tem 3 caracteres uteis -> valido
+        MinLengthValidator(min_length=3).validate(
+            "  Ana  ", line=2, column="nome", collector=collector
+        )
+        assert collector.is_valid

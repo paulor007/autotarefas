@@ -40,7 +40,6 @@ o build se um termo como cpf/sku/venda aparecer no codigo.
 
 from __future__ import annotations
 
-import re
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -51,12 +50,6 @@ if TYPE_CHECKING:
 #: Nome do artefato. Fixo — o usuario escolhe a PASTA, nunca o nome
 #: (nome controlado pelo usuario e vetor de path traversal).
 SCHEMA_SUGGESTION_NAME = "schema_sugerido.yaml"
-
-#: O `validate` aceita date so em ISO (datetime.fromisoformat). Uma data
-#: como "10/01/2026" o leitor entende, mas o validate rejeita. Para nao
-#: quebrar a promessa "gerou -> rodou sem erro", so afirmamos type: date
-#: quando os valores JA estao em ISO. Caso contrario, type: str + uma nota.
-_ISO_DATE = re.compile(r"^\d{4}-\d{2}-\d{2}([T ]\d{2}:\d{2}(:\d{2})?)?$")
 
 #: Mapeamento leitor -> tipo do schema. Isto e o UNICO julgamento que o
 #: gerador faz, e e um julgamento sobre ESTRUTURA (que tipo o dado tem),
@@ -77,30 +70,17 @@ _TYPE_MAP: dict[str, str] = {
 }
 
 
-def _values_are_iso(samples: list[str]) -> bool:
-    """As amostras de data ja estao em ISO (o unico formato que o validate aceita)?"""
-    reais = [s for s in samples if s.strip()]
-    return bool(reais) and all(_ISO_DATE.match(s.strip()) for s in reais)
-
-
-def _schema_type(col: ColumnProfile) -> tuple[str, str | None]:
+def _schema_type(col: ColumnProfile) -> str:
     """
-    (tipo do schema, nota opcional).
+    Tipo do schema correspondente ao tipo observado pelo leitor.
 
-    Regra especial de data: so afirma `date` se as amostras forem ISO; senao
-    cai para `str` com uma nota explicando por que — sem inventar nada e sem
-    prometer uma validacao que o validate nao entrega.
+    Ate a 1.5.1 havia aqui uma excecao: uma data brasileira era rebaixada
+    para `str`, porque o validador so entendia ISO e o schema gerado
+    quebraria no `validate`. Com a interpretacao de datas unificada em
+    `core.dates`, a excecao deixou de existir — e manter a nota antiga
+    seria pior que nao ter nota, porque ela hoje seria falsa.
     """
-    base = _TYPE_MAP.get(col.inferred_type, "str")
-
-    if base == "date" and not _values_are_iso(col.sample_values):
-        nota = (
-            "coluna parece data, mas os valores nao estao em ISO (AAAA-MM-DD); "
-            "mantido como str para o validate aceitar. Ajuste se converter as datas."
-        )
-        return "str", nota
-
-    return base, None
+    return _TYPE_MAP.get(col.inferred_type, "str")
 
 
 def _yaml_key(name: str) -> str:
@@ -124,13 +104,10 @@ def _column_block(col: ColumnProfile) -> list[str]:
     As linhas ativas (sem '#') sao so tipo e nome — o unico compromisso que
     o leitor pode assumir. Todo o resto e comentario com a razao ao lado.
     """
-    tipo, nota_tipo = _schema_type(col)
     linhas = [
         f"  - name: {_yaml_key(col.name)}",
-        f"    type: {tipo}",
+        f"    type: {_schema_type(col)}",
     ]
-    if nota_tipo is not None:
-        linhas.append(f"    # nota: {nota_tipo}")
 
     # required: SUGESTAO em comentario, com o dado observado ao lado.
     if col.fill_rate >= 1.0:

@@ -16,6 +16,7 @@ from __future__ import annotations
 from datetime import date, datetime, timedelta
 from typing import TYPE_CHECKING
 
+from autotarefas.core.dates import parse_date_text
 from autotarefas.reader.result import Conversion
 from autotarefas.reader.types import (
     RawCell,
@@ -30,30 +31,10 @@ _SERIAL_MIN = 1
 _SERIAL_MAX = 2_958_465  # 31/12/9999
 _CURRENCY_SYMBOLS = ("R$", "US$", "$", "€", "£")
 
-#: Data-hora e testada ANTES de data-so: senao "01/12/2019 14:30" casaria
-#: com "%d/%m/%Y" e PERDERIA a hora.
-_DATETIME_FORMATS = (
-    "%d/%m/%Y %H:%M:%S",
-    "%d/%m/%Y %H:%M",
-    "%Y-%m-%d %H:%M:%S",
-    "%Y-%m-%d %H:%M",
-)
-_DATE_FORMATS = ("%d/%m/%Y", "%d-%m-%Y", "%d.%m.%Y", "%Y-%m-%d", "%Y/%m/%d")
-
-
-def _parse_date_text(texto: str) -> datetime | None:
-    """Data em texto: tenta data-hora primeiro, depois data-so."""
-    for fmt in _DATETIME_FORMATS:
-        try:
-            return datetime.strptime(texto, fmt)
-        except ValueError:
-            continue
-    for fmt in _DATE_FORMATS:
-        try:
-            return datetime.strptime(texto.split(" ")[0], fmt)
-        except ValueError:
-            continue
-    return None
+# Os formatos de data NAO moram mais aqui: moram em `core.dates`, que e a
+# unica interpretacao do projeto. O leitor e o validador precisam concordar
+# sobre o que e uma data — quando cada um tinha a sua lista, o leitor
+# entendia "10/01/2026" e o validador recusava a mesma celula.
 
 
 def _strip_symbols(text: str) -> str:
@@ -108,7 +89,7 @@ def parse_date(value: object) -> datetime | None:
     if isinstance(value, (int, float)) and _SERIAL_MIN <= float(value) <= _SERIAL_MAX:
         return _EXCEL_EPOCH + timedelta(days=float(value))
     if isinstance(value, str) and value.strip():
-        return _parse_date_text(value.strip())
+        return parse_date_text(value)
     return None
 
 
