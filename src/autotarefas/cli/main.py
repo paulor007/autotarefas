@@ -22,6 +22,7 @@ from autotarefas.cli.commands.extract import extract
 from autotarefas.cli.commands.info import info
 from autotarefas.cli.commands.init import init
 from autotarefas.cli.commands.organize import organize
+from autotarefas.cli.commands.perfis import perfis
 from autotarefas.cli.commands.report import report
 from autotarefas.cli.commands.rpa import rpa
 from autotarefas.cli.commands.send import send
@@ -84,6 +85,7 @@ cli.add_command(dashboard)
 cli.add_command(info)
 cli.add_command(init)
 cli.add_command(organize)
+cli.add_command(perfis)
 cli.add_command(report)
 cli.add_command(rpa)
 cli.add_command(extract)

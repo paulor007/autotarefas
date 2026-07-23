@@ -314,6 +314,22 @@ class DerivedCheck(BaseModel):
         return texto
 
 
+class Provenance(BaseModel):
+    """
+    De onde um schema veio. Opcional; presente so em schemas gerados por perfil.
+
+    Nao muda nada na validacao — e um registro que o `ValidateTask` copia para
+    o resultado, para que o relatorio consiga responder "que perfil e versao
+    produziram este schema". Semente da linhagem, sem antecipar o resto.
+    """
+
+    model_config = ConfigDict(extra="allow")  # tolera campos futuros sem quebrar
+
+    profile: str | None = None
+    profile_version: int | None = None
+    tool_version: str | None = None
+
+
 class Schema(BaseModel):
     """
     Schema completo de validacao (carregado de YAML).
@@ -336,6 +352,11 @@ class Schema(BaseModel):
     group_keys: tuple[GroupKey, ...] = ()
     group_checks: tuple[GroupCheck, ...] = ()
     derived_checks: tuple[DerivedCheck, ...] = ()
+
+    #: Procedencia opcional: de onde este schema veio (perfil + versao). E a
+    #: semente da linhagem que o roadmap pede — hoje so um registro, ecoado
+    #: para o relatorio. Schemas escritos a mao simplesmente nao tem.
+    generated_from: Provenance | None = None
 
     @model_validator(mode="after")
     def _regras_coerentes(self) -> Schema:
@@ -639,6 +660,11 @@ class ValidateTask(BaseTask):
             "cleaning_changes": [self._change_to_dict(c) for c in cleaning_changes],
             "total_cleaned": len(cleaning_changes),
         }
+
+        # procedencia: se o schema veio de um perfil, o relatorio registra a
+        # origem. Semente da linhagem; nao altera a validacao em nada.
+        if self.schema.generated_from is not None:
+            base_data["generated_from"] = self.schema.generated_from.model_dump(exclude_none=True)
 
         if collector.is_valid:
             return self._make_result(

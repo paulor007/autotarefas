@@ -1,0 +1,71 @@
+# ==========================================================================
+# Perfil: cadastro_contatos
+#
+# Um perfil e uma CONFIGURACAO REUTILIZAVEL sobre o motor generico. Ele nao
+# e um sistema de contatos — e um conjunto de regras estruturais que uma
+# lista de pessoas ou empresas costuma exigir.
+#
+# O que ele NAO faz: adivinhar quais colunas da sua planilha correspondem a
+# cada campo. Isso e o mapeamento, e voce faz explicitamente. O perfil traz
+# as REGRAS; voce traz os NOMES.
+#
+# Sobre documento (a decisao de contrato): validacao de digito de CPF e de
+# CNPJ sao coisas distintas — o motor valida uma OU outra, nunca "as duas
+# conforme a linha". Por isso ha dois campos separados, `cpf` e `cnpj`.
+# Mapeie o que a sua base tiver. Uma base com PF e PJ MISTURADAS na mesma
+# coluna esta fora do que este perfil consegue afirmar com seguranca —
+# use `regex` na coluna, ou separe as bases.
+# ==========================================================================
+
+id: cadastro_contatos
+version: 1
+title: "Cadastro de contatos (pessoas ou empresas)"
+summary: >
+  Regras estruturais de uma lista de contatos: nome preenchido, e-mail e
+  telefone em formato valido, e documento (CPF ou CNPJ) com digito
+  verificador correto. Nenhuma regra de negocio — so estrutura dos dados.
+
+# Documentacao de cada campo conceitual. Vira comentario no schema exportado,
+# ao lado da coluna que voce mapear — para a proxima pessoa entender a regra.
+fields:
+  nome:
+    required: true
+    doc: "Nome da pessoa ou razao social. Obrigatorio, ao menos 2 caracteres."
+  email:
+    required: false
+    doc: "Endereco de e-mail principal. Validado quando presente."
+  telefone:
+    required: false
+    doc: "Telefone brasileiro (fixo ou celular), com ou sem mascara."
+  cpf:
+    required: false
+    doc: "CPF, com ou sem mascara. Digito verificador conferido. Use para pessoa fisica."
+  cnpj:
+    required: false
+    doc: "CNPJ, com ou sem mascara. Digito verificador conferido. Use para pessoa juridica."
+
+# O Schema propriamente dito — validado pelo MESMO modelo Pydantic do
+# `validate`. Os `name` aqui sao os campos CONCEITUAIS; o mapeamento troca
+# cada um pelo nome real da sua coluna.
+schema:
+  columns:
+    - name: nome
+      type: str
+      required: true
+      min_length: 2
+    - name: email
+      type: str
+      required: false
+      format: email
+    - name: telefone
+      type: str
+      required: false
+      format: phone
+    - name: cpf
+      type: str
+      required: false
+      validator_br: cpf
+    - name: cnpj
+      type: str
+      required: false
+      validator_br: cnpj
