@@ -6,28 +6,33 @@ colunas REAIS da planilha dele. Este modulo faz a ponte e produz um YAML:
 
   - com as regras do perfil,
   - com os nomes das colunas ja trocados (onde ha mapeamento),
-  - com os campos NAO mapeados marcados de forma inconfundivel,
-  - com um cabecalho de procedencia (que perfil, versao, ferramenta),
-  - com a documentacao de cada campo ao lado, como comentario.
+  - com os campos requeridos NAO mapeados marcados de forma inconfundivel,
+  - com a procedencia (que perfil, versao, ferramenta).
 
-TEMPLATE INCOMPLETO vs SCHEMA PRONTO — a distincao que evita erro:
+FONTE UNICA DA VERDADE (o que este modulo garante):
 
-  Se algum campo ficou sem mapeamento, o arquivo e um TEMPLATE: ele contem
-  marcadores `PREENCHA_...` que o `validate` recusaria (e deve recusar). O
-  cabecalho diz isso em letras claras, e o `ExportResult` sinaliza
-  `is_complete = False`. Um template nunca se disfarca de schema pronto.
+    O mapeamento resolvido e um DADO — `ExportResult.resolutions` — e nao um
+    efeito colateral escondido na geracao do YAML. O schema e o resumo
+    mostrado ao usuario saem os DOIS dessa mesma estrutura.
 
-  So quando todos os campos requeridos estao mapeados o arquivo e um schema
-  utilizavel de imediato.
+    Isso nao e preciosismo: a versao anterior montava o resumo em separado,
+    pareando campos com colunas por POSICAO, e chegou a exibir
+    `telefone -> Documento` enquanto o YAML (corretamente) escrevia
+    `Documento` com regra de CPF. O motor estava certo e a tela mentia — a
+    pior combinacao possivel para uma ferramenta que promete explicar quais
+    regras vai aplicar.
 
-Procedencia (linhagem): o cabecalho `generated_from` registra a origem.
-Isso e a semente da rastreabilidade que o roadmap pede — de onde este
-schema veio — sem antecipar nada: e so um comentario hoje.
+TEMPLATE INCOMPLETO vs SCHEMA PRONTO:
+
+  Campo requerido sem mapeamento -> marcador `PREENCHA_...`, e o arquivo e um
+  TEMPLATE (`is_complete = False`). Campo OPCIONAL sem mapeamento e omitido:
+  uma coluna que o usuario nao tem nao deve virar regra procurando coluna
+  inexistente. Assim um schema pronto nunca carrega marcador dentro.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 import yaml
@@ -36,7 +41,7 @@ from autotarefas import __version__
 from autotarefas.profiles.remap import remap_schema
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
+    from collections.abc import Mapping, Sequence
 
     from autotarefas.profiles.catalog import Profile
 
@@ -45,45 +50,145 @@ if TYPE_CHECKING:
 UNMAPPED_PREFIX = "PREENCHA_o_nome_real_da_coluna__"
 
 
+class MappingError(ValueError):
+    """Mapeamento invalido — erro de configuracao, sempre explicito."""
+
+
+@dataclass(frozen=True, slots=True)
+class FieldResolution:
+    """
+    O destino final de UM campo conceitual do perfil.
+
+    Esta e a unidade da fonte unica: o YAML e o resumo na tela sao ambos
+    derivados de uma lista destes.
+    """
+
+    field: str
+    """O campo conceitual, como o perfil o nomeia."""
+    column: str | None
+    """A coluna real. None = campo omitido do schema (opcional sem mapa)."""
+    required: bool
+    is_placeholder: bool
+    """True = `column` e um marcador PREENCHA_, nao uma coluna de verdade."""
+
+    @property
+    def mapped(self) -> bool:
+        """Foi mapeado para uma coluna real (nem omitido, nem marcador)."""
+        return self.column is not None and not self.is_placeholder
+
+
 @dataclass(frozen=True, slots=True)
 class ExportResult:
     """O resultado de exportar um perfil."""
 
     yaml_text: str
-    is_complete: bool
-    """True = todos os campos requeridos mapeados; o schema esta pronto.
-    False = e um TEMPLATE com marcadores a preencher."""
-    unmapped_required: tuple[str, ...] = ()
-    """Campos requeridos que ficaram sem mapeamento (vazio se completo)."""
-    unmapped_optional: tuple[str, ...] = field(default_factory=tuple)
+    resolutions: tuple[FieldResolution, ...]
+    """Como cada campo do perfil foi resolvido. FONTE UNICA para o resumo."""
+
+    @property
+    def is_complete(self) -> bool:
+        """True = todos os requeridos mapeados; o schema esta pronto para uso."""
+        return not self.unmapped_required
+
+    @property
+    def unmapped_required(self) -> tuple[str, ...]:
+        return tuple(r.field for r in self.resolutions if r.required and not r.mapped)
+
+    @property
+    def unmapped_optional(self) -> tuple[str, ...]:
+        return tuple(r.field for r in self.resolutions if not r.required and not r.mapped)
+
+    @property
+    def mapping_applied(self) -> dict[str, str]:
+        """O mapeamento efetivamente aplicado: campo -> coluna real."""
+        return {r.field: r.column for r in self.resolutions if r.mapped and r.column}
 
 
-def _resolve_mapping(
-    perfil: Profile, mapping: Mapping[str, str]
-) -> tuple[dict[str, str], set[str]]:
+def resolve_mapping(
+    perfil: Profile,
+    mapping: Mapping[str, str],
+    *,
+    available_columns: Sequence[str] | None = None,
+) -> tuple[FieldResolution, ...]:
     """
-    Resolve cada campo conceitual em: coluna real, marcador, ou OMITIDO.
+    Resolve cada campo conceitual do perfil em coluna real, marcador ou omissao.
 
-    A regra que evita o schema-pronto-com-marcador:
-      - campo mapeado            -> a coluna real
-      - REQUERIDO nao mapeado    -> marcador PREENCHA_ (e o arquivo vira template)
-      - OPCIONAL nao mapeado     -> OMITIDO do schema (a coluna nem aparece)
+    Percorre os campos NA ORDEM DO PERFIL e consulta o mapa POR NOME. Nunca
+    por posicao — a ordem em que o usuario passou os `--map` e irrelevante, e
+    um campo sem mapa nao desloca os seguintes.
 
-    Um opcional que o usuario nao tem (uma base so de PF nao tem CNPJ) nao
-    deve virar uma regra procurando uma coluna inexistente. Ele simplesmente
-    sai. Retorna (mapa_de_renomeacao, campos_a_omitir).
+    Args:
+        perfil: o perfil carregado.
+        mapping: campo_conceitual -> coluna_real (pode ser parcial ou vazio).
+        available_columns: se informado (via `--planilha`), as colunas reais
+            do arquivo; usado para recusar mapeamento para coluna inexistente.
+
+    Raises:
+        MappingError: campo inexistente no perfil, coluna vazia, coluna
+            inexistente no arquivo, ou dois campos apontando para a mesma coluna.
     """
-    renomear: dict[str, str] = {}
-    omitir: set[str] = set()
-    for campo in perfil.concept_fields:
+    campos = perfil.concept_fields
+    conhecidos = set(campos)
+
+    desconhecidos = sorted(set(mapping) - conhecidos)
+    if desconhecidos:
+        msg = (
+            f"o perfil '{perfil.id}' nao tem o(s) campo(s): {', '.join(desconhecidos)}. "
+            f"Campos disponiveis: {', '.join(campos)}"
+        )
+        raise MappingError(msg)
+
+    for campo, coluna in mapping.items():
+        if not coluna.strip():
+            msg = f"o campo '{campo}' foi mapeado para um nome de coluna vazio"
+            raise MappingError(msg)
+
+    if available_columns is not None:
+        reais = set(available_columns)
+        ausentes = sorted({c.strip() for c in mapping.values()} - reais)
+        if ausentes:
+            msg = (
+                f"coluna(s) nao encontrada(s) na planilha: {', '.join(ausentes)}. "
+                f"Colunas do arquivo: {', '.join(available_columns)}"
+            )
+            raise MappingError(msg)
+
+    destinos: dict[str, str] = {}
+    for campo, coluna in mapping.items():
+        limpo = coluna.strip()
+        if limpo in destinos:
+            msg = (
+                f"os campos '{destinos[limpo]}' e '{campo}' foram mapeados para a "
+                f"mesma coluna '{limpo}'. Cada campo precisa de uma coluna propria."
+            )
+            raise MappingError(msg)
+        destinos[limpo] = campo
+
+    requeridos = set(perfil.required_fields)
+    resolucoes = []
+    for campo in campos:
         destino = mapping.get(campo, "").strip()
+        obrigatorio = campo in requeridos
         if destino:
-            renomear[campo] = destino
-        elif campo in perfil.required_fields:
-            renomear[campo] = f"{UNMAPPED_PREFIX}{campo}"
+            resolucoes.append(
+                FieldResolution(
+                    field=campo, column=destino, required=obrigatorio, is_placeholder=False
+                )
+            )
+        elif obrigatorio:
+            resolucoes.append(
+                FieldResolution(
+                    field=campo,
+                    column=f"{UNMAPPED_PREFIX}{campo}",
+                    required=True,
+                    is_placeholder=True,
+                )
+            )
         else:
-            omitir.add(campo)
-    return renomear, omitir
+            resolucoes.append(
+                FieldResolution(field=campo, column=None, required=False, is_placeholder=False)
+            )
+    return tuple(resolucoes)
 
 
 def _provenance_header(perfil: Profile, *, complete: bool) -> list[str]:
@@ -95,112 +200,132 @@ def _provenance_header(perfil: Profile, *, complete: bool) -> list[str]:
         f"#   profile_version: {perfil.version}",
         f"#   tool_version: {__version__}",
         "#",
+        "# 'Gerado a partir de' — voce pode editar este arquivo livremente.",
+        "#",
     ]
     if complete:
         linhas += [
-            "# Todos os campos foram mapeados. Este schema esta pronto para uso:",
-            f"#   autotarefas validate SUA_PLANILHA --schema {perfil.id}_schema.yaml",
+            "# Todos os campos requeridos foram mapeados: este schema esta pronto.",
+            "#",
         ]
     else:
         linhas += [
             "# ATENCAO: este arquivo e um TEMPLATE, ainda NAO esta pronto.",
-            f"# Troque cada '{UNMAPPED_PREFIX}...' pelo nome real da coluna na",
-            "# sua planilha e remova as linhas que nao se aplicam. O validate vai",
-            "# recusar o arquivo enquanto houver marcadores PREENCHA_ nele.",
+            f"# Troque cada '{UNMAPPED_PREFIX}...' pelo nome real da coluna",
+            "# na sua planilha antes de usar no validate.",
+            "#",
         ]
-    linhas.append("#")
     return linhas
 
 
-def _field_comment(perfil: Profile, campo: str) -> str | None:
-    ficha = perfil.fields.get(campo)
-    if ficha is None or not ficha.doc:
-        return None
-    marca = "obrigatorio" if ficha.required else "opcional"
-    return f"# {campo} ({marca}): {ficha.doc}"
+def _field_reference(perfil: Profile, resolucoes: tuple[FieldResolution, ...]) -> list[str]:
+    """Documentacao dos campos, ao lado do destino que cada um recebeu."""
+    linhas = ["# Campos deste perfil e a coluna que cada um recebeu:"]
+    for r in resolucoes:
+        ficha = perfil.fields.get(r.field)
+        doc = f" {ficha.doc}" if ficha and ficha.doc else ""
+        if r.mapped:
+            destino = f"-> {r.column}"
+        elif r.is_placeholder:
+            destino = "-> (PREENCHA)"
+        else:
+            destino = "-> (nao usado)"
+        linhas.append(f"#   {r.field} {destino}.{doc}")
+    return linhas
 
 
-def export_schema(perfil: Profile, mapping: Mapping[str, str] | None = None) -> ExportResult:
+def export_schema(
+    perfil: Profile,
+    mapping: Mapping[str, str] | None = None,
+    *,
+    available_columns: Sequence[str] | None = None,
+) -> ExportResult:
     """
     Gera o schema de um perfil, aplicando o mapeamento de colunas.
 
     Args:
         perfil: o perfil carregado.
-        mapping: campo_conceitual -> coluna_real. Pode ser parcial ou vazio;
-            o que faltar vira marcador `PREENCHA_...`.
+        mapping: campo_conceitual -> coluna_real. Parcial ou vazio e valido:
+            requeridos que faltarem viram marcador, opcionais sao omitidos.
+        available_columns: colunas reais da planilha, quando conhecidas.
 
     Returns:
-        ExportResult com o YAML e o estado (pronto ou template).
+        ExportResult com o YAML e as resolucoes (a fonte unica do resumo).
+
+    Raises:
+        MappingError: mapeamento invalido.
     """
     mapping = dict(mapping or {})
+    resolucoes = resolve_mapping(perfil, mapping, available_columns=available_columns)
 
-    # resolve cada campo: coluna real, marcador (requerido) ou omitido (opcional)
-    renomear, omitir = _resolve_mapping(perfil, mapping)
+    renomear = {r.field: r.column for r in resolucoes if r.column is not None}
+    omitir = {r.field for r in resolucoes if r.column is None}
     remapeado = remap_schema(perfil.profile_schema, renomear, omit=omitir)
 
-    requeridos_sem = tuple(
-        campo for campo in perfil.required_fields if not mapping.get(campo, "").strip()
-    )
-    opcionais_sem = tuple(sorted(omitir))
-    completo_ok = not requeridos_sem
+    completo = not any(r.required and not r.mapped for r in resolucoes)
 
-    # a procedencia vira um campo REAL do schema (o validate a le e ecoa para
-    # o relatorio), nao so um comentario. O dump so inclui o que difere do
-    # default, entao o schema fica enxuto.
     payload = remapeado.model_dump(mode="json", exclude_defaults=True, by_alias=True)
     payload["generated_from"] = {
         "profile": perfil.id,
         "profile_version": perfil.version,
         "tool_version": __version__,
     }
-    corpo = yaml.safe_dump(
-        payload,
-        allow_unicode=True,
-        sort_keys=False,
-        default_flow_style=False,
-    )
+    corpo = yaml.safe_dump(payload, allow_unicode=True, sort_keys=False, default_flow_style=False)
 
-    linhas = _provenance_header(perfil, complete=completo_ok)
-    linhas.append("")
-
-    # anexa as docs dos campos como bloco de referencia (o corpo YAML ja saiu
-    # do model_dump; comentar linha a linha dentro dele seria fragil, entao a
-    # documentacao vai num bloco logo acima, referenciando o nome conceitual)
-    linhas.append("# Referencia dos campos deste perfil:")
-    for campo in perfil.concept_fields:
-        comentario = _field_comment(perfil, campo)
-        if comentario:
-            linhas.append(comentario)
+    linhas = _provenance_header(perfil, complete=completo)
+    linhas += _field_reference(perfil, resolucoes)
     linhas.append("")
     linhas.append(corpo.rstrip())
 
-    return ExportResult(
-        yaml_text="\n".join(linhas) + "\n",
-        is_complete=completo_ok,
-        unmapped_required=requeridos_sem,
-        unmapped_optional=opcionais_sem,
-    )
+    return ExportResult(yaml_text="\n".join(linhas) + "\n", resolutions=resolucoes)
 
 
-def columns_hint(perfil: Profile, real_columns: list[str]) -> list[str]:
+def render_mapping(result: ExportResult) -> list[str]:
     """
-    Sugere um esqueleto de mapeamento: lista os campos do perfil e as colunas
-    reais lado a lado, para o usuario preencher. NAO adivinha correspondencia.
+    Linhas do resumo mostrado ao usuario.
 
-    Isto e ajuda sem palpite (a regra do §8 da 1.6): mostra o que existe dos
-    dois lados; a decisao de qual e qual e do usuario.
+    Renderiza `result.resolutions` — a MESMA estrutura que gerou o YAML. Nao
+    ha como esta tabela discordar do arquivo: ela nao tem dados proprios.
     """
-    linhas = ["Campos deste perfil (esquerda) e colunas da sua planilha (direita):", ""]
-    campos = list(perfil.concept_fields)
-    largura = max((len(c) for c in campos), default=0)
-    for i, campo in enumerate(campos):
-        real = real_columns[i] if i < len(real_columns) else ""
-        marca = " (obrigatorio)" if campo in perfil.required_fields else ""
-        linhas.append(f"  {campo.ljust(largura)}  ->  {real}{marca}")
-    if len(real_columns) > len(campos):
-        restantes = ", ".join(real_columns[len(campos) :])
-        linhas.append(f"  (colunas sem par: {restantes})")
+    if not result.resolutions:
+        return []
+
+    largura = max(len(r.field) for r in result.resolutions)
+    linhas = ["Mapeamento aplicado:"]
+    for r in result.resolutions:
+        if r.mapped:
+            destino = str(r.column)
+        elif r.is_placeholder:
+            destino = "(FALTA MAPEAR)"
+        else:
+            destino = "(nao usado)"
+        # parenteses, nao colchetes: o console usa Rich, e "[texto]" seria
+        # consumido como tag de estilo e sumiria da tela.
+        marca = "  (obrigatorio)" if r.required else ""
+        linhas.append(f"  {r.field.ljust(largura)}  ->  {destino}{marca}")
     return linhas
 
 
-__all__ = ["UNMAPPED_PREFIX", "ExportResult", "columns_hint", "export_schema"]
+def available_columns_lines(columns: Sequence[str]) -> list[str]:
+    """
+    Lista as colunas reais da planilha, para ajudar quem vai montar o mapa.
+
+    Deliberadamente NAO pareia com os campos do perfil: parear seria um
+    palpite, e um palpite exibido como se fosse decisao foi exatamente o bug
+    que esta funcao substitui. Aqui e so uma lista do que existe no arquivo.
+    """
+    if not columns:
+        return []
+    return ["Colunas encontradas na planilha:", *[f"  - {c}" for c in columns]]
+
+
+__all__ = [
+    "UNMAPPED_PREFIX",
+    "ExportResult",
+    "FieldResolution",
+    "MappingError",
+    "available_columns_lines",
+    "export_schema",
+    "render_mapping",
+    "resolve_mapping",
+]

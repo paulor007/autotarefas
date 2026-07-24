@@ -31,7 +31,12 @@ from autotarefas.profiles.catalog import (
 from autotarefas.profiles.export import (
     UNMAPPED_PREFIX,
     ExportResult,
+    FieldResolution,
+    MappingError,
+    available_columns_lines,
     export_schema,
+    render_mapping,
+    resolve_mapping,
 )
 from autotarefas.profiles.remap import RemapError, referenced_fields, remap_schema
 
@@ -39,13 +44,18 @@ __all__ = [
     "UNMAPPED_PREFIX",
     "ExportResult",
     "FieldDoc",
+    "FieldResolution",
+    "MappingError",
     "Profile",
     "ProfileError",
     "RemapError",
+    "available_columns_lines",
     "export_schema",
     "list_profiles",
     "load_all_profiles",
     "load_profile",
     "referenced_fields",
     "remap_schema",
+    "render_mapping",
+    "resolve_mapping",
 ]

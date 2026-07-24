@@ -128,7 +128,7 @@ class TestCLI:
             ],
         )
         assert r.exit_code == 2
-        assert "nao tem o campo" in r.output
+        assert "nao tem o(s) campo(s)" in r.output
 
     def test_exportar_map_malformado_exit_2(self, tmp_path: Path) -> None:
         r = self.runner.invoke(
