@@ -31,6 +31,7 @@ import click
 
 from autotarefas.cli.console import Console
 from autotarefas.cli.context import CLIContext
+from autotarefas.core import TaskResult
 from autotarefas.core.exceptions import AutoTarefasError
 from autotarefas.tasks.artifacts import write_separation_csvs
 from autotarefas.tasks.report import (
@@ -89,6 +90,16 @@ from autotarefas.tasks.validate import ValidateTask, ValidationMode, load_schema
     ),
 )
 @click.option(
+    "--artefatos",
+    "artefatos_dir",
+    type=click.Path(file_okay=False, path_type=Path),
+    default=None,
+    help=(
+        "Gera o pacote de evidencias da execucao no diretorio indicado "
+        "(manifesto, resumo, problemas, registros classificados e schema efetivo)."
+    ),
+)
+@click.option(
     "--max-issues",
     "-m",
     type=click.IntRange(min=0),
@@ -120,6 +131,7 @@ def validate(  # noqa: PLR0912, PLR0915
     report_json: Path | None,
     report_csv: Path | None,
     out_dir: Path | None,
+    artefatos_dir: Path | None,
     max_issues: int,
     mode: str,
     strict_warnings: bool,
@@ -183,6 +195,18 @@ def validate(  # noqa: PLR0912, PLR0915
             except OSError as e:
                 console.error(f"Erro ao salvar CSV: {e}")
 
+    if artefatos_dir is not None:
+        _gerar_pacote(
+            artefatos_dir,
+            task=task,
+            result=result,
+            schema_path=schema,
+            strict_warnings=strict_warnings,
+            max_issues=max_issues,
+            console=console,
+            ctx=ctx,
+        )
+
     if out_dir is not None:
         if ctx.dry_run:
             console.warning(f"[DRY-RUN] Geraria os 4 artefatos em: {out_dir}")
@@ -243,6 +267,70 @@ def validate(  # noqa: PLR0912, PLR0915
     # Falha — tem errors
     console.error(f"Validacao falhou: {total_errors} erro(s).")
     raise click.exceptions.Exit(1)
+
+
+def _gerar_pacote(
+    destino: Path,
+    *,
+    task: ValidateTask,
+    result: TaskResult,
+    schema_path: Path,
+    strict_warnings: bool,
+    max_issues: int,
+    console: Console,
+    ctx: CLIContext,
+) -> None:
+    """
+    Monta o pacote de evidencias da execucao.
+
+    Uma falha aqui e reportada e muda o exit code para 1 — um pacote que nao
+    foi gravado nao pode passar despercebido no meio de uma saida de sucesso.
+    """
+    from autotarefas.tasks.execution_package import PackageError, build_package
+
+    if ctx.dry_run:
+        console.warning(f"[DRY-RUN] Geraria o pacote de execucao em: {destino}")
+        return
+
+    if task.processed_dataframe is None:
+        console.error("Pacote nao gerado: os dados nao chegaram a ser processados.")
+        raise click.exceptions.Exit(1)
+
+    try:
+        pacote = build_package(
+            destino,
+            result=result,
+            dataframe=task.processed_dataframe,
+            input_path=task.file_path,
+            schema_path=schema_path,
+            options={
+                "strict_warnings": strict_warnings,
+                "max_issues": max_issues,
+                "mode": task.mode,
+            },
+        )
+    except PackageError as exc:
+        console.error(f"Pacote nao gerado: {exc}")
+        raise click.exceptions.Exit(1) from exc
+
+    classificacao = pacote.classification
+    console.success(f"Pacote da execucao: {pacote.directory}  (status: {pacote.status})")
+    if classificacao is not None:
+        console.info(
+            f"  {len(classificacao.valid_lines)} registro(s) validos, "
+            f"{len(classificacao.review_lines)} para revisao"
+        )
+        if classificacao.warned_lines:
+            console.info(f"  {len(classificacao.warned_lines)} registro(s) validos com aviso")
+        if classificacao.truncated:
+            console.warning(
+                "  A coleta parou no limite de problemas: a classificacao esta incompleta."
+            )
+    if pacote.formula_like_cells:
+        console.warning(
+            f"  {pacote.formula_like_cells} celula(s) podem ser lidas como formula "
+            "por programas de planilha (os valores foram preservados)."
+        )
 
 
 __all__ = ["validate"]

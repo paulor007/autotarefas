@@ -928,6 +928,8 @@ class ValidateTask(BaseTask):
                         column=None,
                         message=f"Linha duplicada (identica a linha {original})",
                         severity=IssueSeverity.WARNING,
+                        category="duplicado",
+                        related_lines=(original, line),
                     )
 
     def _missing_rule_columns(self, df: pd.DataFrame) -> str | None:
@@ -1005,6 +1007,8 @@ class ValidateTask(BaseTask):
                         f"{detalhe} — a linha ficou fora do agrupamento"
                     ),
                     severity=IssueSeverity.WARNING,
+                    rule=check.name,
+                    category="grupo",
                 )
 
             valores_por_coluna = {
@@ -1012,11 +1016,18 @@ class ValidateTask(BaseTask):
             }
 
             for achado in find_inconsistencies(grupos, valores_por_coluna, check.consistent):
+                # `related_lines` carrega o grupo INTEIRO: um artefato de
+                # revisao precisa de todas as linhas envolvidas, e a ancora
+                # e apenas onde o issue aparece no relatorio.
+                envolvidas = tuple(sorted({i + 2 for _, linhas in achado.variants for i in linhas}))
                 collector.add(
                     line=achado.anchor_index + 2,
                     column=achado.column,
                     message=_group_message(check.name, chave.name, achado),
                     severity=severidade,
+                    rule=check.name,
+                    category="grupo",
+                    related_lines=envolvidas,
                 )
 
     def _validate_derived_checks(self, df: pd.DataFrame, collector: IssueCollector) -> None:
@@ -1052,6 +1063,8 @@ class ValidateTask(BaseTask):
                         message=f"Regra '{derivada.name}' nao pode ser calculada: {achado.reason}",
                         severity=IssueSeverity.WARNING,
                         value=achado.observed,
+                        rule=derivada.name,
+                        category="calculo",
                     )
                     continue
 
@@ -1066,6 +1079,8 @@ class ValidateTask(BaseTask):
                     ),
                     severity=severidade,
                     value=achado.observed,
+                    rule=derivada.name,
+                    category="calculo",
                 )
 
     @staticmethod
@@ -1109,6 +1124,9 @@ class ValidateTask(BaseTask):
             "message": issue.message,
             "severity": str(issue.severity),
             "value": issue.value,
+            **({"rule": issue.rule} if issue.rule else {}),
+            **({"category": issue.category} if issue.category else {}),
+            **({"related_lines": list(issue.related_lines)} if issue.related_lines else {}),
         }
 
     @staticmethod

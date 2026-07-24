@@ -76,6 +76,24 @@ class ValidationIssue:
     severity: IssueSeverity = IssueSeverity.ERROR
     value: str | None = None
 
+    # --- Metadados ESTRUTURAIS (opcionais, adicionados na 1.7) ------------
+    # A `message` e para pessoas. Estes campos sao para maquina: quem produz
+    # o issue ja SABE a regra, a categoria e as linhas envolvidas — nao ha
+    # motivo para um artefato tentar redescobrir isso lendo o texto.
+    rule: str | None = None
+    """Nome da regra do usuario que gerou o issue (regras da 1.5)."""
+    category: str | None = None
+    """Categoria estrutural. Quando ausente, cai na heuristica legada."""
+    related_lines: tuple[int, ...] = ()
+    """TODAS as linhas fisicas envolvidas. Um problema de coerencia de grupo
+    envolve o grupo inteiro; a `line` e so a ancora do relatorio. Vazio =
+    o problema diz respeito somente a `line`."""
+
+    @property
+    def all_lines(self) -> tuple[int, ...]:
+        """Linhas afetadas por este issue: as relacionadas, ou so a ancora."""
+        return self.related_lines or (self.line,)
+
     @property
     def is_error(self) -> bool:
         """True se for severidade ERROR."""
@@ -106,7 +124,7 @@ class IssueCollector:
 
     issues: list[ValidationIssue] = field(default_factory=list)
 
-    def add(
+    def add(  # noqa: PLR0913 - todos nomeados; sao os campos de um issue
         self,
         *,
         line: int,
@@ -114,6 +132,9 @@ class IssueCollector:
         message: str,
         severity: IssueSeverity = IssueSeverity.ERROR,
         value: str | None = None,
+        rule: str | None = None,
+        category: str | None = None,
+        related_lines: tuple[int, ...] = (),
     ) -> None:
         """
         Adiciona um issue a colecao.
@@ -130,6 +151,9 @@ class IssueCollector:
                 message=message,
                 severity=severity,
                 value=value,
+                rule=rule,
+                category=category,
+                related_lines=related_lines,
             )
         )
 

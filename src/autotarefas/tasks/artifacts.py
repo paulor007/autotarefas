@@ -111,6 +111,12 @@ def split_valid_invalid(
     ERROR (avisos nao invalidam). Numeros de linha sao 1-based (a 1a
     linha de dados e a 2, por causa do cabecalho).
 
+    Um issue pode envolver VARIAS linhas (`related_lines`): uma divergencia
+    de coerencia de grupo acusa o grupo inteiro, e a `line` e apenas a
+    ancora onde a mensagem aparece. Todas as linhas envolvidas contam —
+    senao as demais iriam para "validos" carregando o mesmo problema.
+    Issues antigos, sem `related_lines`, seguem valendo pela `line`.
+
     Returns:
         Tupla ``(linhas_validas, linhas_invalidas, motivos)`` onde
         ``motivos`` mapeia cada linha invalida para a lista de mensagens
@@ -123,10 +129,12 @@ def split_valid_invalid(
     for issue in issues:
         if issue.get("severity") != "error":
             continue
-        line = issue.get("line")
-        if not isinstance(line, int) or line < 2:  # noqa: PLR2004 — 1=cabecalho
-            continue
-        reasons.setdefault(line, []).append(str(issue.get("message", "")))
+        cruas = issue.get("related_lines") or [issue.get("line")]
+        relacionadas: list[object] = list(cruas) if isinstance(cruas, list) else [cruas]
+        for numero in relacionadas:
+            if not isinstance(numero, int) or numero < 2:  # noqa: PLR2004 — 1=cabecalho
+                continue
+            reasons.setdefault(numero, []).append(str(issue.get("message", "")))
 
     invalid_lines = sorted(reasons)
     valid_lines = [n for n in range(2, total_rows + 2) if n not in reasons]
