@@ -24,6 +24,11 @@ from live_demo.backend.app.main import app
 warnings.filterwarnings("ignore")
 
 HTTP_OK = 200
+
+#: Tentativas de apagar o log temporario do demo_server (Windows libera o
+#: handle com alguns milissegundos de atraso) e pausa entre elas.
+_LOG_UNLINK_TRIES = 5
+_LOG_UNLINK_DELAY_S = 0.1
 HTTP_NOT_FOUND = 404
 HTTP_NOT_IMPLEMENTED = 501
 HTTP_UNSUPPORTED_MEDIA = 415
@@ -74,11 +79,77 @@ def test_validate_stream_caught_issue(client: TestClient) -> None:
     assert result["outcome"] == "caught_issue"
     assert result["exit_code"] == VALIDATE_FAIL_EXIT
     names = [a["name"] for a in result["artifacts"]]
-    # Auditoria de planilha gera os 4 artefatos no out/
+    # Auditoria de planilha gera os 4 artefatos avulsos no out/...
     assert "validacao_report.json" in names
     assert "planilha_validada.xlsx" in names
     assert "registros_validos.csv" in names
     assert "registros_invalidos.csv" in names
+    # ...e o pacote de evidencias da 1.7 como um unico .zip baixavel.
+    assert "pacote_execucao.zip" in names
+
+
+def test_validate_pacote_zip_tem_manifesto_e_schema_efetivo(client: TestClient) -> None:
+    """
+    O pacote de evidencias (1.7) chega ao visitante, com manifesto e schema.
+
+    Vale mesmo com problemas (exit 1): e o caso em que as evidencias mais
+    importam, e o pos-processamento tem que rodar assim mesmo.
+
+    Comprova tambem que NAO ha procedencia inventada: o schema da demo e
+    escrito a mao, entao `generated_from` fica ausente no manifesto e no
+    relatorio. `generated_from` so existe em schema realmente gerado por
+    `autotarefas perfis exportar`.
+    """
+    import io
+    import zipfile
+
+    result = _run_and_collect(client, "validate", use_sample="true")
+    zip_art = next(a for a in result["artifacts"] if a["name"] == "pacote_execucao.zip")
+
+    baixado = client.get(zip_art["download_url"])
+    assert baixado.status_code == HTTP_OK
+
+    pacote = zipfile.ZipFile(io.BytesIO(baixado.content))
+    nomes = set(pacote.namelist())
+    assert {
+        "manifest.json",
+        "schema_efetivo.yaml",
+        "problemas.csv",
+        "registros_validos.csv",
+        "registros_para_revisao.csv",
+    } <= nomes
+
+    # o schema efetivo dentro do pacote tambem nao carrega procedencia falsa
+    schema_efetivo = pacote.read("schema_efetivo.yaml").decode("utf-8")
+    assert "generated_from" not in schema_efetivo
+    assert "demo_clientes" not in schema_efetivo
+
+    manifesto = json.loads(pacote.read("manifest.json"))
+    # O schema da demo e MANUAL: nao foi exportado por perfil nenhum, entao
+    # `generated_from` fica ausente. Procedencia so aparece quando existe de
+    # verdade — um rotulo inventado seria pior que a ausencia.
+    assert manifesto["configuration"]["generated_from"] is None
+    # classificacao real, com as linhas de revisao contadas
+    assert manifesto["result"]["review_rows"] >= 1
+
+    # e o relatorio que o frontend consome tambem omite procedencia
+    report_art = next(a for a in result["artifacts"] if a["name"] == "validacao_report.json")
+    assert "generated_from" not in client.get(report_art["download_url"]).json()
+
+
+def test_validate_report_json_omite_procedencia_de_schema_manual(
+    client: TestClient,
+) -> None:
+    """
+    O relatorio que o frontend consome nao inventa procedencia.
+
+    O schema da demo e escrito a mao; `generated_from` existe apenas em
+    schemas realmente gerados por `autotarefas perfis exportar`.
+    """
+    result = _run_and_collect(client, "validate", use_sample="true")
+    report_art = next(a for a in result["artifacts"] if a["name"] == "validacao_report.json")
+    report = client.get(report_art["download_url"]).json()
+    assert "generated_from" not in report
 
 
 def test_backup_stream_zip(client: TestClient) -> None:
@@ -229,36 +300,111 @@ def demo_crm() -> Iterator[None]:
     429 com Retry-After, idempotencia). O conftest desliga o autostart
     (DEMO_SERVERS_AUTOSTART=0), entao esta fixture sobe o servidor so
     para os testes que precisam dele.
+
+    O `cwd` e obrigatorio: `tools.demo_server.app` e um modulo da RAIZ do
+    projeto, entao sem ele a fixture so funcionava quando o pytest era
+    chamado de la. Rodando de `live_demo/backend` o subprocesso morria com
+    ModuleNotFoundError — e, como a saida ia para DEVNULL, o teste falhava
+    dizendo apenas "nao subiu", escondendo a causa. A raiz e derivada de
+    `__file__` (mesma convencao do conftest), nunca de caminho absoluto nem
+    do diretorio atual.
     """
     import subprocess
     import sys
+    import tempfile
     import time as time_module
 
     import httpx
 
     from live_demo.backend.app.config import settings
 
+    # tests/ -> backend/ -> live_demo/ -> raiz  (igual ao _REPO do conftest)
+    raiz = Path(__file__).resolve().parents[3]
     port = settings.demo_primary_port
+    base = f"http://127.0.0.1:{port}"
+
+    # Log em arquivo (nao PIPE): se o servidor escrever mais que o buffer do
+    # pipe e ninguem estiver lendo, o processo travaria. Com arquivo, a saida
+    # fica disponivel para o diagnostico sem risco de deadlock.
+    log = tempfile.NamedTemporaryFile(  # noqa: SIM115
+        mode="w+", suffix=".log", prefix="demo_server_", delete=False
+    )
+
+    def _saida() -> str:
+        log.flush()
+        return Path(log.name).read_text(encoding="utf-8", errors="replace").strip()
+
+    def _remover_log() -> None:
+        """
+        Apaga o log temporario, tolerando o atraso do Windows.
+
+        No Windows o handle do arquivo pode levar alguns milissegundos para
+        ser liberado DEPOIS que o processo morreu e o objeto foi fechado — e
+        nesse intervalo o unlink levanta PermissionError (WinError 32). Um
+        gate funcionalmente aprovado nao pode virar erro de teardown por
+        causa disso: tentamos algumas vezes e, se continuar bloqueado,
+        avisamos em vez de falhar. E um temporario do sistema, nao um
+        resultado da execucao.
+
+        Erro que NAO seja PermissionError sobe: esconder falha de remocao em
+        geral mascararia problema real.
+        """
+        caminho = Path(log.name)
+        for tentativa in range(_LOG_UNLINK_TRIES):
+            try:
+                caminho.unlink(missing_ok=True)
+                return
+            except PermissionError:
+                if tentativa == _LOG_UNLINK_TRIES - 1:
+                    warnings.warn(
+                        f"log temporario do demo_server continuou bloqueado; "
+                        f"nao foi removido: {caminho}",
+                        ResourceWarning,
+                        stacklevel=2,
+                    )
+                    return
+                time_module.sleep(_LOG_UNLINK_DELAY_S)
+
     proc = subprocess.Popen(
         [sys.executable, "-m", "tools.demo_server.app"],
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
+        cwd=str(raiz),
+        stdout=log,
+        stderr=subprocess.STDOUT,
+        text=True,
     )
     try:
-        base = f"http://127.0.0.1:{port}"
         for _ in range(30):
+            # Se o processo morreu, nao ha por que esperar os 15s restantes:
+            # falha agora, mostrando a saida real.
+            if proc.poll() is not None:
+                pytest.fail(
+                    f"demo_server encerrou com codigo {proc.returncode} antes de "
+                    f"responder. Saida do processo:\n{_saida()}"
+                )
             try:
-                if httpx.get(f"{base}/health", timeout=1.0).status_code == 200:
+                if httpx.get(f"{base}/health", timeout=1.0).status_code == HTTP_OK:
                     break
             except httpx.HTTPError:
                 pass
             time_module.sleep(0.5)
         else:
-            pytest.fail("demo_server nao subiu para os testes E2E do send_api")
+            pytest.fail(
+                f"demo_server nao respondeu em {base}/health apos 15s. "
+                f"Saida do processo:\n{_saida()}"
+            )
         yield
     finally:
+        # Encerramento sem orfao: pede para sair, e se nao sair, mata. Um
+        # timeout DEPOIS do kill sobe como erro — processo que nao morre e
+        # problema real, nao ruido de teardown.
         proc.terminate()
-        proc.wait(timeout=10)
+        try:
+            proc.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            proc.wait(timeout=10)
+        log.close()
+        _remover_log()
 
 
 def _baixar_report(client: TestClient, result: dict[str, Any]) -> dict[str, Any]:
@@ -356,3 +502,56 @@ def test_origem_da_demo_bate_com_a_extracao_real(client: TestClient) -> None:
     report = client.get(art["download_url"]).json()
 
     assert prometidos == [report["total_registros"], report["paginas"]]
+
+
+def test_postprocess_zipa_pacote_de_validate_mesmo_sem_pasta(tmp_path: Path) -> None:
+    """
+    _postprocess do validate: zipa a pasta do pacote quando ela existe, e e
+    inofensivo quando nao existe (defensivo). Regressao do bug em que o
+    pos-processamento so rodava com exit 0 e o pacote de uma validacao com
+    problemas nunca era empacotado.
+    """
+    import zipfile
+
+    out = tmp_path / "out"
+    pacote = out / "pacote_execucao"
+    pacote.mkdir(parents=True)
+    (pacote / "manifest.json").write_text('{"ok": true}', encoding="utf-8")
+
+    engine._postprocess("validate", tmp_path)
+
+    assert (out / "pacote_execucao.zip").is_file()
+    assert not pacote.exists()  # a pasta original e removida apos zipar
+    z = zipfile.ZipFile(out / "pacote_execucao.zip")
+    assert "manifest.json" in z.namelist()
+
+    # sem a pasta, nao explode e nao cria nada
+    engine._postprocess("validate", tmp_path / "vazio")
+
+
+@pytest.mark.parametrize(
+    ("automation_id", "exit_code", "timed_out", "esperado"),
+    [
+        ("validate", 0, False, True),  # terminou bem
+        ("validate", 1, False, True),  # caught_issue: achou problemas nos dados
+        ("validate", 2, False, False),  # erro de uso/configuracao: nada a empacotar
+        ("organize", 0, False, True),  # outra automacao, sucesso
+        ("organize", 1, False, False),  # outra automacao, falha tecnica
+        ("organize", 5, False, False),
+        ("validate", 1, True, False),  # timeout: saida incompleta
+        ("validate", 0, True, False),
+    ],
+)
+def test_matriz_do_pos_processamento(
+    automation_id: str, exit_code: int, timed_out: bool, esperado: bool
+) -> None:
+    """
+    Quando o pos-processamento (zipar pastas) pode rodar.
+
+    O ponto delicado e `validate` exit 1: a validacao rodou inteira e ACHOU
+    problemas, entao a saida esta completa e o pacote de evidencias deve ser
+    entregue. Ja o exit 2 e erro de uso — nao houve validacao. Uma condicao
+    apenas "exit_code == 0" perderia o primeiro caso; uma condicao apenas
+    "not timed_out" aceitaria os outros dois indevidamente.
+    """
+    assert engine._should_postprocess(automation_id, exit_code, timed_out=timed_out) is esperado

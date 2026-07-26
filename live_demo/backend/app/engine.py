@@ -155,13 +155,55 @@ def _collect(out_dir: Path) -> list[Artifact]:
 
 
 def _postprocess(automation_id: str, workspace: Path) -> None:
-    """Empacota o resultado quando a automacao gera uma pasta (organize)."""
-    if automation_id != "organize":
+    """Empacota o resultado quando a automacao gera uma pasta (organize, validate)."""
+    if automation_id == "organize":
+        organized = workspace / "out" / "organizado"
+        if organized.is_dir():
+            shutil.make_archive(
+                str(workspace / "out" / "organizado"), "zip", root_dir=str(organized)
+            )
+            shutil.rmtree(organized, ignore_errors=True)
         return
-    organized = workspace / "out" / "organizado"
-    if organized.is_dir():
-        shutil.make_archive(str(workspace / "out" / "organizado"), "zip", root_dir=str(organized))
-        shutil.rmtree(organized, ignore_errors=True)
+
+    if automation_id == "validate":
+        # O pacote de evidencias da 1.7 e uma PASTA em out/. Vira um unico
+        # .zip, pelo mesmo motivo do organize: `_collect` so expoe arquivos
+        # diretos de out/, e o download so aceita nome simples (sem barras).
+        # Sem isto, o pacote inteiro ficaria invisivel para o visitante.
+        pacote = workspace / "out" / "pacote_execucao"
+        if pacote.is_dir():
+            shutil.make_archive(str(pacote), "zip", root_dir=str(pacote))
+            shutil.rmtree(pacote, ignore_errors=True)
+        return
+
+
+def _should_postprocess(automation_id: str, exit_code: int, *, timed_out: bool) -> bool:
+    """
+    Decide se vale pos-processar a saida (zipar pastas geradas).
+
+    A matriz, e o porque de cada linha:
+
+        timeout                      -> NAO. O processo foi morto no meio; o
+                                        que existe em out/ esta incompleto e
+                                        empacotar isso entregaria evidencia
+                                        pela metade como se fosse completa.
+        exit 0                       -> SIM. Terminou bem, saida completa.
+        validate exit 1              -> SIM. `caught_issue`: a validacao rodou
+                                        inteira e ACHOU problemas nos dados.
+                                        E justamente aqui que o pacote de
+                                        evidencias mais importa.
+        validate exit 2              -> NAO. Erro de USO/configuracao (schema
+                                        invalido, arquivo recusado). Nao houve
+                                        validacao; nao ha evidencia a empacotar.
+        outra automacao, exit != 0   -> NAO. Falha tecnica: a saida nao e
+                                        confiavel.
+    """
+    if timed_out:
+        return False
+    if exit_code == 0:
+        return True
+    # Unico caso em que uma saida diferente de zero ainda tem saida completa.
+    return automation_id == "validate" and exit_code == _VALIDATE_FAIL_EXIT
 
 
 def _outcome(automation_id: str, exit_code: int) -> str:
@@ -262,7 +304,7 @@ async def run_streaming(automation_id: str, inputs: list[Path], job: Job) -> Run
     exit_code = _TIMEOUT_EXIT if timed_out else (proc.returncode or 0)
     duration_ms = int((time.monotonic() - start) * 1000)
 
-    if not timed_out and exit_code == 0:
+    if _should_postprocess(automation_id, exit_code, timed_out=timed_out):
         _postprocess(automation_id, job.workspace)
 
     artifacts = _collect(job.workspace / "out")

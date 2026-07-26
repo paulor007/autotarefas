@@ -42,8 +42,15 @@ def build_argv(  # noqa: PLR0911
             str(_SCHEMA),
             "--mode",
             "limpeza",
+            # Artefatos avulsos (o front consome validacao_report.json daqui):
             "--out-dir",
             str(out_dir),
+            # Pacote de evidencias da 1.7 (manifesto + hashes + classificacao).
+            # Vai para uma subpasta; o engine a compacta num unico .zip, para
+            # nao colidir com o registros_validos.csv que o --out-dir ja poe
+            # na raiz e para o download respeitar a guarda de nome simples.
+            "--artefatos",
+            str(out_dir / "pacote_execucao"),
         ]
     if automation_id == "backup":
         return [*base, "backup", str(in_dir), "-o", str(out_dir / "backup.zip")]
