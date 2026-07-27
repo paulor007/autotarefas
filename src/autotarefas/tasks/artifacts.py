@@ -108,8 +108,13 @@ def split_valid_invalid(
     Separa numeros de linha validos de invalidos a partir dos issues.
 
     Uma linha e INVALIDA se aparece em ao menos um issue de severidade
-    ERROR (avisos nao invalidam). Numeros de linha sao 1-based (a 1a
-    linha de dados e a 2, por causa do cabecalho).
+    ERROR (avisos nao invalidam). Numeros de linha sao 1-based e FISICOS.
+
+    Onde comeca a primeira linha de dados depende de onde esta o cabecalho:
+    com ele na linha 1 (o padrao) os dados comecam na 2; com `--header-row 4`,
+    na 5. O valor efetivo vem do proprio resultado (`header_row`), entao um
+    arquivo com cabecalho deslocado nao lista as linhas de titulo como se
+    fossem registros validos.
 
     Um issue pode envolver VARIAS linhas (`related_lines`): uma divergencia
     de coerencia de grupo acusa o grupo inteiro, e a `line` e apenas a
@@ -125,6 +130,7 @@ def split_valid_invalid(
     total_rows = int(result.data.get("rows", 0))
     issues: list[dict[str, object]] = result.data.get("issues", [])
 
+    primeira_linha = _first_data_line(result)
     reasons: dict[int, list[str]] = {}
     for issue in issues:
         if issue.get("severity") != "error":
@@ -132,13 +138,20 @@ def split_valid_invalid(
         cruas = issue.get("related_lines") or [issue.get("line")]
         relacionadas: list[object] = list(cruas) if isinstance(cruas, list) else [cruas]
         for numero in relacionadas:
-            if not isinstance(numero, int) or numero < 2:  # noqa: PLR2004 — 1=cabecalho
+            if not isinstance(numero, int) or numero < primeira_linha:
                 continue
             reasons.setdefault(numero, []).append(str(issue.get("message", "")))
 
+    primeira = _first_data_line(result)
     invalid_lines = sorted(reasons)
-    valid_lines = [n for n in range(2, total_rows + 2) if n not in reasons]
+    valid_lines = [n for n in range(primeira, total_rows + primeira) if n not in reasons]
     return valid_lines, invalid_lines, reasons
+
+
+def _first_data_line(result: TaskResult) -> int:
+    """Numero fisico da primeira linha de dados (cabecalho + 1)."""
+    cabecalho = result.data.get("header_row")
+    return (cabecalho if isinstance(cabecalho, int) and cabecalho >= 1 else 1) + 1
 
 
 # ============================================================
@@ -146,14 +159,25 @@ def split_valid_invalid(
 # ============================================================
 
 
-def _lines_to_indices(lines: list[int]) -> list[int]:
-    """Converte numeros de linha (1-based, cabecalho=1) em indices do df."""
-    return [n - 2 for n in lines]
+def _lines_to_indices(lines: list[int], first_data_line: int = 2) -> list[int]:
+    """
+    Converte numeros de linha FISICOS em indices 0-based do DataFrame.
+
+    `first_data_line` e a linha fisica do primeiro registro (2 quando o
+    cabecalho esta na linha 1). O default preserva o comportamento de quem
+    chama sem informar.
+    """
+    return [n - first_data_line for n in lines]
 
 
-def write_valid_csv(dataframe: pd.DataFrame, valid_lines: list[int], path: Path) -> None:
+def write_valid_csv(
+    dataframe: pd.DataFrame,
+    valid_lines: list[int],
+    path: Path,
+    first_data_line: int = 2,
+) -> None:
     """Escreve o CSV de registros validos (utf-8-sig, sem indice)."""
-    subset = dataframe.iloc[_lines_to_indices(valid_lines)]
+    subset = dataframe.iloc[_lines_to_indices(valid_lines, first_data_line)]
     path.parent.mkdir(parents=True, exist_ok=True)
     subset.to_csv(path, index=False, encoding="utf-8-sig")
 
@@ -163,13 +187,14 @@ def write_invalid_csv(
     invalid_lines: list[int],
     reasons: dict[int, list[str]],
     path: Path,
+    first_data_line: int = 2,
 ) -> None:
     """
     Escreve o CSV de registros invalidos com a coluna ``motivo`` ao final.
 
     O motivo de cada linha e a juncao das mensagens de erro daquela linha.
     """
-    subset = dataframe.iloc[_lines_to_indices(invalid_lines)].copy()
+    subset = dataframe.iloc[_lines_to_indices(invalid_lines, first_data_line)].copy()
     subset[REASON_COLUMN] = [" | ".join(reasons.get(n, [])) for n in invalid_lines]
     path.parent.mkdir(parents=True, exist_ok=True)
     subset.to_csv(path, index=False, encoding="utf-8-sig")

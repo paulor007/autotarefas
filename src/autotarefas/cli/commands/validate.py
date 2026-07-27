@@ -44,6 +44,10 @@ from autotarefas.tasks.report import (
 from autotarefas.tasks.report_xlsx import XLSX_NAME, write_xlsx_report
 from autotarefas.tasks.validate import ValidateTask, ValidationMode, load_schema
 
+#: Erro de uso/configuracao: schema invalido ou escolha impossivel de
+#: aba/cabecalho. Distinto do exit 1, que significa 'o arquivo tem problemas'.
+_EXIT_USAGE = 2
+
 
 @click.command(name="validate")
 @click.argument(
@@ -90,6 +94,18 @@ from autotarefas.tasks.validate import ValidateTask, ValidationMode, load_schema
     ),
 )
 @click.option(
+    "--sheet",
+    type=str,
+    default=None,
+    help="Aba a validar (XLSX). Sem isto, a primeira aba e usada.",
+)
+@click.option(
+    "--header-row",
+    type=click.IntRange(min=1),
+    default=None,
+    help="Linha do cabecalho (a mesma numeracao do Excel). Sem isto, a linha 1.",
+)
+@click.option(
     "--artefatos",
     "artefatos_dir",
     type=click.Path(file_okay=False, path_type=Path),
@@ -131,6 +147,8 @@ def validate(  # noqa: PLR0912, PLR0915
     report_json: Path | None,
     report_csv: Path | None,
     out_dir: Path | None,
+    sheet: str | None,
+    header_row: int | None,
     artefatos_dir: Path | None,
     max_issues: int,
     mode: str,
@@ -166,10 +184,21 @@ def validate(  # noqa: PLR0912, PLR0915
         schema=schema_obj,
         mode=validation_mode,
         dry_run=ctx.dry_run,
+        sheet=sheet,
+        header_row=header_row,
     )
     # BaseTask.run() ja registra audit automaticamente — nao precisamos
     # chamar audit.record() manualmente aqui.
     result = task.run()
+
+    # Escolha impossivel de aba/cabecalho e erro de USO (exit 2), na mesma
+    # categoria de um schema invalido — e nao "validacao que falhou" (exit 1).
+    # Sem esta distincao, um `--sheet` errado pareceria um arquivo reprovado, e
+    # nenhum relatorio ou pacote deve ser gerado nesse caso.
+    if result.error_type == "SelectionError":
+        console.error(str(result.error_message))
+        raise click.exceptions.Exit(_EXIT_USAGE)
+
     console.info("")
 
     # ============================================================

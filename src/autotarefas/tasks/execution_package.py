@@ -115,6 +115,12 @@ def sha256_file(path: Path) -> str:
     return digest.hexdigest()
 
 
+def _first_data_line(result: TaskResult) -> int:
+    """Linha fisica do primeiro registro (cabecalho + 1). Padrao: 2."""
+    cabecalho = result.data.get("header_row")
+    return (cabecalho if isinstance(cabecalho, int) and cabecalho >= 1 else 1) + 1
+
+
 def classify_rows(result: TaskResult) -> Classification:
     """
     Classifica as linhas a partir dos issues ja coletados.
@@ -206,7 +212,12 @@ def write_problems_csv(result: TaskResult, path: Path) -> None:
             )
 
 
-def write_review_csv(dataframe: pd.DataFrame, review_lines: tuple[int, ...], path: Path) -> None:
+def write_review_csv(
+    dataframe: pd.DataFrame,
+    review_lines: tuple[int, ...],
+    path: Path,
+    first_data_line: int = 2,
+) -> None:
     """
     As linhas que precisam de revisao, com os VALORES ORIGINAIS.
 
@@ -215,7 +226,7 @@ def write_review_csv(dataframe: pd.DataFrame, review_lines: tuple[int, ...], pat
     quem vai corrigir. O cruzamento com `problemas.csv` e por numero de
     linha fisica, que a coluna `physical_line` de la carrega.
     """
-    indices = [n - 2 for n in review_lines]
+    indices = [n - first_data_line for n in review_lines]
     recorte = dataframe.iloc[indices] if indices else dataframe.iloc[0:0]
     recorte.to_csv(path, index=False, encoding="utf-8-sig")
 
@@ -307,11 +318,12 @@ def build_package(  # noqa: PLR0913 - todos nomeados; agrupar em objeto so piora
         arquivos.append(_artifact_entry(caminho_problemas, "problemas"))
 
         caminho_validos = temporario / VALID_NAME
-        write_valid_csv(dataframe, list(classificacao.valid_lines), caminho_validos)
+        primeira_linha = _first_data_line(result)
+        write_valid_csv(dataframe, list(classificacao.valid_lines), caminho_validos, primeira_linha)
         arquivos.append(_artifact_entry(caminho_validos, "registros_validos"))
 
         caminho_revisao = temporario / REVIEW_NAME
-        write_review_csv(dataframe, classificacao.review_lines, caminho_revisao)
+        write_review_csv(dataframe, classificacao.review_lines, caminho_revisao, primeira_linha)
         arquivos.append(_artifact_entry(caminho_revisao, "registros_para_revisao"))
 
         if schema_path is not None and schema_path.is_file():
@@ -409,6 +421,8 @@ def _build_manifest(  # noqa: PLR0913 - montador do manifesto, campos nomeados
                 sha256_file(schema_path) if schema_path and schema_path.is_file() else None
             ),
             "generated_from": dados.get("generated_from"),
+            "header_row": dados.get("header_row"),
+            "selected_sheet": dados.get("selected_sheet"),
             "options": options,
         },
         "result": {

@@ -32,6 +32,7 @@ from __future__ import annotations
 
 import csv
 import re
+from collections.abc import Callable
 from datetime import UTC, datetime
 from decimal import Decimal
 from pathlib import Path
@@ -314,6 +315,17 @@ class DerivedCheck(BaseModel):
         return texto
 
 
+class SelectionError(ValidationError):
+    """
+    Escolha de aba/cabecalho impossivel — erro de USO, nao de dados.
+
+    Tipo proprio (em vez de checar o texto da mensagem) para que a CLI
+    distinga "voce pediu algo impossivel" (exit 2) de "o arquivo tem
+    problemas" (exit 1). Herda de ValidationError: quem so trata a familia
+    continua funcionando.
+    """
+
+
 class Provenance(BaseModel):
     """
     De onde um schema veio. Opcional; presente so em schemas gerados por perfil.
@@ -473,18 +485,27 @@ def load_schema(path: Path) -> Schema:
 # ============================================================
 
 
-def _group_message(rule: str, key_name: str, achado: GroupInconsistency) -> str:
+def _group_message(
+    rule: str,
+    key_name: str,
+    achado: GroupInconsistency,
+    to_line: Callable[[int], int],
+) -> str:
     """
     Mensagem de divergencia dentro de um grupo.
 
     Mostra TODOS os valores encontrados e as linhas de cada um — e nao
     elege nenhum como o correto. O AutoTarefas nao conhece a verdade do
     negocio; quem decide e quem conhece.
+
+    `to_line` converte indice do DataFrame em numero de linha do arquivo. Vem
+    de fora porque o deslocamento depende de onde esta o cabecalho, e esta
+    funcao nao deve ter uma segunda opiniao sobre isso.
     """
     chave = ", ".join(achado.key)
     partes = []
     for valor, linhas in achado.variants:
-        onde = ", ".join(str(i + 2) for i in linhas)
+        onde = ", ".join(str(to_line(i)) for i in linhas)
         reticencias = "..." if len(linhas) >= MAX_LINES_PER_VARIANT else ""
         mostrado = valor if valor else "(vazio)"
         partes.append(f"'{mostrado}' (linha(s) {onde}{reticencias})")
@@ -533,13 +554,15 @@ class ValidateTask(BaseTask):
     #: Delimitadores possiveis para auto-deteccao (csv.Sniffer).
     CSV_DELIMITERS: ClassVar[str] = ",;\t|"
 
-    def __init__(
+    def __init__(  # noqa: PLR0913 - quatro opcionais keyword-only
         self,
         file_path: Path,
         schema: Schema,
         *,
         mode: ValidationMode = "auditoria",
         dry_run: bool = False,
+        sheet: str | None = None,
+        header_row: int | None = None,
     ) -> None:
         """
         Inicializa ValidateTask.
@@ -554,14 +577,43 @@ class ValidateTask(BaseTask):
                 - "bloqueio": nao altera dados; usado em pipelines, onde o
                   exit code diferente de zero deve barrar o proximo passo.
             dry_run: Se True, nao persiste relatorio.
+            sheet: Aba a validar (so XLSX). None = primeira aba, como antes.
+                Em CSV, informar isto e erro de uso — nao ha aba para escolher,
+                e ignorar em silencio faria o usuario acreditar que a escolha
+                foi respeitada.
+            header_row: Linha FISICA do cabecalho, contando de 1 (a mesma
+                numeracao que aparece no Excel e no comando `analisar`).
+                None = primeira linha, como antes.
+
+        Ambos sao keyword-only e opcionais: com None, o comportamento e
+        exatamente o de antes desta opcao existir.
         """
         super().__init__(dry_run=dry_run)
         self.file_path = file_path
         self.schema = schema
         self.mode = mode
+        self.sheet = sheet
+        self.header_row = header_row
         #: DataFrame apos processamento (normalizado no modo limpeza).
         #: Preenchido em execute(); usado pelo CLI para gerar artefatos.
         self.processed_dataframe: pd.DataFrame | None = None
+
+    @property
+    def _first_data_line(self) -> int:
+        """
+        Numero FISICO da primeira linha de dados.
+
+        Com o cabecalho na linha 1 (o padrao), os dados comecam na linha 2 —
+        e todo o projeto vinha somando 2 ao indice do DataFrame. Com o
+        cabecalho na linha 4, os dados comecam na 5. Esta propriedade e o
+        UNICO lugar que sabe disso: quem precisa de numero de linha usa
+        `self._physical_line(indice)`, nunca aritmetica propria.
+        """
+        return (self.header_row or 1) + 1
+
+    def _physical_line(self, index: int) -> int:
+        """Converte indice 0-based do DataFrame em numero de linha do arquivo."""
+        return index + self._first_data_line
 
     def execute(self) -> TaskResult:
         """Executa a validacao."""
@@ -583,6 +635,13 @@ class ValidateTask(BaseTask):
                 field="file_path",
                 value=str(self.file_path),
             )
+
+        # 2b. As escolhas do usuario sao conferidas ANTES de ler o arquivo.
+        # Uma escolha impossivel e erro de USO (exit 2), nao um resultado de
+        # validacao — e nao pode gerar pacote que pareca uma execucao concluida.
+        erro_de_escolha = self._invalid_selection(ext)
+        if erro_de_escolha is not None:
+            raise SelectionError(erro_de_escolha, field="selection", value=str(self.file_path))
 
         # 3. Carrega arquivo
         df = self._load_file(ext)
@@ -661,6 +720,13 @@ class ValidateTask(BaseTask):
             "total_cleaned": len(cleaning_changes),
         }
 
+        # [1.8B-2A] Aba e cabecalho MUDAM o significado da validacao, entao
+        # entram nas evidencias. `selected_sheet` so aparece quando ha aba de
+        # verdade: inventar uma para CSV seria mentir sobre o arquivo.
+        base_data["header_row"] = self.header_row or 1
+        if self.sheet is not None:
+            base_data["selected_sheet"] = self.sheet
+
         # procedencia: se o schema veio de um perfil, o relatorio registra a
         # origem. Semente da linhagem; nao altera a validacao em nada.
         if self.schema.generated_from is not None:
@@ -692,6 +758,74 @@ class ValidateTask(BaseTask):
             return self._load_csv()
         return self._load_excel()
 
+    def _invalid_selection(self, ext: str) -> str | None:
+        """
+        Confere `sheet`/`header_row` antes de qualquer leitura.
+
+        Returns:
+            Mensagem do problema, ou None se as escolhas fizerem sentido.
+
+        Um CSV nao tem abas. Aceitar `--sheet` e ignorar em silencio faria o
+        usuario acreditar que a escolha foi respeitada — por isso e recusa
+        explicita, nao um aviso.
+        """
+        if self.sheet is not None:
+            if ext == ".csv":
+                return (
+                    "--sheet nao se aplica a CSV: um CSV nao tem abas. "
+                    "Remova a opcao ou use um arquivo XLSX."
+                )
+            if not self.sheet.strip():
+                return "--sheet veio vazio: informe o nome da aba."
+            disponiveis = self._sheet_names()
+            if disponiveis is not None and self.sheet not in disponiveis:
+                return (
+                    f"a aba '{self.sheet}' nao existe neste arquivo. "
+                    f"Abas disponiveis: {', '.join(disponiveis)}"
+                )
+
+        if self.header_row is not None:
+            if self.header_row < 1:
+                return (
+                    f"--header-row deve ser 1 ou maior (a numeracao e a mesma do "
+                    f"Excel); recebido {self.header_row}."
+                )
+            total = self._physical_row_count(ext)
+            if total is not None and self.header_row > total:
+                return (
+                    f"--header-row {self.header_row} passa do fim do arquivo, "
+                    f"que tem {total} linha(s)."
+                )
+
+        return None
+
+    def _sheet_names(self) -> list[str] | None:
+        """Abas do arquivo, ou None se nao der para inspecionar."""
+        try:
+            with pd.ExcelFile(self.file_path) as livro:
+                return [str(nome) for nome in livro.sheet_names]
+        except (ValueError, OSError):
+            return None
+
+    def _physical_row_count(self, ext: str) -> int | None:
+        """
+        Quantas linhas fisicas o arquivo tem (para conferir `header_row`).
+
+        None quando nao da para contar sem custo — nesse caso a leitura
+        seguinte e quem reclama, com a mensagem dela.
+        """
+        if ext != ".csv":
+            return None
+        for encoding in self.CSV_ENCODINGS:
+            try:
+                with open(self.file_path, encoding=encoding) as f:
+                    return sum(1 for _ in f)
+            except UnicodeDecodeError:
+                continue
+            except OSError:
+                return None
+        return None
+
     def _load_csv(self) -> pd.DataFrame:
         """Carrega CSV com auto-deteccao de encoding e delimitador."""
         last_error: Exception | None = None
@@ -707,10 +841,15 @@ class ValidateTask(BaseTask):
             sep = self._detect_delimiter(sample)
 
             try:
+                # `skiprows`, e nao `header=`: o pandas conta linhas NAO VAZIAS
+                # para `header`, entao um arquivo com linha em branco antes do
+                # cabecalho pegaria a linha errada. `skiprows` conta linhas
+                # fisicas, que e a semantica que `--header-row` promete.
                 return pd.read_csv(
                     self.file_path,
                     encoding=encoding,
                     sep=sep,
+                    skiprows=(self.header_row - 1) if self.header_row else 0,
                 )
             except UnicodeDecodeError as e:
                 last_error = e
@@ -739,9 +878,18 @@ class ValidateTask(BaseTask):
         return dialect.delimiter
 
     def _load_excel(self) -> pd.DataFrame:
-        """Carrega arquivo Excel (.xlsx, .xls)."""
+        """
+        Carrega arquivo Excel (.xlsx, .xls).
+
+        Sem `sheet`/`header_row` o resultado e identico ao de antes: primeira
+        aba, primeira linha como cabecalho.
+        """
         try:
-            return pd.read_excel(self.file_path)
+            return pd.read_excel(
+                self.file_path,
+                sheet_name=self.sheet if self.sheet is not None else 0,
+                header=(self.header_row - 1) if self.header_row else 0,
+            )
         except (ValueError, OSError) as e:
             raise ValidationError(
                 f"Erro ao ler Excel: {e}",
@@ -806,7 +954,7 @@ class ValidateTask(BaseTask):
                 if rules:
                     col_changes.append(
                         CleaningChange(
-                            line=offset + 2,
+                            line=self._physical_line(offset),
                             column=col_schema.name,
                             before=before,
                             after=after,
@@ -854,7 +1002,7 @@ class ValidateTask(BaseTask):
             for offset, raw_value in enumerate(column_series):
                 # +2: offset comeca em 0, header esta na linha 1,
                 # primeira linha de dados e a 2.
-                line_number = offset + 2
+                line_number = self._physical_line(offset)
                 str_value = self._cell_to_str(raw_value)
 
                 # 1. Nullability check
@@ -903,7 +1051,7 @@ class ValidateTask(BaseTask):
             key = normalize_digits if col_schema.validator_br in {"cpf", "cnpj"} else normalize_text
 
             for indices in find_duplicate_values(values, key=key).values():
-                lines = [i + 2 for i in indices]
+                lines = [self._physical_line(i) for i in indices]
                 where = ", ".join(str(n) for n in lines)
                 for line in lines:
                     collector.add(
@@ -920,7 +1068,7 @@ class ValidateTask(BaseTask):
                 for row in df.itertuples(index=False, name=None)
             ]
             for group in find_duplicate_rows(rows):
-                lines = [i + 2 for i in group]
+                lines = [self._physical_line(i) for i in group]
                 original = lines[0]
                 for line in lines[1:]:
                     collector.add(
@@ -1000,7 +1148,7 @@ class ValidateTask(BaseTask):
                     else f"a chave '{chave.name}' esta totalmente vazia"
                 )
                 collector.add(
-                    line=solta.index + 2,
+                    line=self._physical_line(solta.index),
                     column=colunas_chave[0],
                     message=(
                         f"Regra '{check.name}' nao pode ser verificada nesta linha: "
@@ -1019,11 +1167,15 @@ class ValidateTask(BaseTask):
                 # `related_lines` carrega o grupo INTEIRO: um artefato de
                 # revisao precisa de todas as linhas envolvidas, e a ancora
                 # e apenas onde o issue aparece no relatorio.
-                envolvidas = tuple(sorted({i + 2 for _, linhas in achado.variants for i in linhas}))
+                envolvidas = tuple(
+                    sorted(
+                        {self._physical_line(i) for _, linhas in achado.variants for i in linhas}
+                    )
+                )
                 collector.add(
-                    line=achado.anchor_index + 2,
+                    line=self._physical_line(achado.anchor_index),
                     column=achado.column,
-                    message=_group_message(check.name, chave.name, achado),
+                    message=_group_message(check.name, chave.name, achado, self._physical_line),
                     severity=severidade,
                     rule=check.name,
                     category="grupo",
@@ -1054,7 +1206,7 @@ class ValidateTask(BaseTask):
             colunas = {nome: list(df[nome]) for nome in usadas}
 
             for achado in apply_derived(arvore, alvo, colunas, derivada.tolerance):
-                linha = achado.index + 2
+                linha = self._physical_line(achado.index)
 
                 if achado.reason is not None:
                     collector.add(
@@ -1147,6 +1299,7 @@ __all__ = [
     "ColumnType",
     "FormatType",
     "Schema",
+    "SelectionError",
     "ValidateTask",
     "ValidationMode",
     "load_schema",
