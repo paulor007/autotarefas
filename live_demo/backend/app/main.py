@@ -24,7 +24,17 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
-from . import catalog, demo_servers, engine, jobs, ratelimit, samples, streaming, uploads
+from . import (
+    catalog,
+    demo_servers,
+    engine,
+    jobs,
+    ratelimit,
+    samples,
+    spreadsheets,
+    streaming,
+    uploads,
+)
 from .config import settings
 
 _CLEANUP_INTERVAL_S = 300
@@ -85,6 +95,10 @@ app.add_middleware(
     allow_methods=["GET", "POST"],
     allow_headers=["*"],
 )
+
+# Jornada guiada de planilhas (1.8B-2B). Endpoints proprios: o /api/run
+# generico continua servindo os cards antigos, sem payload inflado.
+app.include_router(spreadsheets.router)
 
 
 @app.get("/api/health")

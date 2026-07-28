@@ -217,9 +217,20 @@ def analyze_spreadsheet(
 
     Nao levanta excecao para arquivo invalido: um arquivo que o leitor recusa
     e um FATO sobre o arquivo, nao um erro do programa — quem chama decide
-    como mostrar isso.
+    como mostrar isso. Isso vale tambem para arquivo CORROMPIDO: um .xlsx que
+    nao e um zip valido faz o openpyxl estourar la no fundo, e deixar essa
+    excecao subir transformaria "arquivo ruim" em erro 500 de quem chama.
     """
-    leitura = read_workbook(path, sheet=sheet, header_row=header_row)
+    try:
+        leitura = read_workbook(path, sheet=sheet, header_row=header_row)
+    except Exception as exc:  # noqa: BLE001 - qualquer falha de leitura e recusa
+        return AnalysisOutcome(
+            ok=False,
+            rejection=(
+                "nao foi possivel ler este arquivo. Ele pode estar corrompido, "
+                f"protegido ou nao ser uma planilha valida ({type(exc).__name__})."
+            ),
+        )
 
     if not leitura.ok:
         # Recusa pode ser recuperavel (varias abas candidatas): devolvemos as

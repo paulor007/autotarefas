@@ -278,13 +278,18 @@ async def _reset_demo_state(url: str) -> None:
         pass  # nosec B110 - reset e melhor-esforco; o run reporta erros reais
 
 
-async def run_streaming(automation_id: str, inputs: list[Path], job: Job) -> RunResult:
+async def run_streaming(
+    automation_id: str,
+    inputs: list[Path],
+    job: Job,
+    journey: recipes.JourneyOptions | None = None,
+) -> RunResult:
     """Executa a automacao de verdade, transmitindo o stdout linha a linha."""
     reset = recipes.reset_url(automation_id)
     if reset is not None:
         await _reset_demo_state(reset)
 
-    argv = recipes.build_argv(automation_id, job.workspace, inputs)
+    argv = recipes.build_argv(automation_id, job.workspace, inputs, journey)
     loop = asyncio.get_running_loop()
     start = time.monotonic()
     timed_out = False

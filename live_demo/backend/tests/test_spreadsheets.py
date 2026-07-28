@@ -1,0 +1,540 @@
+"""
+Jornada guiada de planilhas no Live (1.8B-2B).
+
+O card antigo subia o arquivo e validava numa requisicao, com schema fixo.
+Aqui a jornada tem etapas e a pessoa ve o diagnostico antes de decidir. Estes
+testes cobrem o caminho completo, as recusas e o isolamento entre sessoes.
+
+O teste `test_aba_confirmada_e_realmente_usada_na_validacao` e o mais
+importante: prova que a validacao final roda na aba que a pessoa escolheu, e
+nao na primeira. Sem a 1.8B-2A (`--sheet`/`--header-row` no validate) isso
+seria impossivel.
+"""
+
+from __future__ import annotations
+
+import io
+import json
+import shutil
+import zipfile
+from collections.abc import Iterator
+from pathlib import Path
+from typing import Any
+
+import pytest
+from fastapi.testclient import TestClient
+
+from live_demo.backend.app import engine, jobs, ratelimit
+from live_demo.backend.app.main import app
+
+FX = Path(__file__).resolve().parents[3] / "tests" / "fixtures" / "planilhas"
+
+HTTP_OK = 200
+HTTP_BAD_REQUEST = 400
+HTTP_NOT_FOUND = 404
+HTTP_TOO_LARGE = 413
+HTTP_UNSUPPORTED_MEDIA = 415
+
+XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
+DATA_PREFIX = "data: "
+
+
+@pytest.fixture(scope="module")
+def client() -> Iterator[TestClient]:
+    """Cliente do app real, por modulo (subir o app a cada teste seria lento)."""
+    with TestClient(app) as test_client:
+        yield test_client
+
+
+@pytest.fixture(autouse=True)
+def _estado_limpo() -> Iterator[None]:
+    """
+    Cada teste comeca com o servidor em estado zerado.
+
+    Tres coisas sao GLOBAIS e, sem zerar as tres, a suite falha por ORDEM DE
+    EXECUCAO (isolados os testes passam, juntos dao 429/503):
+
+      registro de jobs .......... sessoes de um teste contam no limite do outro
+      rate limit por IP ......... o teto e 12 req/min e a suite faz muito mais
+      DIRETORIOS de workspace ... `create_workspace` recusa acima de
+          `max_workspaces` (40), e isso NAO depende do registro de jobs — foi
+          o que sustentou a falha por mais tempo: limpar so o registro deixava
+          as pastas no disco e o 503 continuava.
+
+    Em producao quem faz esse papel e o TTL (`sweep_expired` + remocao das
+    pastas) e a janela deslizante do proprio limitador.
+    """
+    _zerar_estado_do_servidor()
+    yield
+    _zerar_estado_do_servidor()
+
+
+def _zerar_estado_do_servidor() -> None:
+    jobs._jobs.clear()
+    ratelimit.limiter._hits.clear()
+    raiz = engine._root()
+    if raiz.is_dir():
+        for pasta in raiz.iterdir():
+            if pasta.is_dir():
+                shutil.rmtree(pasta, ignore_errors=True)
+
+
+def _enviar(client: TestClient, fixture: str) -> dict[str, Any]:
+    """Sobe uma fixture pelo endpoint de analise."""
+    caminho = FX / fixture
+    mime = XLSX_MIME if caminho.suffix == ".xlsx" else "text/csv"
+    with caminho.open("rb") as handle:
+        resposta = client.post(
+            "/api/spreadsheets/analyze",
+            files={"files": (fixture, handle, mime)},
+        )
+    # Mensagem util quando falha: sem isto, um 429/503 aparecia so como
+    # KeyError: 'token', escondendo o motivo real.
+    assert resposta.status_code == HTTP_OK, (
+        f"analyze devolveu {resposta.status_code}: {resposta.text[:200]}"
+    )
+    return dict(resposta.json())
+
+
+def _concluir(client: TestClient, token: str) -> dict[str, Any]:
+    """Consome o SSE ate o fim e devolve o resultado consolidado."""
+    with client.stream("GET", f"/api/stream/{token}") as resposta:
+        list(resposta.iter_lines())
+    return dict(client.get(f"/api/result/{token}").json())
+
+
+def _jornada_completa(
+    client: TestClient, fixture: str, *, sheet: str | None = None
+) -> tuple[str, dict[str, Any]]:
+    """Analisa, escolhe aba se preciso, confirma o sugerido e valida."""
+    inicio = _enviar(client, fixture)
+    token = inicio["token"]
+    if sheet is not None:
+        client.post(f"/api/spreadsheets/{token}/selection", data={"sheet": sheet})
+    client.post(f"/api/spreadsheets/{token}/schema", data={"source": "suggested"})
+    client.post(f"/api/spreadsheets/{token}/validate")
+    return token, _concluir(client, token)
+
+
+# ============================================================
+# Analise
+# ============================================================
+
+
+class TestAnalise:
+    def test_csv_valido(self, client: TestClient) -> None:
+        d = _enviar(client, "32_servicos.csv")
+        assert d["status"] == "analysis_ready"
+        assert d["needs_choice"] is False
+        assert d["analysis"]["columns"]
+
+    def test_xlsx_valido(self, client: TestClient) -> None:
+        d = _enviar(client, "02_xlsx_limpo.xlsx")
+        assert d["status"] == "analysis_ready"
+        assert d["analysis"]["estrutura"]["column_count"] > 0
+
+    def test_exemplo_do_servidor(self, client: TestClient) -> None:
+        r = client.post("/api/spreadsheets/analyze", params={"use_sample": "true"})
+        assert r.status_code == HTTP_OK
+        assert r.json()["status"] == "analysis_ready"
+
+    def test_sem_arquivo_e_sem_exemplo(self, client: TestClient) -> None:
+        r = client.post("/api/spreadsheets/analyze")
+        assert r.status_code == HTTP_BAD_REQUEST
+        assert r.json()["code"] == "no_file"
+
+    def test_exemplo_e_upload_juntos_e_recusado(self, client: TestClient) -> None:
+        """Duas origens ao mesmo tempo e ambiguidade: escolha uma."""
+        with (FX / "32_servicos.csv").open("rb") as handle:
+            r = client.post(
+                "/api/spreadsheets/analyze",
+                params={"use_sample": "true"},
+                files={"files": ("32_servicos.csv", handle, "text/csv")},
+            )
+        assert r.status_code == HTTP_BAD_REQUEST
+        assert r.json()["code"] == "ambiguous_source"
+
+    def test_extensao_nao_permitida(self, client: TestClient) -> None:
+        """415 vem do `_check_ext` do upload — o status correto para extensao."""
+        r = client.post(
+            "/api/spreadsheets/analyze",
+            files={"files": ("script.txt", io.BytesIO(b"a,b\n1,2\n"), "text/plain")},
+        )
+        assert r.status_code == HTTP_UNSUPPORTED_MEDIA
+
+    def test_arquivo_vazio(self, client: TestClient) -> None:
+        r = client.post(
+            "/api/spreadsheets/analyze",
+            files={"files": ("vazio.csv", io.BytesIO(b""), "text/csv")},
+        )
+        assert r.json()["status"] in {"rejected_file", "analysis_ready"}
+
+    def test_conteudo_corrompido_nao_derruba_a_api(self, client: TestClient) -> None:
+        """XLSX falso: o leitor recusa; a API responde, nao explode."""
+        r = client.post(
+            "/api/spreadsheets/analyze",
+            files={"files": ("falso.xlsx", io.BytesIO(b"nao sou um xlsx"), XLSX_MIME)},
+        )
+        assert r.status_code == HTTP_OK
+        assert r.json()["status"] == "rejected_file"
+        assert "detail" in r.json()
+
+    def test_payload_nao_expoe_caminho_fisico(self, client: TestClient) -> None:
+        d = _enviar(client, "32_servicos.csv")
+        texto = json.dumps(d)
+        assert "workspace" not in texto
+        assert str(engine._root()) not in texto
+        assert "\\\\Users" not in texto
+
+    def test_previa_e_limitada(self, client: TestClient) -> None:
+        d = _enviar(client, "01_csv_limpo.csv")
+        assert d["preview"]
+        assert len(d["preview"].splitlines()) < 30
+
+
+# ============================================================
+# Ambiguidade e selecao
+# ============================================================
+
+
+class TestSelecao:
+    def test_aba_ambigua_vira_pergunta(self, client: TestClient) -> None:
+        d = _enviar(client, "07_tres_abas.xlsx")
+        assert d["status"] == "needs_selection"
+        assert d["needs_choice"] is True
+        opcoes = d["ambiguities"][0]["sheet_options"]
+        assert {o["name"] for o in opcoes} == {"Vendas", "Estoque", "Clientes"}
+
+    def test_escolha_valida_resolve(self, client: TestClient) -> None:
+        d = _enviar(client, "07_tres_abas.xlsx")
+        r = client.post(f"/api/spreadsheets/{d['token']}/selection", data={"sheet": "Estoque"})
+        novo = r.json()
+        assert novo["status"] == "analysis_ready"
+        assert novo["needs_choice"] is False
+        assert novo["selected_sheet"] == "Estoque"
+        assert [c["name"] for c in novo["analysis"]["columns"]] == ["sku", "saldo"]
+
+    def test_aba_fora_das_opcoes_e_recusada(self, client: TestClient) -> None:
+        d = _enviar(client, "07_tres_abas.xlsx")
+        r = client.post(f"/api/spreadsheets/{d['token']}/selection", data={"sheet": "Fantasma"})
+        assert r.status_code == HTTP_BAD_REQUEST
+        assert r.json()["code"] == "invalid_sheet"
+
+    @pytest.mark.parametrize("valor", ["", "   "])
+    def test_aba_vazia_e_recusada(self, client: TestClient, valor: str) -> None:
+        d = _enviar(client, "07_tres_abas.xlsx")
+        r = client.post(f"/api/spreadsheets/{d['token']}/selection", data={"sheet": valor})
+        assert r.status_code == HTTP_BAD_REQUEST
+
+    def test_caminho_como_aba_e_recusado(self, client: TestClient) -> None:
+        """Um caminho nunca esta entre as candidatas."""
+        d = _enviar(client, "07_tres_abas.xlsx")
+        r = client.post(
+            f"/api/spreadsheets/{d['token']}/selection",
+            data={"sheet": "../../etc/passwd"},
+        )
+        assert r.status_code == HTTP_BAD_REQUEST
+        assert r.json()["code"] == "invalid_sheet"
+
+    def test_header_row_valido(self, client: TestClient) -> None:
+        d = _enviar(client, "06_cabecalho_linha_4.xlsx")
+        r = client.post(f"/api/spreadsheets/{d['token']}/selection", data={"header_row": "4"})
+        assert r.status_code == HTTP_OK
+        assert r.json()["header_row"] == 4
+
+    @pytest.mark.parametrize("valor", ["0", "-3"])
+    def test_header_row_invalido(self, client: TestClient, valor: str) -> None:
+        d = _enviar(client, "32_servicos.csv")
+        r = client.post(f"/api/spreadsheets/{d['token']}/selection", data={"header_row": valor})
+        assert r.status_code == HTTP_BAD_REQUEST
+        assert r.json()["code"] == "invalid_header_row"
+
+    def test_selecao_vazia_e_recusada(self, client: TestClient) -> None:
+        d = _enviar(client, "32_servicos.csv")
+        r = client.post(f"/api/spreadsheets/{d['token']}/selection", data={})
+        assert r.status_code == HTTP_BAD_REQUEST
+
+    def test_token_inexistente(self, client: TestClient) -> None:
+        r = client.post("/api/spreadsheets/naoexiste/selection", data={"sheet": "Plan1"})
+        assert r.status_code == HTTP_NOT_FOUND
+        assert r.json()["code"] == "expired"
+
+
+# ============================================================
+# Schema
+# ============================================================
+
+SCHEMA_PROPRIO = """
+columns:
+  - name: Numero
+    type: str
+    required: true
+  - name: Situacao
+    type: str
+"""
+
+SCHEMA_COM_REGRAS = """
+columns:
+  - name: Numero
+    type: str
+  - name: Servico
+    type: str
+  - name: Situacao
+    type: str
+group_keys:
+  - name: por_servico
+    columns: ["Servico"]
+group_checks:
+  - name: coerencia
+    group_key: por_servico
+    consistent: ["Situacao"]
+    severity: warning
+"""
+
+
+class TestSchema:
+    def test_sugerido_gera_resumo(self, client: TestClient) -> None:
+        d = _enviar(client, "32_servicos.csv")
+        r = client.post(f"/api/spreadsheets/{d['token']}/schema", data={"source": "suggested"})
+        corpo = r.json()
+        assert corpo["status"] == "schema_ready"
+        assert corpo["schema_origin"] == "suggested"
+        assert corpo["summary"]["columns"]
+
+    def test_sugerido_nao_inventa_procedencia(self, client: TestClient) -> None:
+        d = _enviar(client, "32_servicos.csv")
+        r = client.post(f"/api/spreadsheets/{d['token']}/schema", data={"source": "suggested"})
+        assert "generated_from" not in r.json()["summary"]
+
+    def test_yaml_proprio_valido(self, client: TestClient) -> None:
+        d = _enviar(client, "32_servicos.csv")
+        r = client.post(
+            f"/api/spreadsheets/{d['token']}/schema",
+            data={"source": "uploaded"},
+            files={"files": ("meu.yaml", SCHEMA_PROPRIO.encode(), "application/yaml")},
+        )
+        corpo = r.json()
+        assert corpo["status"] == "schema_ready"
+        assert corpo["schema_origin"] == "uploaded"
+        assert [c["name"] for c in corpo["summary"]["columns"]] == ["Numero", "Situacao"]
+
+    def test_resumo_mostra_regras_de_grupo(self, client: TestClient) -> None:
+        d = _enviar(client, "32_servicos.csv")
+        r = client.post(
+            f"/api/spreadsheets/{d['token']}/schema",
+            data={"source": "uploaded"},
+            files={"files": ("r.yaml", SCHEMA_COM_REGRAS.encode(), "application/yaml")},
+        )
+        resumo = r.json()["summary"]
+        assert resumo["group_keys"][0]["name"] == "por_servico"
+        assert resumo["group_checks"][0]["severity"] == "warning"
+
+    def test_yaml_invalido(self, client: TestClient) -> None:
+        d = _enviar(client, "32_servicos.csv")
+        r = client.post(
+            f"/api/spreadsheets/{d['token']}/schema",
+            data={"source": "uploaded"},
+            files={"files": ("x.yaml", b"columns: [[[", "application/yaml")},
+        )
+        assert r.status_code == HTTP_BAD_REQUEST
+        assert r.json()["code"] == "invalid_schema"
+        assert "Traceback" not in r.json()["detail"]
+
+    def test_yaml_com_tag_executavel(self, client: TestClient) -> None:
+        """`safe_load` nao constroi objetos: a tag nao executa nada."""
+        malicioso = b"!!python/object/apply:os.system ['echo comprometido']\n"
+        d = _enviar(client, "32_servicos.csv")
+        r = client.post(
+            f"/api/spreadsheets/{d['token']}/schema",
+            data={"source": "uploaded"},
+            files={"files": ("mal.yaml", malicioso, "application/yaml")},
+        )
+        assert r.status_code == HTTP_BAD_REQUEST
+        assert r.json()["code"] == "invalid_schema"
+
+    def test_yaml_grande_e_recusado(self, client: TestClient) -> None:
+        gigante = b"# " + b"a" * (400 * 1024)
+        d = _enviar(client, "32_servicos.csv")
+        r = client.post(
+            f"/api/spreadsheets/{d['token']}/schema",
+            data={"source": "uploaded"},
+            files={"files": ("g.yaml", gigante, "application/yaml")},
+        )
+        assert r.status_code == HTTP_TOO_LARGE
+        assert r.json()["code"] == "schema_too_large"
+
+    def test_origem_desconhecida(self, client: TestClient) -> None:
+        d = _enviar(client, "32_servicos.csv")
+        r = client.post(f"/api/spreadsheets/{d['token']}/schema", data={"source": "inventada"})
+        assert r.status_code == HTTP_BAD_REQUEST
+        assert r.json()["code"] == "invalid_source"
+
+    def test_schema_antes_de_resolver_ambiguidade(self, client: TestClient) -> None:
+        d = _enviar(client, "07_tres_abas.xlsx")
+        r = client.post(f"/api/spreadsheets/{d['token']}/schema", data={"source": "suggested"})
+        assert r.status_code == HTTP_BAD_REQUEST
+        assert r.json()["code"] == "analysis_pending"
+
+
+# ============================================================
+# Validacao
+# ============================================================
+
+
+class TestValidacao:
+    def test_sem_problemas_da_exit_0(self, client: TestClient) -> None:
+        token, res = _jornada_completa(client, "32_servicos.csv")
+        assert res["exit_code"] == 0
+        assert res["outcome"] == "ok"
+        job = jobs.get(token)
+        assert job is not None
+        assert job.journey is not None
+        assert job.journey.status == "completed"
+
+    def test_com_problemas_da_exit_1_e_gera_pacote(self, client: TestClient) -> None:
+        """Problema nos dados: validacao CONCLUIDA, com evidencias completas."""
+        d = _enviar(client, "32_servicos.csv")
+        token = d["token"]
+        # schema que reprova: Situacao como int
+        ruim = b"columns:\n  - name: Situacao\n    type: int\n"
+        client.post(
+            f"/api/spreadsheets/{token}/schema",
+            data={"source": "uploaded"},
+            files={"files": ("ruim.yaml", ruim, "application/yaml")},
+        )
+        client.post(f"/api/spreadsheets/{token}/validate")
+        res = _concluir(client, token)
+        assert res["exit_code"] == 1
+        assert res["outcome"] == "caught_issue"
+        assert "pacote_execucao.zip" in [a["name"] for a in res["artifacts"]]
+        job = jobs.get(token)
+        assert job is not None
+        assert job.journey is not None
+        assert job.journey.status == "completed_with_issues"
+
+    def test_artefatos_da_1_8a_preservados(self, client: TestClient) -> None:
+        _, res = _jornada_completa(client, "32_servicos.csv")
+        nomes = {a["name"] for a in res["artifacts"]}
+        assert "validacao_report.json" in nomes
+        assert "registros_validos.csv" in nomes
+        assert "pacote_execucao.zip" in nomes
+
+    def test_pacote_tem_manifesto_e_schema_efetivo(self, client: TestClient) -> None:
+        _, res = _jornada_completa(client, "32_servicos.csv")
+        zip_art = next(a for a in res["artifacts"] if a["name"] == "pacote_execucao.zip")
+        baixado = client.get(zip_art["download_url"])
+        assert baixado.status_code == HTTP_OK
+        pacote = zipfile.ZipFile(io.BytesIO(baixado.content))
+        assert {"manifest.json", "schema_efetivo.yaml"} <= set(pacote.namelist())
+
+    def test_aba_confirmada_e_realmente_usada_na_validacao(self, client: TestClient) -> None:
+        """
+        A prova central da jornada.
+
+        07_tres_abas tem 'Vendas' (produto/qtd/valor) como primeira aba e
+        'Estoque' (sku/saldo) como segunda. Escolhendo Estoque, a validacao
+        precisa rodar em sku/saldo — se rodasse na primeira aba, o schema
+        sugerido de Estoque acusaria colunas ausentes e o exit seria 1.
+        """
+        _, res = _jornada_completa(client, "07_tres_abas.xlsx", sheet="Estoque")
+        assert res["exit_code"] == 0, res["stdout"][-400:]
+        relatorio_art = next(a for a in res["artifacts"] if a["name"] == "validacao_report.json")
+        relatorio = client.get(relatorio_art["download_url"]).json()
+        assert relatorio["selected_sheet"] == "Estoque"
+
+    def test_validar_sem_confirmar_schema(self, client: TestClient) -> None:
+        d = _enviar(client, "32_servicos.csv")
+        r = client.post(f"/api/spreadsheets/{d['token']}/validate")
+        assert r.status_code == HTTP_BAD_REQUEST
+        assert r.json()["code"] == "schema_pending"
+
+    def test_max_issues_invalido(self, client: TestClient) -> None:
+        d = _enviar(client, "32_servicos.csv")
+        client.post(f"/api/spreadsheets/{d['token']}/schema", data={"source": "suggested"})
+        r = client.post(f"/api/spreadsheets/{d['token']}/validate", data={"max_issues": "0"})
+        assert r.status_code == HTTP_BAD_REQUEST
+        assert r.json()["code"] == "invalid_max_issues"
+
+    def test_original_intacto(self, client: TestClient) -> None:
+        import hashlib
+
+        alvo = FX / "32_servicos.csv"
+        antes = hashlib.sha256(alvo.read_bytes()).hexdigest()
+        _jornada_completa(client, "32_servicos.csv")
+        assert hashlib.sha256(alvo.read_bytes()).hexdigest() == antes
+
+
+# ============================================================
+# Isolamento e seguranca
+# ============================================================
+
+
+class TestIsolamento:
+    def test_sessao_a_nao_ve_dados_de_b(self, client: TestClient) -> None:
+        a = _enviar(client, "32_servicos.csv")
+        b = _enviar(client, "02_xlsx_limpo.xlsx")
+        assert a["token"] != b["token"]
+        colunas_a = [c["name"] for c in a["analysis"]["columns"]]
+        colunas_b = [c["name"] for c in b["analysis"]["columns"]]
+        assert colunas_a != colunas_b
+
+    def test_download_de_outra_execucao_e_barrado(self, client: TestClient) -> None:
+        _, res_a = _jornada_completa(client, "32_servicos.csv")
+        b = _enviar(client, "02_xlsx_limpo.xlsx")
+        nome = next(a["name"] for a in res_a["artifacts"] if a["name"] == "validacao_report.json")
+        r = client.get(f"/api/download/{b['token']}/{nome}")
+        assert r.status_code == HTTP_NOT_FOUND
+
+    @pytest.mark.parametrize(
+        "nome",
+        ["../../etc/passwd", "..%2Fmanifest.json", "config/schema_confirmado.yaml"],
+    )
+    def test_path_traversal_barrado(self, client: TestClient, nome: str) -> None:
+        token, _ = _jornada_completa(client, "32_servicos.csv")
+        assert client.get(f"/api/download/{token}/{nome}").status_code == HTTP_NOT_FOUND
+
+    def test_arquivo_de_entrada_nao_e_baixavel(self, client: TestClient) -> None:
+        """Nada em `in/` sai pelo endpoint publico."""
+        token, _ = _jornada_completa(client, "32_servicos.csv")
+        assert client.get(f"/api/download/{token}/32_servicos.csv").status_code == HTTP_NOT_FOUND
+
+    def test_schema_confirmado_fica_fora_de_out(self, client: TestClient) -> None:
+        """
+        `config/` existe para isto: o schema apenas SELECIONADO nao vira
+        baixavel. O que executou aparece como schema_efetivo.yaml no pacote.
+        """
+        d = _enviar(client, "32_servicos.csv")
+        token = d["token"]
+        client.post(f"/api/spreadsheets/{token}/schema", data={"source": "suggested"})
+        job = jobs.get(token)
+        assert job is not None
+        assert job.journey is not None
+        assert job.journey.schema_path is not None
+        assert job.journey.schema_path.parent.name == "config"
+        assert not (job.workspace / "out" / "schema_confirmado.yaml").exists()
+
+    def test_schema_sugerido_e_baixavel(self, client: TestClient) -> None:
+        d = _enviar(client, "32_servicos.csv")
+        r = client.get(f"/api/download/{d['token']}/schema_sugerido.yaml")
+        assert r.status_code == HTTP_OK
+        assert "columns" in r.text
+
+
+# ============================================================
+# Compatibilidade
+# ============================================================
+
+
+class TestCompatibilidade:
+    def test_endpoint_generico_continua_funcionando(self, client: TestClient) -> None:
+        """O /api/run dos cards antigos nao foi tocado."""
+        r = client.post("/api/run/validate", params={"use_sample": "true"})
+        assert r.status_code == HTTP_OK
+        assert "token" in r.json()
+
+    def test_catalogo_continua_respondendo(self, client: TestClient) -> None:
+        assert client.get("/api/catalog").status_code == HTTP_OK
+
+    def test_health_continua_respondendo(self, client: TestClient) -> None:
+        assert client.get("/api/health").status_code == HTTP_OK
