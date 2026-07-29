@@ -59,11 +59,12 @@ AUTOMATIONS: tuple[Automation, ...] = (
     Automation(
         "validate",
         "validacao",
-        "Auditoria de planilha",
-        "Valida, limpa e separa antes de importar",
-        "Confere uma planilha de clientes, leads ou contatos, aponta os erros, "
-        "normaliza o que é seguro (nada de dado inventado) e separa registros "
-        "válidos dos inválidos - o pré-voo antes de qualquer importação.",
+        "Análise e validação de planilhas",
+        "Analise a estrutura, confirme as regras e separe o que precisa de revisão",
+        "Analisa CSV e XLSX, mostra a estrutura encontrada, deixa você confirmar "
+        "as regras da validação e separa os registros válidos dos que precisam "
+        "de revisão - com relatório e evidências. O original nunca é alterado, "
+        "e nenhuma regra de negócio é inventada.",
         False,
         "spreadsheet",
         "Envie um arquivo .csv ou .xlsx (ou use o de exemplo).",

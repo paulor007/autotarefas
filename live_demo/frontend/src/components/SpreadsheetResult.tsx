@@ -1,0 +1,134 @@
+import type { RunResult } from "../lib/api";
+import { EVIDENCE_PACKAGE_NAME } from "../lib/spreadsheets";
+import type { JourneyStep } from "../hooks/useSpreadsheetJourney";
+
+interface Props {
+  step: JourneyStep;
+  result: RunResult | null;
+}
+
+interface Aparencia {
+  titulo: string;
+  texto: string;
+  classe: string;
+}
+
+/**
+ * Como cada desfecho e apresentado.
+ *
+ * A distincao que mais importa: exit 1 significa "a validacao terminou e
+ * encontrou registros para revisar" — um resultado util, nao uma falha da
+ * aplicacao. Chamar isso de erro faria a pessoa achar que o sistema quebrou
+ * quando, na verdade, ele fez o trabalho.
+ */
+function aparencia(step: JourneyStep): Aparencia | null {
+  switch (step) {
+    case "completed":
+      return {
+        titulo: "Concluído sem problemas",
+        texto:
+          "A validação foi concluída e não encontrou registros para revisão.",
+        classe: "border-ok/40 bg-ok/5 text-ok",
+      };
+    case "completed_with_issues":
+      return {
+        titulo: "Concluído com registros para revisão",
+        texto:
+          "A validação foi concluída e encontrou registros que precisam de revisão. Os arquivos abaixo separam o que segue do que volta.",
+        classe: "border-warn/40 bg-warn/5 text-warn",
+      };
+    case "invalid_configuration":
+      return {
+        titulo: "Configuração inválida",
+        texto:
+          "A configuração escolhida não pôde ser utilizada. Revise o schema ou a seleção de aba e cabeçalho e tente de novo.",
+        classe: "border-danger/40 bg-danger/5 text-danger",
+      };
+    case "timed_out":
+      return {
+        titulo: "Execução interrompida",
+        texto:
+          "A execução passou do tempo limite e foi interrompida. O arquivo original continua intacto.",
+        classe: "border-warn/40 bg-warn/5 text-warn",
+      };
+    case "technical_failure":
+      return {
+        titulo: "Não foi possível concluir",
+        texto:
+          "Houve uma falha ao executar a validação. Tente novamente; se persistir, use um arquivo menor para verificar.",
+        classe: "border-danger/40 bg-danger/5 text-danger",
+      };
+    default:
+      return null;
+  }
+}
+
+/** Rotulos legiveis para os artefatos — nada de nome tecnico cru. */
+const ROTULOS: Record<string, string> = {
+  "validacao_report.json": "Relatório da validação (JSON)",
+  "planilha_validada.xlsx": "Planilha validada",
+  "registros_validos.csv": "Registros válidos",
+  "registros_invalidos.csv": "Registros para revisão",
+  "schema_sugerido.yaml": "Schema sugerido",
+  [EVIDENCE_PACKAGE_NAME]: "Pacote completo de evidências",
+};
+
+function tamanho(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+export default function SpreadsheetResult({ step, result }: Props) {
+  const visual = aparencia(step);
+  if (!visual) return null;
+
+  return (
+    <div className="space-y-4" aria-live="polite">
+      <div className={`rounded-lg border px-4 py-3 ${visual.classe}`}>
+        <p className="text-sm font-semibold">{visual.titulo}</p>
+        <p className="mt-1 text-[0.85rem] opacity-90">{visual.texto}</p>
+      </div>
+
+      {result ? (
+        <>
+          <p className="text-[0.8rem] text-muted">
+            Duração: {(result.duration_ms / 1000).toFixed(1)}s · o arquivo
+            original não foi alterado.
+          </p>
+
+          {result.artifacts.length > 0 ? (
+            <div>
+              <h4 className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted">
+                Arquivos desta execução
+              </h4>
+              <ul className="space-y-2">
+                {result.artifacts.map((artefato) => (
+                  <li key={artefato.name}>
+                    <a
+                      href={artefato.download_url}
+                      download
+                      className="flex items-center justify-between gap-3 rounded-lg border border-white/6 bg-ink px-4 py-3 text-sm hover:border-white/20"
+                    >
+                      <span className="min-w-0">
+                        <span className="font-semibold text-fg">
+                          {ROTULOS[artefato.name] ?? artefato.name}
+                        </span>
+                        <span className="ml-2 text-[0.8rem] text-muted">
+                          {tamanho(artefato.bytes)}
+                        </span>
+                      </span>
+                      <span className="whitespace-nowrap text-[0.8rem] text-signal">
+                        Baixar
+                      </span>
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+        </>
+      ) : null}
+    </div>
+  );
+}

@@ -236,11 +236,21 @@ def test_recipe_validate_argv(tmp_path: Path) -> None:
 
 
 def test_catalogo_validate_reposicionado(client: TestClient) -> None:
+    """
+    O card descreve o que a ferramenta REALMENTE faz.
+
+    O texto anterior dizia "Valida, limpa e separa": prometia limpeza, que o
+    fluxo atual nao executa. O contrato e analisar, deixar a pessoa confirmar
+    as regras, validar e separar — sem inventar regra de negocio.
+    """
     catalog = client.get("/api/catalog").json()
     validate = next(a for a in catalog["automations"] if a["id"] == "validate")
-    assert validate["title"] == "Auditoria de planilha"
+    assert validate["title"] == "Análise e validação de planilhas"
     assert validate["upload"] == "spreadsheet"
     assert ".xlsx" in validate["upload_hint"]
+    texto = f"{validate['subtitle']} {validate['description']}".lower()
+    assert "limpa" not in texto
+    assert "corrige" not in texto
 
 
 def test_upload_xlsx_roda_auditoria(client: TestClient) -> None:

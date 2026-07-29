@@ -17,6 +17,9 @@ export type RunStatus =
   | "timeout"
   | "error";
 
+/** Exit code do timeout, definido pelo backend. */
+const TIMEOUT_EXIT = 124;
+
 interface RunOptions {
   files?: File[];
   useSample?: boolean;
@@ -29,6 +32,15 @@ export interface UseExecution {
   error: string | null;
   token: string | null;
   run: (automation: Automation, opts: RunOptions) => Promise<void>;
+  /**
+   * Consome o SSE de uma execucao JA iniciada por outro fluxo.
+   *
+   * A jornada de planilhas dispara a validacao pelos endpoints proprios e
+   * so entao precisa do terminal e do resultado. Sem isto, ela teria a
+   * propria copia do EventSource — duas implementacoes do mesmo protocolo,
+   * divergindo com o tempo.
+   */
+  attach: (token: string, streamUrl: string) => void;
   reset: () => void;
 }
 
@@ -60,30 +72,10 @@ export function useExecution(): UseExecution {
   // Fecha o stream se o componente desmontar no meio de uma execucao.
   useEffect(() => closeStream, [closeStream]);
 
-  const run = useCallback(
-    async (automation: Automation, opts: RunOptions) => {
-      closeStream();
-      doneRef.current = false;
-      setLines([]);
-      setResult(null);
-      setError(null);
-      setStatus("starting");
-
-      let started;
-      try {
-        started = await runAutomation(automation.id, opts);
-      } catch (e: unknown) {
-        setError(
-          e instanceof Error ? e.message : "Falha ao iniciar a execução.",
-        );
-        setStatus("error");
-        return;
-      }
-
-      setToken(started.token);
-      setStatus("running");
-
-      const es = new EventSource(started.stream_url);
+  /** Liga o EventSource e traduz os eventos em estado. */
+  const consume = useCallback(
+    (runToken: string, streamUrl: string) => {
+      const es = new EventSource(streamUrl);
       esRef.current = es;
 
       es.onmessage = (event) => {
@@ -95,7 +87,7 @@ export function useExecution(): UseExecution {
         try {
           const data = JSON.parse((event as MessageEvent).data) as RunResult;
           setResult(data);
-          setStatus(data.exit_code === 124 ? "timeout" : "done");
+          setStatus(data.exit_code === TIMEOUT_EXIT ? "timeout" : "done");
         } catch {
           setStatus("done");
         }
@@ -127,10 +119,10 @@ export function useExecution(): UseExecution {
         }
         closeStream();
         // Fallback: o job pode ter concluido mesmo com o stream caindo.
-        getResult(started.token)
+        getResult(runToken)
           .then((data) => {
             setResult(data);
-            setStatus(data.exit_code === 124 ? "timeout" : "done");
+            setStatus(data.exit_code === TIMEOUT_EXIT ? "timeout" : "done");
           })
           .catch(() => {
             setError("Conexão com o stream interrompida.");
@@ -141,5 +133,46 @@ export function useExecution(): UseExecution {
     [closeStream],
   );
 
-  return { status, lines, result, error, token, run, reset };
+  const attach = useCallback(
+    (runToken: string, streamUrl: string) => {
+      closeStream();
+      doneRef.current = false;
+      setLines([]);
+      setResult(null);
+      setError(null);
+      setToken(runToken);
+      setStatus("running");
+      consume(runToken, streamUrl);
+    },
+    [closeStream, consume],
+  );
+
+  const run = useCallback(
+    async (automation: Automation, opts: RunOptions) => {
+      closeStream();
+      doneRef.current = false;
+      setLines([]);
+      setResult(null);
+      setError(null);
+      setStatus("starting");
+
+      let started;
+      try {
+        started = await runAutomation(automation.id, opts);
+      } catch (e: unknown) {
+        setError(
+          e instanceof Error ? e.message : "Falha ao iniciar a execução.",
+        );
+        setStatus("error");
+        return;
+      }
+
+      setToken(started.token);
+      setStatus("running");
+      consume(started.token, started.stream_url);
+    },
+    [closeStream, consume],
+  );
+
+  return { status, lines, result, error, token, run, attach, reset };
 }

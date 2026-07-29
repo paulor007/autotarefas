@@ -2,6 +2,7 @@
 import { FileUp, Loader2, Play } from "lucide-react";
 
 import type { RunStatus } from "../hooks/useExecution";
+import SpreadsheetJourney from "./SpreadsheetJourney";
 import type { Automation, UploadKind } from "../lib/api";
 import DemoSource from "./DemoSource";
 import FileDrop from "./FileDrop";
@@ -16,6 +17,9 @@ const FOLDER_ACCEPT =
 
 // accept para upload do tipo "spreadsheet" (Auditoria de planilha).
 const SPREADSHEET_ACCEPT = ".csv,.xlsx";
+
+/** Card que abre a jornada guiada em vez do fluxo classico de execucao. */
+const SPREADSHEET_JOURNEY_ID = "validate";
 
 function uploadLabel(upload: string): string {
   if (upload === "csv") return "(.csv)";
@@ -108,6 +112,27 @@ export default function ExecutionPanel({
       onRun(selected, { useSample: true });
     }
   };
+
+  // A Analise e validacao de planilhas tem jornada propria (analisar antes de
+  // validar), com endpoints proprios. Os demais cards seguem no fluxo classico
+  // de /api/run — nada foi removido deles.
+  if (selected?.id === SPREADSHEET_JOURNEY_ID) {
+    return (
+      <section id="execucao" className="bg-elevated py-20">
+        <div className="container-page">
+          <SectionHeader
+            title="Análise e validação de planilhas"
+            subtitle="Analise CSV e XLSX, revise a estrutura, confirme as regras e separe registros válidos dos que precisam de revisão"
+          />
+          <div className="overflow-hidden rounded-2xl border border-white/6 bg-surface">
+            <div className="space-y-6 p-6 sm:p-8">
+              <SpreadsheetJourney />
+            </div>
+          </div>
+        </div>
+      </section>
+    );
+  }
 
   return (
     <section id="execucao" className="bg-elevated py-20">
