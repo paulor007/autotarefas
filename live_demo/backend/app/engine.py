@@ -9,6 +9,7 @@ com kill, limites de stream e bloqueio de egress (defesa em profundidade).
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import hashlib
 import os
 import re
@@ -41,6 +42,24 @@ ACTIVE_AUTOMATIONS: tuple[str, ...] = (
 )
 
 _TIMEOUT_EXIT = 124
+
+#: Espera maxima pela thread leitora depois que o processo morreu. Com o
+#: stdout fechado ela sai de imediato; o teto evita travar para sempre.
+_READER_JOIN_TIMEOUT_S = 5.0
+
+
+def run_timeout_s() -> float:
+    """
+    Teto de tempo de uma execucao.
+
+    E uma funcao, e nao `settings.run_timeout_s` direto, porque `settings` e
+    um dataclass FROZEN: sem este ponto nao ha como um teste exercitar o
+    caminho de timeout — que e justamente onde a thread leitora continuava
+    viva depois de o processo ser morto.
+    """
+    return float(settings.run_timeout_s)
+
+
 _VALIDATE_FAIL_EXIT = 1
 _TOKEN_RE = re.compile(r"^[0-9a-f]{32}$")
 _DEAD_PROXY = "http://127.0.0.1:9"
@@ -233,10 +252,25 @@ def _pump(
     loop: asyncio.AbstractEventLoop,
     done: asyncio.Event,
 ) -> None:
-    """Le o stdout do processo (em thread) e enfileira as linhas sanitizadas."""
+    """
+    Le o stdout do processo (em thread) e enfileira as linhas sanitizadas.
+
+    Todo contato com o event loop passa por `_no_loop`, porque a thread pode
+    perder a corrida com o encerramento do loop. A coordenacao principal e o
+    `join` em `run_streaming`; isto aqui e a rede de seguranca para o
+    intervalo em que o loop ja fechou e a thread ainda nao percebeu.
+    """
+
+    def _no_loop(callback: Any, *args: Any) -> None:
+        """Agenda no loop, tolerando que ele ja tenha fechado."""
+        # Loop fechado: nao ha mais quem consuma o SSE. Perder a linha aqui e
+        # correto — o resultado consolidado ja vive em `job.lines`.
+        with contextlib.suppress(RuntimeError):
+            loop.call_soon_threadsafe(callback, *args)
+
     stdout = proc.stdout
     if stdout is None:
-        loop.call_soon_threadsafe(done.set)
+        _no_loop(done.set)
         return
     streamed_bytes = 0
     truncated = False
@@ -253,14 +287,14 @@ def _pump(
                     truncated = True
                     warn = "... saida truncada (limite de stream atingido) ..."
                     job.lines.append(warn)
-                    loop.call_soon_threadsafe(job.queue.put_nowait, warn)
+                    _no_loop(job.queue.put_nowait, warn)
                 continue
             streamed_bytes += len(line)
             job.lines.append(line)
-            loop.call_soon_threadsafe(job.queue.put_nowait, line)
+            _no_loop(job.queue.put_nowait, line)
     finally:
         stdout.close()
-        loop.call_soon_threadsafe(done.set)
+        _no_loop(done.set)
 
 
 async def _reset_demo_state(url: str) -> None:
@@ -300,12 +334,21 @@ async def run_streaming(
     reader.start()
 
     try:
-        await asyncio.wait_for(done.wait(), timeout=settings.run_timeout_s)
+        await asyncio.wait_for(done.wait(), timeout=run_timeout_s())
     except TimeoutError:
         timed_out = True
         proc.kill()
 
     await loop.run_in_executor(None, proc.wait)
+
+    # A thread leitora TEM que terminar antes de sairmos: enquanto ela vive,
+    # pode chamar `loop.call_soon_threadsafe`, e se o loop ja tiver fechado
+    # (fim dos testes, shutdown do app) isso estoura em
+    # "RuntimeError: Event loop is closed" DEPOIS do resumo do pytest —
+    # ruido que esconde falha real. Com o processo morto, o stdout fecha e a
+    # thread sai sozinha; o timeout aqui e so para nao travar para sempre.
+    await loop.run_in_executor(None, reader.join, _READER_JOIN_TIMEOUT_S)
+
     exit_code = _TIMEOUT_EXIT if timed_out else (proc.returncode or 0)
     duration_ms = int((time.monotonic() - start) * 1000)
 

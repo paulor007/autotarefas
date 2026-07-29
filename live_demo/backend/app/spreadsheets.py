@@ -64,6 +64,9 @@ _ALLOWED_EXTS = (".csv", ".xlsx")
 #: que um envio grande nao ocupe o servidor nem o parser.
 _MAX_SCHEMA_BYTES = 256 * 1024
 
+#: Extensoes aceitas para o schema enviado.
+_SCHEMA_EXTS = (".yaml", ".yml")
+
 #: Automacao usada na execucao final. Reaproveitar "validate" mantem intactas
 #: as decisoes da 1.8A: o mapeamento de exit code para `outcome` e a matriz de
 #: pos-processamento (que zipa o pacote em caught_issue) valem sem alteracao.
@@ -75,7 +78,9 @@ _SAMPLE_AUTOMATION = "validate"
 
 _HTTP_BAD_REQUEST = 400
 _HTTP_NOT_FOUND = 404
+_HTTP_CONFLICT = 409
 _HTTP_PAYLOAD_TOO_LARGE = 413
+_HTTP_UNSUPPORTED_MEDIA = 415
 _HTTP_TOO_MANY = 429
 _HTTP_BUSY = 503
 
@@ -159,12 +164,14 @@ def _apply_outcome(job: jobs.Job, journey: jobs.Journey, outcome: AnalysisOutcom
     if outcome.ambiguities:
         journey.status = "needs_selection"
         journey.rejection = None
+        _descartar_sugestao(job)
         return
 
     if not outcome.ok:
         journey.status = "rejected_file"
         journey.rejection = outcome.rejection
         journey.analysis = {}
+        _descartar_sugestao(job)
         return
 
     journey.status = "analysis_ready"
@@ -180,6 +187,27 @@ def _apply_outcome(job: jobs.Job, journey: jobs.Journey, outcome: AnalysisOutcom
     sugerido = job.workspace / "out" / "schema_sugerido.yaml"
     sugerido.parent.mkdir(parents=True, exist_ok=True)
     sugerido.write_text(outcome.schema_suggestion, encoding="utf-8")
+
+
+def _descartar_sugestao(job: jobs.Job) -> None:
+    """Remove o schema sugerido: ele descrevia uma leitura que nao vale mais."""
+    (job.workspace / "out" / "schema_sugerido.yaml").unlink(missing_ok=True)
+
+
+def _invalidar_schema_confirmado(job: jobs.Job, journey: jobs.Journey) -> None:
+    """
+    Descarta o schema confirmado quando a leitura muda.
+
+    Um schema confirmado para a aba A descreve as colunas de A. Se a pessoa
+    volta e escolhe a aba B, aquele schema deixa de fazer sentido — mante-lo
+    validaria B com o contrato de A, que e o pior erro possivel aqui: um
+    resultado que parece legitimo e nao e. Por isso a validacao volta a exigir
+    confirmacao explicita.
+    """
+    if journey.schema_path is not None:
+        journey.schema_path.unlink(missing_ok=True)
+    journey.schema_path = None
+    journey.schema_origin = None
 
 
 def _run_analysis(job: jobs.Job, journey: jobs.Journey) -> None:
@@ -222,6 +250,14 @@ async def analyze(  # noqa: PLR0911 - cada recusa tem sua propria mensagem e cod
         )
     if not use_sample and not enviados:
         return _error(_HTTP_BAD_REQUEST, "nenhum arquivo enviado", code="no_file")
+    if len(enviados) > 1:
+        # Salvar varios e usar so o primeiro faria a pessoa acreditar que
+        # analisamos algo que nem abrimos.
+        return _error(
+            _HTTP_BAD_REQUEST,
+            "envie um arquivo por vez",
+            code="too_many_files",
+        )
 
     try:
         token, workspace = engine.create_workspace()
@@ -314,6 +350,8 @@ async def selection(
             )
         journey.header_row = header_row
 
+    # A leitura mudou: o que foi confirmado sobre a leitura anterior cai.
+    _invalidar_schema_confirmado(job, journey)
     _run_analysis(job, journey)
     return JSONResponse(_analysis_payload(token, journey))
 
@@ -372,7 +410,7 @@ def _schema_summary(caminho: Path) -> dict[str, Any]:
 
 
 @router.post("/{token}/schema")
-async def choose_schema(  # noqa: PLR0911 - cada recusa tem sua propria mensagem
+async def choose_schema(  # noqa: PLR0911, PLR0912 - cada recusa tem mensagem propria
     token: str,
     source: str = Form(default="suggested"),
     files: list[UploadFile] = File(default=[]),  # noqa: B008
@@ -399,19 +437,41 @@ async def choose_schema(  # noqa: PLR0911 - cada recusa tem sua propria mensagem
 
     destino = job.workspace / "config" / "schema_confirmado.yaml"
     destino.parent.mkdir(parents=True, exist_ok=True)
+    # Escreve num temporario, VALIDA, e so entao substitui. Politica escolhida:
+    # um schema invalido NAO derruba o anterior. A alternativa (limpar antes de
+    # tentar) deixaria a pessoa sem nada por causa de um erro de digitacao, e
+    # sem meio de voltar — o arquivo dela ja foi embora do formulario.
+    parcial = destino.with_suffix(".parcial")
+
+    enviados = [f for f in files if f.filename]
 
     if source == "suggested":
+        if enviados:
+            return _error(
+                _HTTP_BAD_REQUEST,
+                "voce escolheu o schema sugerido, mas tambem enviou um arquivo; "
+                "use source=uploaded para enviar o seu",
+                code="unexpected_file",
+            )
         sugerido = job.workspace / "out" / "schema_sugerido.yaml"
         if not sugerido.is_file():
             return _error(
                 _HTTP_BAD_REQUEST, "nao ha schema sugerido nesta sessao", code="no_suggestion"
             )
-        destino.write_text(sugerido.read_text(encoding="utf-8"), encoding="utf-8")
-        journey.schema_origin = "suggested"
+        parcial.write_text(sugerido.read_text(encoding="utf-8"), encoding="utf-8")
+        origem = "suggested"
     elif source == "uploaded":
-        enviados = [f for f in files if f.filename]
         if not enviados:
             return _error(_HTTP_BAD_REQUEST, "nenhum schema enviado", code="no_file")
+        if len(enviados) > 1:
+            return _error(_HTTP_BAD_REQUEST, "envie um schema por vez", code="too_many_files")
+        nome = enviados[0].filename or ""
+        if Path(nome).suffix.lower() not in _SCHEMA_EXTS:
+            return _error(
+                _HTTP_UNSUPPORTED_MEDIA,
+                f"o schema precisa ser {' ou '.join(_SCHEMA_EXTS)}",
+                code="invalid_extension",
+            )
         bruto = await enviados[0].read(_MAX_SCHEMA_BYTES + 1)
         if len(bruto) > _MAX_SCHEMA_BYTES:
             return _error(
@@ -425,8 +485,8 @@ async def choose_schema(  # noqa: PLR0911 - cada recusa tem sua propria mensagem
             return _error(
                 _HTTP_BAD_REQUEST, "o schema precisa estar em UTF-8", code="invalid_schema"
             )
-        destino.write_text(texto, encoding="utf-8")
-        journey.schema_origin = "uploaded"
+        parcial.write_text(texto, encoding="utf-8")
+        origem = "uploaded"
     else:
         return _error(
             _HTTP_BAD_REQUEST,
@@ -435,10 +495,9 @@ async def choose_schema(  # noqa: PLR0911 - cada recusa tem sua propria mensagem
         )
 
     try:
-        resumo = _schema_summary(destino)
+        resumo = _schema_summary(parcial)
     except (AutoTarefasError, yaml.YAMLError, ValueError, OSError) as exc:
-        destino.unlink(missing_ok=True)
-        journey.schema_origin = None
+        parcial.unlink(missing_ok=True)
         # A mensagem do loader e escrita para pessoas; nao vaza traceback nem
         # caminho. Cortamos o tamanho para nao devolver um dump enorme.
         return _error(
@@ -447,7 +506,10 @@ async def choose_schema(  # noqa: PLR0911 - cada recusa tem sua propria mensagem
             code="invalid_schema",
         )
 
+    # Validou: agora sim substitui o anterior, de uma vez.
+    parcial.replace(destino)
     journey.schema_path = destino
+    journey.schema_origin = origem
     journey.status = "schema_ready"
     return JSONResponse(
         {
@@ -533,6 +595,14 @@ async def validate(
         return achado
     job, journey = achado
 
+    if journey.status == "validating":
+        # Dois cliques no botao nao podem virar dois subprocessos escrevendo
+        # no mesmo out/ — o pacote sairia com arquivos de duas execucoes.
+        return _error(
+            _HTTP_CONFLICT,
+            "esta validacao ja esta em andamento",
+            code="already_validating",
+        )
     if journey.schema_path is None or journey.status != "schema_ready":
         return _error(
             _HTTP_BAD_REQUEST,
@@ -570,4 +640,9 @@ async def validate(
     )
 
 
-__all__ = ["router"]
+def pending_tasks() -> set[asyncio.Task[None]]:
+    """Tarefas de validacao em andamento, para o shutdown aguardar/cancelar."""
+    return set(_background)
+
+
+__all__ = ["pending_tasks", "router"]

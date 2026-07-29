@@ -32,6 +32,7 @@ FX = Path(__file__).resolve().parents[3] / "tests" / "fixtures" / "planilhas"
 HTTP_OK = 200
 HTTP_BAD_REQUEST = 400
 HTTP_NOT_FOUND = 404
+HTTP_CONFLICT = 409
 HTTP_TOO_LARGE = 413
 HTTP_UNSUPPORTED_MEDIA = 415
 
@@ -538,3 +539,241 @@ class TestCompatibilidade:
 
     def test_health_continua_respondendo(self, client: TestClient) -> None:
         assert client.get("/api/health").status_code == HTTP_OK
+
+
+# ============================================================
+# Revisao final: ciclo de vida, invalidacao e contagem de arquivos
+# ============================================================
+
+
+class TestCicloDeVida:
+    """
+    Regressao do `RuntimeError: Event loop is closed`.
+
+    A thread leitora (`engine._pump`) fala com o event loop por
+    `call_soon_threadsafe`. Sem `join` no fim de `run_streaming`, ela
+    sobrevivia a execucao e podia tocar um loop ja fechado — o traceback
+    aparecia DEPOIS do resumo do pytest, escondendo falha real.
+    """
+
+    def test_nenhuma_thread_pump_viva_apos_a_validacao(self, client: TestClient) -> None:
+        import threading
+
+        antes = threading.active_count()
+        _jornada_completa(client, "32_servicos.csv")
+        # a thread leitora ja recebeu join dentro de run_streaming
+        assert threading.active_count() <= antes
+
+    def test_nenhuma_tarefa_de_fundo_pendente(self, client: TestClient) -> None:
+        from live_demo.backend.app import spreadsheets
+
+        _jornada_completa(client, "32_servicos.csv")
+        assert all(t.done() for t in spreadsheets.pending_tasks())
+
+    def test_fechar_o_client_logo_apos_iniciar_a_validacao(self) -> None:
+        """
+        O caso que provocava o traceback: o app fecha com a validacao no ar.
+
+        O shutdown cancela e AGUARDA as tarefas; a thread sai pelo join. Nada
+        pode estourar depois.
+        """
+        from live_demo.backend.app.main import app as app_local
+
+        with TestClient(app_local) as local:
+            _zerar_estado_do_servidor()
+            inicio = _enviar(local, "32_servicos.csv")
+            token = inicio["token"]
+            local.post(f"/api/spreadsheets/{token}/schema", data={"source": "suggested"})
+            local.post(f"/api/spreadsheets/{token}/validate")
+            # sai do contexto sem consumir o SSE -> shutdown com execucao viva
+
+    def test_timeout_nao_deixa_thread_orfa(
+        self, client: TestClient, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """
+        Mesmo matando o processo, a thread precisa terminar antes do retorno.
+
+        O caminho de timeout e justamente onde a thread leitora continuava
+        viva depois de `proc.kill()` — e onde o `Event loop is closed`
+        aparecia. `settings` e um dataclass FROZEN, entao o engine le o teto
+        por `run_timeout_s()`, que e o ponto de substituicao.
+        """
+        import threading
+
+        from live_demo.backend.app import engine
+
+        antes = threading.active_count()
+        monkeypatch.setattr(engine, "run_timeout_s", lambda: 0.0)
+
+        inicio = _enviar(client, "32_servicos.csv")
+        token = inicio["token"]
+        client.post(f"/api/spreadsheets/{token}/schema", data={"source": "suggested"})
+        client.post(f"/api/spreadsheets/{token}/validate")
+        resultado = _concluir(client, token)
+
+        assert resultado["outcome"] == "timeout"
+        assert threading.active_count() <= antes
+
+
+class TestInvalidacaoDeEstado:
+    """
+    Mudar a leitura invalida o que foi confirmado sobre a leitura anterior.
+
+    Validar a aba B com o schema confirmado para a aba A produziria um
+    resultado que PARECE legitimo e nao e — o pior erro possivel aqui.
+    """
+
+    def test_trocar_de_aba_exige_confirmar_o_schema_de_novo(self, client: TestClient) -> None:
+        inicio = _enviar(client, "07_tres_abas.xlsx")
+        token = inicio["token"]
+
+        client.post(f"/api/spreadsheets/{token}/selection", data={"sheet": "Estoque"})
+        pronto = client.post(f"/api/spreadsheets/{token}/schema", data={"source": "suggested"})
+        assert pronto.json()["status"] == "schema_ready"
+
+        # volta e escolhe outra aba
+        client.post(f"/api/spreadsheets/{token}/selection", data={"sheet": "Vendas"})
+
+        r = client.post(f"/api/spreadsheets/{token}/validate")
+        assert r.status_code == HTTP_BAD_REQUEST
+        assert r.json()["code"] == "schema_pending"
+
+    def test_arquivo_do_schema_antigo_e_removido(self, client: TestClient) -> None:
+        inicio = _enviar(client, "07_tres_abas.xlsx")
+        token = inicio["token"]
+        client.post(f"/api/spreadsheets/{token}/selection", data={"sheet": "Estoque"})
+        client.post(f"/api/spreadsheets/{token}/schema", data={"source": "suggested"})
+        job = jobs.get(token)
+        assert job is not None
+        confirmado = job.workspace / "config" / "schema_confirmado.yaml"
+        assert confirmado.is_file()
+
+        client.post(f"/api/spreadsheets/{token}/selection", data={"sheet": "Vendas"})
+        assert not confirmado.exists()
+        assert job.journey is not None
+        assert job.journey.schema_origin is None
+
+    def test_trocar_cabecalho_tambem_invalida(self, client: TestClient) -> None:
+        inicio = _enviar(client, "06_cabecalho_linha_4.xlsx")
+        token = inicio["token"]
+        client.post(f"/api/spreadsheets/{token}/schema", data={"source": "suggested"})
+        client.post(f"/api/spreadsheets/{token}/selection", data={"header_row": "4"})
+        r = client.post(f"/api/spreadsheets/{token}/validate")
+        assert r.json()["code"] == "schema_pending"
+
+
+class TestQuantidadeDeArquivos:
+    def test_dois_arquivos_na_analise(self, client: TestClient) -> None:
+        """Salvar dois e usar so o primeiro enganaria sobre o que foi analisado."""
+        with (FX / "32_servicos.csv").open("rb") as a, (FX / "01_csv_limpo.csv").open("rb") as b:
+            r = client.post(
+                "/api/spreadsheets/analyze",
+                files=[
+                    ("files", ("a.csv", a, "text/csv")),
+                    ("files", ("b.csv", b, "text/csv")),
+                ],
+            )
+        assert r.status_code == HTTP_BAD_REQUEST
+        assert r.json()["code"] == "too_many_files"
+
+    def test_dois_schemas_enviados(self, client: TestClient) -> None:
+        d = _enviar(client, "32_servicos.csv")
+        r = client.post(
+            f"/api/spreadsheets/{d['token']}/schema",
+            data={"source": "uploaded"},
+            files=[
+                ("files", ("a.yaml", SCHEMA_PROPRIO.encode(), "application/yaml")),
+                ("files", ("b.yaml", SCHEMA_PROPRIO.encode(), "application/yaml")),
+            ],
+        )
+        assert r.status_code == HTTP_BAD_REQUEST
+        assert r.json()["code"] == "too_many_files"
+
+    def test_extensao_de_schema_invalida(self, client: TestClient) -> None:
+        d = _enviar(client, "32_servicos.csv")
+        r = client.post(
+            f"/api/spreadsheets/{d['token']}/schema",
+            data={"source": "uploaded"},
+            files={"files": ("schema.txt", SCHEMA_PROPRIO.encode(), "text/plain")},
+        )
+        assert r.status_code == HTTP_UNSUPPORTED_MEDIA
+        assert r.json()["code"] == "invalid_extension"
+
+    def test_suggested_com_arquivo_junto_e_recusado(self, client: TestClient) -> None:
+        """Ignorar o upload em silencio faria a pessoa crer que ele valeu."""
+        d = _enviar(client, "32_servicos.csv")
+        r = client.post(
+            f"/api/spreadsheets/{d['token']}/schema",
+            data={"source": "suggested"},
+            files={"files": ("meu.yaml", SCHEMA_PROPRIO.encode(), "application/yaml")},
+        )
+        assert r.status_code == HTTP_BAD_REQUEST
+        assert r.json()["code"] == "unexpected_file"
+
+
+class TestSchemaAtomico:
+    def test_schema_invalido_nao_derruba_o_anterior(self, client: TestClient) -> None:
+        """Politica: um erro de digitacao nao deixa a pessoa sem nada."""
+        d = _enviar(client, "32_servicos.csv")
+        token = d["token"]
+        client.post(
+            f"/api/spreadsheets/{token}/schema",
+            data={"source": "uploaded"},
+            files={"files": ("bom.yaml", SCHEMA_PROPRIO.encode(), "application/yaml")},
+        )
+        job = jobs.get(token)
+        assert job is not None
+        confirmado = job.workspace / "config" / "schema_confirmado.yaml"
+        antes = confirmado.read_text(encoding="utf-8")
+
+        r = client.post(
+            f"/api/spreadsheets/{token}/schema",
+            data={"source": "uploaded"},
+            files={"files": ("ruim.yaml", b"columns: [[[", "application/yaml")},
+        )
+        assert r.status_code == HTTP_BAD_REQUEST
+        assert confirmado.read_text(encoding="utf-8") == antes
+        assert not list(confirmado.parent.glob("*.parcial"))
+
+
+class TestValidacaoDuplicada:
+    def test_segunda_chamada_e_recusada(self, client: TestClient) -> None:
+        d = _enviar(client, "32_servicos.csv")
+        token = d["token"]
+        client.post(f"/api/spreadsheets/{token}/schema", data={"source": "suggested"})
+        primeira = client.post(f"/api/spreadsheets/{token}/validate")
+        segunda = client.post(f"/api/spreadsheets/{token}/validate")
+        assert primeira.status_code == HTTP_OK
+        assert segunda.status_code == HTTP_CONFLICT
+        assert segunda.json()["code"] == "already_validating"
+        _concluir(client, token)
+
+
+class TestExpiracao:
+    def test_sweep_remove_job_e_workspace_e_o_token_para_de_valer(self, client: TestClient) -> None:
+        """
+        Expiracao real: o `sweep_expired` tira o job, e o workspace sai junto.
+
+        Depois disso o token responde "sessao expirada", sem confirmar nada
+        sobre o que existia antes.
+        """
+        import shutil as _shutil
+
+        d = _enviar(client, "32_servicos.csv")
+        token = d["token"]
+        job = jobs.get(token)
+        assert job is not None
+        workspace = job.workspace
+        assert workspace.is_dir()
+
+        # simula o envelhecimento e roda a limpeza de verdade
+        job.created_at = 0.0
+        removidos = jobs.sweep_expired(1)
+        assert removidos >= 1
+        _shutil.rmtree(workspace, ignore_errors=True)
+
+        assert jobs.get(token) is None
+        assert not workspace.exists()
+        r = client.post(f"/api/spreadsheets/{token}/selection", data={"sheet": "X"})
+        assert r.status_code == HTTP_NOT_FOUND
+        assert r.json()["code"] == "expired"

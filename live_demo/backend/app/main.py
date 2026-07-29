@@ -84,7 +84,21 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         cleanup.cancel()
         with contextlib.suppress(asyncio.CancelledError):
             await cleanup
+        # Execucoes em andamento (cards antigos e jornada) sao canceladas e
+        # AGUARDADAS: uma tarefa cancelada mas nao aguardada continua viva o
+        # bastante para tocar o loop depois que ele fechou.
+        await _encerrar_tarefas(_background_tasks | spreadsheets.pending_tasks())
         demo_servers.stop()
+
+
+async def _encerrar_tarefas(tarefas: set[asyncio.Task[None]]) -> None:
+    """Cancela e aguarda tarefas de fundo, sem deixar nenhuma orfa."""
+    pendentes = [t for t in tarefas if not t.done()]
+    for tarefa in pendentes:
+        tarefa.cancel()
+    for tarefa in pendentes:
+        with contextlib.suppress(asyncio.CancelledError, Exception):
+            await tarefa
 
 
 app = FastAPI(title=settings.app_name, version=settings.version, lifespan=lifespan)
