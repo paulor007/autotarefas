@@ -27,6 +27,7 @@ O QUE ESTE MODULO NAO FAZ:
 
 from __future__ import annotations
 
+import zipfile
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Literal
 
@@ -50,6 +51,18 @@ SHEET_CONFIDENCE_THRESHOLD = 0.70
 #: Idem para a linha de CABECALHO. Só vira pergunta quando o leitor tambem
 #: apontou alternativas — sem alternativas nao ha o que oferecer.
 HEADER_CONFIDENCE_THRESHOLD = 0.70
+
+#: Falhas que significam "o arquivo esta ruim", nao "o programa esta errado".
+#: `BadZipFile` vem de um .xlsx que nao e zip; `KeyError`/`OSError` de zip sem
+#: as partes esperadas; `UnicodeDecodeError` de texto ilegivel; `ValueError` do
+#: proprio leitor. Erros fora desta lista sobem, como devem.
+_CORRUPT_FILE_ERRORS = (
+    zipfile.BadZipFile,
+    UnicodeDecodeError,
+    ValueError,
+    KeyError,
+    OSError,
+)
 
 #: Linhas da previa. Limitado de proposito: a previa serve para o usuario
 #: reconhecer o arquivo, nao para transportar a planilha para a tela.
@@ -223,7 +236,11 @@ def analyze_spreadsheet(
     """
     try:
         leitura = read_workbook(path, sheet=sheet, header_row=header_row)
-    except Exception as exc:  # noqa: BLE001 - qualquer falha de leitura e recusa
+    except _CORRUPT_FILE_ERRORS as exc:
+        # Arquivo corrompido e um FATO sobre o arquivo. A lista de excecoes e
+        # fechada de proposito: um `except Exception` aqui esconderia defeito
+        # nosso (AttributeError, TypeError) sob a fachada de "arquivo ruim", e
+        # o bug so apareceria como recusa inexplicavel para o cliente.
         return AnalysisOutcome(
             ok=False,
             rejection=(
