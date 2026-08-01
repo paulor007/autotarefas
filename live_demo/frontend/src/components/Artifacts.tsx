@@ -55,8 +55,8 @@ export default function Artifacts({
     <section id="artefatos" className="bg-elevated py-20">
       <div className="container-page">
         <SectionHeader
-          title="Artefatos Gerados"
-          subtitle="Resultados prontos para download após a execução"
+          title="Resultados e evidências"
+          subtitle="Arquivos produzidos pela execução, prontos para download e auditoria"
         />
 
         {!result ? (

@@ -101,7 +101,7 @@ export default function TerminalView({
     <section id="terminal" className="py-20">
       <div className="container-page">
         <SectionHeader
-          title="Terminal ao Vivo"
+          title="Registro da execução"
           subtitle="Saída em tempo real da execução no sandbox"
         />
 
