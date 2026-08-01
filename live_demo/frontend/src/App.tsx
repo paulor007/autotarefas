@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import Artifacts from "./components/Artifacts";
 import Catalog from "./components/Catalog";
@@ -57,8 +57,17 @@ export default function App() {
   const importReport = useImportReport(exec.result);
   const extractReport = useExtractReport(exec.result);
 
+  // A carga fica em `useCallback` para o botao "Tentar novamente" refazer
+  // exatamente a mesma consulta — sem recarregar a pagina inteira.
+  const [tentativa, setTentativa] = useState(0);
+  const recarregar = useCallback(() => {
+    setTentativa((n) => n + 1);
+  }, []);
+
   useEffect(() => {
     let cancelled = false;
+    setLoading(true);
+    setError(null);
     Promise.all([getHealth(), getCatalog()])
       .then(([h, c]) => {
         if (!cancelled) {
@@ -68,7 +77,15 @@ export default function App() {
       })
       .catch((e: unknown) => {
         if (!cancelled) {
-          setError(e instanceof Error ? e.message : "falha ao conectar");
+          // O detalhe tecnico vai para o console de dev; a tela recebe uma
+          // mensagem util. Um ECONNREFUSED do proxy nao e "erro 500 do
+          // servidor" — e o servico nao estar acessivel.
+          console.error("[AutoTarefas] falha ao consultar a API", e);
+          setError(
+            e instanceof Error && e.message.includes("respondeu")
+              ? "serviço indisponível no momento"
+              : "não foi possível falar com o serviço",
+          );
         }
       })
       .finally(() => {
@@ -79,13 +96,16 @@ export default function App() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [tentativa]);
 
   const activeIds = useMemo(
     () => new Set(health?.active_automations ?? []),
     [health],
   );
   const online = !!health && (health.demo_servers[0]?.alive ?? false);
+  // O card de planilhas abre a jornada guiada, que nao usa o fluxo classico.
+  const emJornada = selectedId === "validate";
+
   const selectedAutomation = useMemo(
     () => catalog?.automations.find((a) => a.id === selectedId) ?? null,
     [catalog, selectedId],
@@ -127,6 +147,7 @@ export default function App() {
         onSelect={handleSelect}
         loading={loading}
         error={error}
+        onRetry={recarregar}
       />
       <ExecutionPanel
         selected={selectedAutomation}
@@ -134,21 +155,30 @@ export default function App() {
         error={exec.error}
         onRun={handleRun}
       />
-      <TerminalView
-        lines={terminalLines}
-        status={exec.status}
-        outcome={exec.result?.outcome}
-        sample={!hasInteracted}
-        onClear={hasInteracted ? exec.reset : undefined}
-      />
-      <Artifacts
-        result={exec.result}
-        report={validationReport}
-        importReport={importReport}
-        extractReport={extractReport}
-        onNextStep={() => handleSelect("send_api")}
-        onNextStepAudit={() => handleSelect("validate")}
-      />
+      {/* O terminal e os artefatos abaixo pertencem ao FLUXO CLASSICO
+          (/api/run). A jornada de planilhas tem execucao propria e mostra o
+          registro e os resultados dentro dela — deixar estas secoes visiveis
+          exibia o resultado de uma automacao ANTERIOR como se fizesse parte da
+          analise em curso. */}
+      {!emJornada ? (
+        <>
+          <TerminalView
+            lines={terminalLines}
+            status={exec.status}
+            outcome={exec.result?.outcome}
+            sample={!hasInteracted}
+            onClear={hasInteracted ? exec.reset : undefined}
+          />
+          <Artifacts
+            result={exec.result}
+            report={validationReport}
+            importReport={importReport}
+            extractReport={extractReport}
+            onNextStep={() => handleSelect("send_api")}
+            onNextStepAudit={() => handleSelect("validate")}
+          />
+        </>
+      ) : null}
       <Footer />
     </div>
   );

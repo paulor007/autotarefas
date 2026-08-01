@@ -2,6 +2,7 @@
 import { FileUp, Loader2, Play } from "lucide-react";
 
 import type { RunStatus } from "../hooks/useExecution";
+import ErrorBoundary from "./ErrorBoundary";
 import SpreadsheetJourney from "./SpreadsheetJourney";
 import type { Automation, UploadKind } from "../lib/api";
 import DemoSource from "./DemoSource";
@@ -51,8 +52,8 @@ function buildSteps(
     { num: 1, title: "Escolher Automação", desc: "Selecione no catálogo" },
     { num: 2, title: entrada.title, desc: entrada.desc },
     { num: 3, title: "Executar", desc: "Rodar no sandbox" },
-    { num: 4, title: "Terminal ao Vivo", desc: "Acompanhar stdout" },
-    { num: 5, title: "Baixar Artefatos", desc: "Download dos resultados" },
+    { num: 4, title: "Execução", desc: "Acompanhar o andamento" },
+    { num: 5, title: "Resultados", desc: "Baixar evidências" },
   ];
 }
 
@@ -126,7 +127,10 @@ export default function ExecutionPanel({
           />
           <div className="overflow-hidden rounded-2xl border border-white/6 bg-surface">
             <div className="space-y-6 p-6 sm:p-8">
-              <SpreadsheetJourney />
+              {/* A barreira mantem a pagina de pe se um render falhar. */}
+              <ErrorBoundary area="jornada de planilhas">
+                <SpreadsheetJourney />
+              </ErrorBoundary>
             </div>
           </div>
         </div>
@@ -139,7 +143,7 @@ export default function ExecutionPanel({
       <div className="container-page">
         <SectionHeader
           title="Painel de Execução"
-          subtitle="Configure e execute automações em tempo real"
+          subtitle="Configure a execução e acompanhe cada etapa"
         />
 
         <div className="overflow-hidden rounded-2xl border border-white/6 bg-surface">

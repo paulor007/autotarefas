@@ -197,9 +197,12 @@ export default function SpreadsheetJourney() {
         />
       ) : null}
 
-      {step === "analysis_ready" && analysis ? (
+      {step === "analysis_ready" && analysis?.analysis ? (
         <div className="space-y-5">
-          <SpreadsheetAnalysis analysis={analysis} />
+          <SpreadsheetAnalysis
+            report={analysis.analysis}
+            preview={analysis.preview}
+          />
           <button
             type="button"
             onClick={jornada.goToSchemaChoice}
@@ -240,9 +243,9 @@ export default function SpreadsheetJourney() {
       ) : null}
 
       {/* ---------- Etapa: revisão ---------- */}
-      {step === "reviewing" && analysis && schema ? (
+      {step === "reviewing" && analysis?.analysis && schema ? (
         <SpreadsheetReview
-          analysis={analysis}
+          report={analysis.analysis}
           summary={schema.summary}
           origin={schema.schema_origin}
           origem={origem}

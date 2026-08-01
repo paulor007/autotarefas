@@ -1,8 +1,8 @@
-import type { AnalysisResponse, SchemaSummary } from "../lib/spreadsheets";
+import type { AnalysisReport, SchemaSummary } from "../lib/spreadsheets";
 import SpreadsheetSchemaSummary from "./SpreadsheetSchemaSummary";
 
 interface Props {
-  analysis: AnalysisResponse;
+  report: AnalysisReport;
   summary: SchemaSummary;
   origin: "suggested" | "uploaded";
   origem: "exemplo" | "upload";
@@ -18,7 +18,7 @@ interface Props {
  * decide executar e a pessoa, depois de ver o que sera aplicado.
  */
 export default function SpreadsheetReview({
-  analysis,
+  report,
   summary,
   origin,
   origem,
@@ -26,22 +26,23 @@ export default function SpreadsheetReview({
   onValidate,
   onBack,
 }: Props) {
-  const estrutura = analysis.analysis.estrutura ?? {};
-  const nome = analysis.analysis.metadata?.source_file ?? "arquivo";
+  const linhas = report.row_count !== null ? String(report.row_count) : "—";
+  const colunas =
+    report.column_count !== null ? String(report.column_count) : "—";
 
   return (
     <div className="space-y-5">
       <dl className="grid grid-cols-2 gap-3 sm:grid-cols-3">
         {[
-          ["Arquivo", nome],
+          ["Arquivo", report.source_file],
           ["Origem", origem === "exemplo" ? "exemplo" : "arquivo enviado"],
-          ["Aba", analysis.selected_sheet ?? "—"],
+          ["Aba", report.selected_sheet ?? "—"],
           [
             "Cabeçalho",
-            analysis.header_row !== null ? `linha ${analysis.header_row}` : "—",
+            report.header_row !== null ? `linha ${report.header_row}` : "—",
           ],
-          ["Linhas", String(estrutura.row_count ?? "—")],
-          ["Colunas", String(estrutura.column_count ?? "—")],
+          ["Linhas", linhas],
+          ["Colunas", colunas],
         ].map(([rotulo, valor]) => (
           <div
             key={rotulo}

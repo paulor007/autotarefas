@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   analyzeSpreadsheet,
   confirmSuggestedSchema,
+  ContractError,
   JourneyError,
   selectReading,
   startValidation,
@@ -113,20 +114,37 @@ export function useSpreadsheetJourney(): UseSpreadsheetJourney {
     setBusy(false);
   }, [execution]);
 
-  /** Traduz uma falha de chamada em estado de tela. */
-  const handleFailure = useCallback((e: unknown): void => {
-    if (!mounted.current) return;
+  /**
+   * Traduz uma falha de chamada em estado de tela.
+   *
+   * Devolve `true` quando JA definiu a etapa (o caso da sessao expirada, que
+   * tem tela propria). Sem esse retorno, o chamador voltava a etapa anterior
+   * na linha seguinte e apagava o estado `expired` — a pessoa nunca via a
+   * opcao de recomecar.
+   */
+  const handleFailure = useCallback((e: unknown): boolean => {
+    if (!mounted.current) return true;
+    if (e instanceof ContractError) {
+      // Divergencia entre o que a API devolveu e o contrato. O detalhe tecnico
+      // vai para o console; a tela recebe algo acionavel.
+      console.error("[AutoTarefas] resposta fora do contrato", e);
+      setError(
+        "A resposta do serviço não pôde ser interpretada. Reinicie a análise; se repetir, o serviço pode estar em uma versão diferente da interface.",
+      );
+      return false;
+    }
     if (e instanceof JourneyError) {
       if (e.expired) {
         // Sessao expirada: o token nao vale mais e insistir so gera erro.
         setStep("expired");
         setError(e.message);
-        return;
+        return true;
       }
       setError(e.message);
-      return;
+      return false;
     }
     setError("Não foi possível concluir a operação.");
+    return false;
   }, []);
 
   /** Aplica uma resposta de analise, derivando a etapa do que o backend disse. */
@@ -139,12 +157,28 @@ export function useSpreadsheetJourney(): UseSpreadsheetJourney {
     setSchema(null);
 
     if (data.status === "rejected_file") {
-      setRejection(data.detail ?? "Não foi possível ler este arquivo.");
+      setRejection(data.rejection ?? "Não foi possível ler este arquivo.");
       setStep("rejected_file");
       return;
     }
     setRejection(null);
-    setStep(data.needs_choice ? "needs_selection" : "analysis_ready");
+    if (data.needs_choice) {
+      setStep("needs_selection");
+      return;
+    }
+    // Invariante: nao anunciamos "analise pronta" sem relatorio para mostrar.
+    // HTTP 200 nao e sinonimo de sucesso operacional.
+    if (data.analysis === null) {
+      setError(
+        "A análise respondeu, mas sem um diagnóstico utilizável deste arquivo.",
+      );
+      setStep("rejected_file");
+      setRejection(
+        "Não foi possível descrever a estrutura deste arquivo. Verifique se ele tem uma tabela com cabeçalho.",
+      );
+      return;
+    }
+    setStep("analysis_ready");
   }, []);
 
   const runAnalysis = useCallback(
@@ -155,8 +189,10 @@ export function useSpreadsheetJourney(): UseSpreadsheetJourney {
       try {
         applyAnalysis(await analyzeSpreadsheet(opts));
       } catch (e: unknown) {
-        handleFailure(e);
-        if (mounted.current) setStep(file ? "file_selected" : "idle");
+        const assumido = handleFailure(e);
+        if (mounted.current && !assumido) {
+          setStep(file ? "file_selected" : "idle");
+        }
       } finally {
         if (mounted.current) setBusy(false);
       }
@@ -188,8 +224,8 @@ export function useSpreadsheetJourney(): UseSpreadsheetJourney {
       try {
         applyAnalysis(await selectReading(token, choice));
       } catch (e: unknown) {
-        handleFailure(e);
-        if (mounted.current) setStep("needs_selection");
+        const assumido = handleFailure(e);
+        if (mounted.current && !assumido) setStep("needs_selection");
       } finally {
         if (mounted.current) setBusy(false);
       }
@@ -220,8 +256,8 @@ export function useSpreadsheetJourney(): UseSpreadsheetJourney {
     try {
       applySchema(await confirmSuggestedSchema(token));
     } catch (e: unknown) {
-      handleFailure(e);
-      if (mounted.current) setStep("choosing_schema");
+      const assumido = handleFailure(e);
+      if (mounted.current && !assumido) setStep("choosing_schema");
     } finally {
       if (mounted.current) setBusy(false);
     }
@@ -236,11 +272,12 @@ export function useSpreadsheetJourney(): UseSpreadsheetJourney {
       try {
         applySchema(await uploadSchema(token, schemaFile));
       } catch (e: unknown) {
-        handleFailure(e);
+        const assumido = handleFailure(e);
         // O backend preserva o ultimo schema valido: se havia um, a jornada
         // continua podendo seguir com ele; senao, volta para a escolha.
-        if (mounted.current)
+        if (mounted.current && !assumido) {
           setStep(schema ? "schema_invalid" : "choosing_schema");
+        }
       } finally {
         if (mounted.current) setBusy(false);
       }
@@ -257,10 +294,8 @@ export function useSpreadsheetJourney(): UseSpreadsheetJourney {
       const started = await startValidation(token);
       execution.attach(started.token, started.stream_url);
     } catch (e: unknown) {
-      handleFailure(e);
-      if (mounted.current && !(e instanceof JourneyError && e.expired)) {
-        setStep("reviewing");
-      }
+      const assumido = handleFailure(e);
+      if (mounted.current && !assumido) setStep("reviewing");
     } finally {
       if (mounted.current) setBusy(false);
     }
