@@ -9,6 +9,8 @@ interface Props {
   onSelect: (id: string) => void;
   loading: boolean;
   error: string | null;
+  /** Refaz a carga quando o serviço não respondeu. */
+  onRetry?: () => void;
 }
 
 const GRID =
@@ -21,6 +23,7 @@ export default function Catalog({
   onSelect,
   loading,
   error,
+  onRetry,
 }: Props) {
   const automations: Automation[] = catalog?.automations ?? [];
   const active = automations.filter((a) => activeIds.has(a.id));
@@ -30,8 +33,8 @@ export default function Catalog({
     <section id="catalogo" className="py-20">
       <div className="container-page">
         <SectionHeader
-          title="Catálogo de Automações"
-          subtitle="Selecione uma automação para executar no ambiente sandbox"
+          title="Soluções disponíveis"
+          subtitle="Escolha uma solução para executar sobre os seus dados, em ambiente isolado"
         />
 
         {loading && (
@@ -43,13 +46,26 @@ export default function Catalog({
 
         {error && !loading && (
           <div className="mx-auto max-w-lg rounded-lg border border-danger/40 bg-danger/5 px-5 py-4 text-center">
-            <p className="font-mono text-sm text-danger">
-              não foi possível carregar o catálogo
+            <p className="text-sm font-semibold text-danger">
+              Não foi possível carregar as soluções
             </p>
+            {/* Sem host nem porta: essa informacao depende de como o ambiente
+                foi iniciado e mudaria a cada configuracao. O detalhe tecnico
+                (ECONNREFUSED, alvo do proxy) fica no console de dev, onde
+                quem esta depurando consegue ver. */}
             <p className="mt-1 text-sm text-muted">
-              {error}. Confirme que o backend está em{" "}
-              <code className="font-mono">localhost:7860</code>.
+              O serviço não respondeu. Verifique se ele está em execução e tente
+              novamente.
             </p>
+            {onRetry ? (
+              <button
+                type="button"
+                onClick={onRetry}
+                className="mt-3 rounded-lg border border-white/12 px-4 py-2 text-sm font-semibold text-fg hover:border-white/25"
+              >
+                Tentar novamente
+              </button>
+            ) : null}
           </div>
         )}
 
