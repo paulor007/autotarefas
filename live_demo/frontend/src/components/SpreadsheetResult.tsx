@@ -25,9 +25,14 @@ function aparencia(step: JourneyStep): Aparencia | null {
   switch (step) {
     case "completed":
       return {
-        titulo: "Concluído sem problemas",
+        titulo: "Concluído sem registros para revisão",
+        // Sem esta segunda frase a tela parecia se contradizer: a analise
+        // aponta observacoes estruturais (linhas repetidas, por exemplo) e o
+        // resultado diz "sem problemas". Sao coisas distintas — as regras
+        // confirmadas e que definem o que e problema, e o schema sugerido nao
+        // inclui regra de duplicidade.
         texto:
-          "A validação foi concluída e não encontrou registros para revisão.",
+          "A validação foi concluída e nenhum registro precisou de revisão. Observações estruturais vistas na análise não viram problema a menos que uma regra confirmada trate delas.",
         classe: "border-ok/40 bg-ok/5 text-ok",
       };
     case "completed_with_issues":
@@ -64,12 +69,22 @@ function aparencia(step: JourneyStep): Aparencia | null {
 }
 
 /** Rotulos legiveis para os artefatos — nada de nome tecnico cru. */
+/**
+ * Rotulos legiveis para os artefatos.
+ *
+ * "planilha_validada.xlsx" NAO e a planilha corrigida: e um relatorio em
+ * quatro abas (Resumo, Registros validos, Registros invalidos, Auditoria).
+ * O rotulo anterior, "Planilha validada", sugeria correcao automatica — que o
+ * fluxo nao faz. O nome do ARQUIVO nao muda (e contrato publico da CLI); so a
+ * forma como a tela o apresenta.
+ */
 const ROTULOS: Record<string, string> = {
   "validacao_report.json": "Relatório da validação (JSON)",
-  "planilha_validada.xlsx": "Planilha validada",
+  "planilha_validada.xlsx": "Relatório em planilha (resumo e registros)",
   "registros_validos.csv": "Registros válidos",
   "registros_invalidos.csv": "Registros para revisão",
-  "schema_sugerido.yaml": "Schema sugerido",
+  "schema_sugerido.yaml": "Schema sugerido (estrutura observada)",
+  "schema_efetivo.yaml": "Schema aplicado na validação",
   [EVIDENCE_PACKAGE_NAME]: "Pacote completo de evidências",
 };
 

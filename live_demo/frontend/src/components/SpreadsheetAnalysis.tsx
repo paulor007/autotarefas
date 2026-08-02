@@ -1,4 +1,4 @@
-import type { AnalysisReport } from "../lib/spreadsheets";
+import { notasUnificadas, type AnalysisReport } from "../lib/spreadsheets";
 
 /** Quantas colunas listar antes de resumir — a tela nao e a planilha. */
 const MAX_COLUNAS = 24;
@@ -38,6 +38,9 @@ function porcentagem(valor: number | null): string {
  * "Objects are not valid as a React child" e apagava a aplicacao inteira.
  */
 export default function SpreadsheetAnalysis({ report, preview }: Props) {
+  // Uma lista so: o backend descreve a mesma ocorrencia em `findings` e em
+  // `reader_warnings`, e mostrar as duas repetia o aviso na tela.
+  const observacoes = notasUnificadas(report);
   const linhasPrevia = preview
     ? preview.split("\n").slice(0, MAX_LINHAS_PREVIA)
     : [];
@@ -95,41 +98,35 @@ export default function SpreadsheetAnalysis({ report, preview }: Props) {
         </ul>
       </div>
 
-      {report.findings.length > 0 ? (
+      {observacoes.length > 0 ? (
         <div>
           <h4 className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted">
             Observações da análise
           </h4>
           <ul className="space-y-1.5 text-[0.85rem]">
-            {report.findings.slice(0, MAX_NOTAS).map((achado, i) => (
+            {observacoes.slice(0, MAX_NOTAS).map((nota, i) => (
               <li
-                key={`${achado.code ?? "achado"}-${i}`}
-                className="rounded-lg border border-white/6 bg-ink px-3 py-2"
+                key={`${nota.code ?? "nota"}-${i}`}
+                className={
+                  nota.severity === "problema"
+                    ? "rounded-lg border border-danger/40 bg-danger/5 px-3 py-2 text-danger"
+                    : "rounded-lg border border-warn/40 bg-warn/5 px-3 py-2 text-warn"
+                }
               >
-                {achado.column ? (
-                  <span className="font-semibold text-fg">
-                    {achado.column}:{" "}
-                  </span>
+                {nota.column ? (
+                  <span className="font-semibold">{nota.column}: </span>
                 ) : null}
                 {/* `message` e sempre texto apos a normalizacao */}
-                <span className="text-muted">{achado.message}</span>
+                <span>{nota.message}</span>
               </li>
             ))}
           </ul>
+          <p className="mt-2 text-[0.8rem] text-muted">
+            Estas são observações sobre a <strong>estrutura</strong> do arquivo.
+            Elas não são resultado das regras de validação — quem decide o que é
+            problema são as regras que você confirmar na próxima etapa.
+          </p>
         </div>
-      ) : null}
-
-      {report.reader_warnings.length > 0 ? (
-        <ul className="space-y-1.5">
-          {report.reader_warnings.slice(0, MAX_NOTAS).map((aviso, i) => (
-            <li
-              key={`${aviso.code ?? "aviso"}-${i}`}
-              className="rounded-lg border border-warn/40 bg-warn/5 px-3 py-2 text-[0.85rem] text-warn"
-            >
-              {aviso.message}
-            </li>
-          ))}
-        </ul>
       ) : null}
 
       {linhasPrevia.length > 0 ? (

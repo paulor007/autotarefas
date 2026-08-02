@@ -203,13 +203,25 @@ export default function SpreadsheetJourney() {
             report={analysis.analysis}
             preview={analysis.preview}
           />
-          <button
-            type="button"
-            onClick={jornada.goToSchemaChoice}
-            className="rounded-lg bg-signal px-5 py-2.5 text-sm font-semibold text-ink"
-          >
-            Escolher como validar
-          </button>
+          <div className="flex flex-col gap-3 sm:flex-row">
+            <button
+              type="button"
+              onClick={jornada.goToSchemaChoice}
+              className="rounded-lg bg-signal px-5 py-2.5 text-sm font-semibold text-ink"
+            >
+              Escolher como validar
+            </button>
+            {/* Saida disponivel JA na analise: antes so havia como recomecar
+                depois de validar, o que obrigava a executar algo so para
+                trocar de arquivo. */}
+            <button
+              type="button"
+              onClick={jornada.reset}
+              className="rounded-lg border border-white/12 px-5 py-2.5 text-sm font-semibold text-fg hover:border-white/25"
+            >
+              Analisar outro arquivo
+            </button>
+          </div>
         </div>
       ) : null}
 
