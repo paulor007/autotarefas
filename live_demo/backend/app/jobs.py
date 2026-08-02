@@ -69,6 +69,14 @@ class Journey:
     schema_path: Path | None = None
     """Schema confirmado, em `<workspace>/config/schema_confirmado.yaml`."""
     schema_origin: str | None = None
+    """"suggested", "profile" ou "uploaded" — de onde o schema confirmado veio."""
+    profile_id: str | None = None
+    """Perfil que originou o schema, quando a origem foi um perfil."""
+    profile_version: int | None = None
+    profile_mapping: dict[str, str] = field(default_factory=dict)
+    """Mapeamento EFETIVAMENTE aplicado (campo conceitual -> coluna real)."""
+    profile_omitted: list[str] = field(default_factory=list)
+    """Campos opcionais que o visitante decidiu nao usar."""
     """"suggested" ou "uploaded" — de onde o schema confirmado veio."""
     rejection: str | None = None
 

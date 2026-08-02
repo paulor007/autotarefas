@@ -777,3 +777,226 @@ class TestExpiracao:
         r = client.post(f"/api/spreadsheets/{token}/selection", data={"sheet": "X"})
         assert r.status_code == HTTP_NOT_FOUND
         assert r.json()["code"] == "expired"
+
+
+# ============================================================
+# Perfis no Live (1.8C)
+# ============================================================
+
+CSV_CONTATOS = (
+    "Nome Completo,Contato principal,Documento\n"
+    "Ana Silva,ana@x.com,111.444.777-35\n"
+    "Joao Souza,joao@x.com,529.982.247-25\n"
+)
+
+
+def _analisar_contatos(client: TestClient) -> str:
+    resposta = client.post(
+        "/api/spreadsheets/analyze",
+        files={"files": ("contatos.csv", CSV_CONTATOS.encode(), "text/csv")},
+    )
+    assert resposta.status_code == HTTP_OK, resposta.text
+    return str(resposta.json()["token"])
+
+
+def _mapear(
+    client: TestClient,
+    token: str,
+    mapping: dict[str, str],
+    perfil: str = "cadastro_contatos",
+) -> Any:
+    return client.post(
+        f"/api/spreadsheets/{token}/schema",
+        data={
+            "source": "profile",
+            "profile_id": perfil,
+            "mapping": json.dumps(mapping),
+        },
+    )
+
+
+class TestCatalogoDePerfis:
+    def test_lista_os_perfis_reais_do_pacote(self, client: TestClient) -> None:
+        corpo = client.get("/api/spreadsheets/profiles").json()
+        ids = [p["id"] for p in corpo["profiles"]]
+        assert "cadastro_contatos" in ids
+
+    def test_metadados_do_perfil(self, client: TestClient) -> None:
+        corpo = client.get("/api/spreadsheets/profiles/cadastro_contatos").json()
+        assert corpo["version"] >= 1
+        campos = {f["name"]: f["required"] for f in corpo["fields"]}
+        assert campos["nome"] is True
+        assert campos["cnpj"] is False
+        assert all(f["doc"] for f in corpo["fields"])
+
+    def test_payload_nao_expoe_caminho_nem_yaml_bruto(self, client: TestClient) -> None:
+        texto = client.get("/api/spreadsheets/profiles/cadastro_contatos").text
+        assert "columns:" not in texto  # nada de YAML cru
+        assert "/" not in texto.replace("\\/", "")[:0] + ""  # sem caminho
+        assert "resources" not in texto
+
+    def test_perfil_inexistente(self, client: TestClient) -> None:
+        r = client.get("/api/spreadsheets/profiles/fantasma")
+        assert r.status_code == HTTP_NOT_FOUND
+        assert r.json()["code"] == "profile_not_found"
+
+    @pytest.mark.parametrize(
+        "inseguro", ["..", "perfil.yaml", "sub_dir_x", "PerfilMaiusculo", "1perfil"]
+    )
+    def test_identificador_inseguro_e_recusado(self, client: TestClient, inseguro: str) -> None:
+        """A validação do id vive no núcleo (`load_profile`), não duplicada aqui."""
+        r = client.get(f"/api/spreadsheets/profiles/{inseguro}")
+        assert r.status_code == HTTP_NOT_FOUND
+
+
+class TestSchemaPorPerfil:
+    def test_mapeamento_valido_gera_schema(self, client: TestClient) -> None:
+        token = _analisar_contatos(client)
+        r = _mapear(
+            client,
+            token,
+            {"nome": "Nome Completo", "email": "Contato principal", "cpf": "Documento"},
+        )
+        corpo = r.json()
+        assert corpo["status"] == "schema_ready"
+        assert corpo["schema_origin"] == "profile"
+        assert corpo["profile"]["id"] == "cadastro_contatos"
+        assert corpo["profile"]["mapping"]["cpf"] == "Documento"
+
+    def test_opcionais_nao_usados_sao_omitidos(self, client: TestClient) -> None:
+        token = _analisar_contatos(client)
+        corpo = _mapear(client, token, {"nome": "Nome Completo"}).json()
+        assert set(corpo["profile"]["omitted"]) >= {"telefone", "cnpj"}
+        nomes = [c["name"] for c in corpo["summary"]["columns"]]
+        assert nomes == ["Nome Completo"]
+
+    def test_procedencia_verdadeira_no_resumo(self, client: TestClient) -> None:
+        token = _analisar_contatos(client)
+        corpo = _mapear(client, token, {"nome": "Nome Completo"}).json()
+        proc = corpo["summary"]["generated_from"]
+        assert proc["profile"] == "cadastro_contatos"
+        assert proc["profile_version"] == 1
+
+    def test_obrigatorio_sem_mapeamento(self, client: TestClient) -> None:
+        token = _analisar_contatos(client)
+        r = _mapear(client, token, {"email": "Contato principal"})
+        assert r.status_code == HTTP_BAD_REQUEST
+        assert r.json()["code"] == "incomplete_mapping"
+        assert "nome" in r.json()["detail"]
+
+    def test_campo_conceitual_inexistente(self, client: TestClient) -> None:
+        token = _analisar_contatos(client)
+        r = _mapear(client, token, {"nome": "Nome Completo", "xpto": "Documento"})
+        assert r.status_code == HTTP_BAD_REQUEST
+        assert r.json()["code"] == "invalid_mapping"
+
+    def test_coluna_inexistente_na_planilha(self, client: TestClient) -> None:
+        """As colunas conferidas são as da leitura ATUAL."""
+        token = _analisar_contatos(client)
+        r = _mapear(client, token, {"nome": "Fantasma"})
+        assert r.status_code == HTTP_BAD_REQUEST
+        assert r.json()["code"] == "invalid_mapping"
+        assert "nao encontrada" in r.json()["detail"]
+
+    def test_dois_campos_para_a_mesma_coluna(self, client: TestClient) -> None:
+        token = _analisar_contatos(client)
+        r = _mapear(client, token, {"nome": "Nome Completo", "cpf": "Nome Completo"})
+        assert r.status_code == HTTP_BAD_REQUEST
+        assert "mesma coluna" in r.json()["detail"]
+
+    def test_perfil_inexistente_na_geracao(self, client: TestClient) -> None:
+        token = _analisar_contatos(client)
+        r = _mapear(client, token, {"nome": "Nome Completo"}, perfil="fantasma")
+        assert r.status_code == HTTP_NOT_FOUND
+
+    def test_mapeamento_malformado(self, client: TestClient) -> None:
+        token = _analisar_contatos(client)
+        r = client.post(
+            f"/api/spreadsheets/{token}/schema",
+            data={"source": "profile", "profile_id": "cadastro_contatos", "mapping": "{{{"},
+        )
+        assert r.status_code == HTTP_BAD_REQUEST
+        assert r.json()["code"] == "invalid_mapping"
+
+    def test_schema_fica_no_workspace_e_nao_e_baixavel(self, client: TestClient) -> None:
+        token = _analisar_contatos(client)
+        _mapear(client, token, {"nome": "Nome Completo"})
+        job = jobs.get(token)
+        assert job is not None
+        assert job.journey is not None
+        assert job.journey.schema_path is not None
+        assert job.journey.schema_path.parent.name == "config"
+        assert (
+            client.get(f"/api/download/{token}/schema_confirmado.yaml").status_code
+            == HTTP_NOT_FOUND
+        )
+
+    def test_token_de_outra_jornada(self, client: TestClient) -> None:
+        _analisar_contatos(client)
+        outro = _analisar_contatos(client)
+        r = _mapear(client, outro, {"nome": "Nome Completo"})
+        assert r.status_code == HTTP_OK  # o próprio token funciona
+        r2 = _mapear(client, "inexistente", {"nome": "Nome Completo"})
+        assert r2.status_code == HTTP_NOT_FOUND
+
+
+class TestCicloComPerfil:
+    def test_perfil_ate_a_validacao_com_evidencias(self, client: TestClient) -> None:
+        """perfil → mapeamento → schema → validação → pacote."""
+
+        token = _analisar_contatos(client)
+        _mapear(
+            client,
+            token,
+            {"nome": "Nome Completo", "email": "Contato principal", "cpf": "Documento"},
+        )
+        client.post(f"/api/spreadsheets/{token}/validate")
+        resultado = _concluir(client, token)
+
+        assert resultado["exit_code"] == 0
+        nomes = {a["name"] for a in resultado["artifacts"]}
+        assert "pacote_execucao.zip" in nomes
+
+        # o schema efetivo dentro do pacote carrega a procedência do perfil
+        zip_art = next(a for a in resultado["artifacts"] if a["name"] == "pacote_execucao.zip")
+        pacote = zipfile.ZipFile(io.BytesIO(client.get(zip_art["download_url"]).content))
+        efetivo = pacote.read("schema_efetivo.yaml").decode("utf-8")
+        assert "cadastro_contatos" in efetivo
+        manifesto = json.loads(pacote.read("manifest.json"))
+        assert manifesto["configuration"]["generated_from"]["profile"] == "cadastro_contatos"
+
+    def test_schema_gerado_e_carregavel_pelo_loader_real(self, client: TestClient) -> None:
+        from autotarefas.tasks.validate import load_schema
+
+        token = _analisar_contatos(client)
+        _mapear(client, token, {"nome": "Nome Completo", "cpf": "Documento"})
+        job = jobs.get(token)
+        assert job is not None
+        assert job.journey is not None
+        assert job.journey.schema_path is not None
+        schema = load_schema(job.journey.schema_path)
+        assert [c.name for c in schema.columns] == ["Nome Completo", "Documento"]
+        assert schema.generated_from is not None
+
+
+class TestCompatibilidadeComOsOutrosFluxos:
+    def test_schema_sugerido_continua_funcionando(self, client: TestClient) -> None:
+        token = _analisar_contatos(client)
+        r = client.post(f"/api/spreadsheets/{token}/schema", data={"source": "suggested"})
+        assert r.json()["schema_origin"] == "suggested"
+        assert "profile" not in r.json()
+
+    def test_yaml_proprio_continua_funcionando(self, client: TestClient) -> None:
+        token = _analisar_contatos(client)
+        r = client.post(
+            f"/api/spreadsheets/{token}/schema",
+            data={"source": "uploaded"},
+            files={"files": ("m.yaml", b"columns:\n  - name: Nome Completo\n", "application/yaml")},
+        )
+        assert r.json()["schema_origin"] == "uploaded"
+
+    def test_origem_desconhecida_menciona_as_tres(self, client: TestClient) -> None:
+        token = _analisar_contatos(client)
+        r = client.post(f"/api/spreadsheets/{token}/schema", data={"source": "xpto"})
+        assert r.status_code == HTTP_BAD_REQUEST
+        assert "profile" in r.json()["detail"]

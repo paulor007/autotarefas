@@ -36,6 +36,7 @@ mesmo subprocesso isolado da 1.8A, com argv montado por allowlist.
 from __future__ import annotations
 
 import asyncio
+import json
 import shutil
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -45,6 +46,13 @@ from fastapi import APIRouter, File, Form, Request, UploadFile
 from fastapi.responses import JSONResponse
 
 from autotarefas.core.exceptions import AutoTarefasError
+from autotarefas.profiles import (
+    MappingError,
+    ProfileError,
+    export_schema,
+    list_profiles,
+    load_profile,
+)
 from autotarefas.services import analyze_spreadsheet
 from autotarefas.tasks.validate import load_schema
 
@@ -221,6 +229,64 @@ def _run_analysis(job: jobs.Job, journey: jobs.Journey) -> None:
 # ==========================================================================
 # 1. Analisar
 # ==========================================================================
+
+
+def _profile_payload(profile_id: str) -> dict[str, Any]:
+    """
+    Metadados de um perfil, no formato que a interface precisa.
+
+    So o que e seguro e util: id, titulo, versao, resumo e os campos
+    conceituais com sua documentacao. Nada de caminho de arquivo, YAML bruto
+    ou objeto interno — a interface nao precisa disso e expor amplia a
+    superficie a toa.
+    """
+    perfil = load_profile(profile_id)
+    requeridos = set(perfil.required_fields)
+    return {
+        "id": perfil.id,
+        "title": perfil.title,
+        "version": perfil.version,
+        "summary": perfil.summary.strip(),
+        "fields": [
+            {
+                "name": campo,
+                "required": campo in requeridos,
+                "doc": (perfil.fields[campo].doc if campo in perfil.fields else ""),
+            }
+            for campo in perfil.concept_fields
+        ],
+    }
+
+
+@router.get("/profiles")
+async def profiles() -> JSONResponse:
+    """
+    Perfis disponiveis no pacote instalado.
+
+    Endpoint PUBLICO e somente leitura de proposito: o catalogo e conteudo do
+    proprio pacote, igual ao `/api/catalog` dos cards — nao depende de arquivo
+    de ninguem, nao toca workspace e nao revela nada de nenhuma sessao. Exigir
+    token aqui obrigaria a interface a subir um arquivo so para saber o que
+    existe.
+    """
+    itens = []
+    for pid in list_profiles():
+        try:
+            itens.append(_profile_payload(pid))
+        except ProfileError:  # pragma: no cover - recurso corrompido no pacote
+            continue
+    return JSONResponse({"profiles": itens})
+
+
+@router.get("/profiles/{profile_id}")
+async def profile_detail(profile_id: str) -> JSONResponse:
+    """Metadados de um perfil. O id e validado pelo catalogo do nucleo."""
+    try:
+        return JSONResponse(_profile_payload(profile_id))
+    except ProfileError as exc:
+        # `load_profile` recusa id com barra, `..` ou fora do padrao: a
+        # validacao de nome vive no nucleo, nao duplicada aqui.
+        return _error(_HTTP_NOT_FOUND, str(exc), code="profile_not_found")
 
 
 @router.post("/analyze")
@@ -413,6 +479,8 @@ def _schema_summary(caminho: Path) -> dict[str, Any]:
 async def choose_schema(  # noqa: PLR0911, PLR0912 - cada recusa tem mensagem propria
     token: str,
     source: str = Form(default="suggested"),
+    profile_id: str = Form(default=""),
+    mapping: str = Form(default=""),
     files: list[UploadFile] = File(default=[]),  # noqa: B008
 ) -> JSONResponse:
     """
@@ -460,6 +528,12 @@ async def choose_schema(  # noqa: PLR0911, PLR0912 - cada recusa tem mensagem pr
             )
         parcial.write_text(sugerido.read_text(encoding="utf-8"), encoding="utf-8")
         origem = "suggested"
+    elif source == "profile":
+        erro = _escrever_schema_de_perfil(journey, profile_id, mapping, parcial)
+        if erro is not None:
+            parcial.unlink(missing_ok=True)
+            return erro
+        origem = "profile"
     elif source == "uploaded":
         if not enviados:
             return _error(_HTTP_BAD_REQUEST, "nenhum schema enviado", code="no_file")
@@ -490,7 +564,7 @@ async def choose_schema(  # noqa: PLR0911, PLR0912 - cada recusa tem mensagem pr
     else:
         return _error(
             _HTTP_BAD_REQUEST,
-            "origem do schema invalida: use 'suggested' ou 'uploaded'",
+            "origem do schema invalida: use 'suggested', 'profile' ou 'uploaded'",
             code="invalid_source",
         )
 
@@ -511,14 +585,20 @@ async def choose_schema(  # noqa: PLR0911, PLR0912 - cada recusa tem mensagem pr
     journey.schema_path = destino
     journey.schema_origin = origem
     journey.status = "schema_ready"
-    return JSONResponse(
-        {
-            "token": token,
-            "status": journey.status,
-            "schema_origin": journey.schema_origin,
-            "summary": resumo,
+    corpo: dict[str, Any] = {
+        "token": token,
+        "status": journey.status,
+        "schema_origin": journey.schema_origin,
+        "summary": resumo,
+    }
+    if journey.profile_id:
+        corpo["profile"] = {
+            "id": journey.profile_id,
+            "version": journey.profile_version,
+            "mapping": dict(journey.profile_mapping),
+            "omitted": list(journey.profile_omitted),
         }
-    )
+    return JSONResponse(corpo)
 
 
 # ==========================================================================
@@ -570,6 +650,77 @@ def _journey_status_for(outcome: str, exit_code: int) -> jobs.JourneyStatus:
     if exit_code == 2:  # noqa: PLR2004 - contrato de uso/configuracao do validate
         return "invalid_configuration"
     return "technical_failure"
+
+
+def _escrever_schema_de_perfil(  # noqa: PLR0911 - cada recusa tem mensagem propria
+    journey: jobs.Journey,
+    profile_id: str,
+    mapping_bruto: str,
+    destino: Path,
+) -> JSONResponse | None:
+    """
+    Gera o schema a partir de um perfil e do mapeamento confirmado.
+
+    Toda a regra vive no nucleo (`export_schema`): validacao do id, do campo
+    conceitual, da coluna contra as colunas REAIS, recusa de duas associacoes
+    para a mesma coluna, omissao de opcionais e `generated_from`. Aqui so
+    traduzimos o payload e os erros.
+
+    As colunas conferidas sao as da analise ATUAL — a aba e o cabecalho que o
+    visitante confirmou. Assim um mapeamento nao sobrevive a troca de aba.
+
+    Returns:
+        None em caso de sucesso; a resposta de erro caso contrario.
+    """
+    if not profile_id.strip():
+        return _error(_HTTP_BAD_REQUEST, "informe o perfil", code="no_profile")
+
+    try:
+        perfil = load_profile(profile_id.strip())
+    except ProfileError as exc:
+        return _error(_HTTP_NOT_FOUND, str(exc), code="profile_not_found")
+
+    try:
+        pedido = json.loads(mapping_bruto or "{}")
+    except json.JSONDecodeError:
+        return _error(_HTTP_BAD_REQUEST, "mapeamento invalido", code="invalid_mapping")
+    if not isinstance(pedido, dict):
+        return _error(_HTTP_BAD_REQUEST, "mapeamento invalido", code="invalid_mapping")
+
+    # So pares texto->texto entram; qualquer outra coisa e descartada antes de
+    # chegar ao nucleo.
+    escolhas = {
+        str(k): str(v).strip()
+        for k, v in pedido.items()
+        if isinstance(k, str) and isinstance(v, str) and str(v).strip()
+    }
+
+    colunas = _colunas_da_analise(journey)
+    try:
+        resultado = export_schema(perfil, escolhas, available_columns=colunas)
+    except MappingError as exc:
+        return _error(_HTTP_BAD_REQUEST, str(exc), code="invalid_mapping")
+
+    if not resultado.is_complete:
+        faltando = ", ".join(resultado.unmapped_required)
+        return _error(
+            _HTTP_BAD_REQUEST,
+            f"mapeie os campos obrigatorios antes de continuar: {faltando}",
+            code="incomplete_mapping",
+        )
+
+    destino.write_text(resultado.yaml_text, encoding="utf-8")
+    journey.profile_id = perfil.id
+    journey.profile_version = perfil.version
+    journey.profile_mapping = dict(resultado.mapping_applied)
+    journey.profile_omitted = list(resultado.unmapped_optional)
+    return None
+
+
+def _colunas_da_analise(journey: jobs.Journey) -> list[str]:
+    """Colunas da leitura ATUAL (aba e cabecalho confirmados)."""
+    colunas = journey.analysis.get("columns") or []
+    return [str(c["name"]) for c in colunas if isinstance(c, dict) and c.get("name")]
 
 
 @router.post("/{token}/validate")
