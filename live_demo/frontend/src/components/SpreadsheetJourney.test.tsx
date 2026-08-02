@@ -2,6 +2,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { ContractError } from "../lib/spreadsheets";
 import ErrorBoundary from "./ErrorBoundary";
 import SpreadsheetJourney from "./SpreadsheetJourney";
 
@@ -216,6 +217,12 @@ describe("SpreadsheetJourney", () => {
   });
 
   it("mostra erro controlado quando a resposta foge do contrato", async () => {
+    // O produto REGISTRA o erro tecnico no console — e isso e desejado. Aqui
+    // o spy captura esse log especifico para (a) nao poluir a saida da suite
+    // e (b) PROVAR que o diagnostico foi registrado. Erros inesperados de
+    // outros testes continuam aparecendo: o spy e local e restaurado.
+    const logErro = vi.spyOn(console, "error").mockImplementation(() => {});
+
     // 200 OK, mas sem token: divergência de contrato, não falha de dados.
     mockFetch({ status: "analysis_ready" });
     montar();
@@ -230,6 +237,14 @@ describe("SpreadsheetJourney", () => {
     });
     // a estrutura continua visível — nada de tela vazia
     expect(screen.getByLabelText("principal")).toBeTruthy();
+
+    // o erro técnico REALMENTE foi registrado, com o tipo certo
+    expect(logErro).toHaveBeenCalled();
+    const registrado = logErro.mock.calls.find((args) =>
+      args.some((a) => a instanceof ContractError),
+    );
+    expect(registrado).toBeDefined();
+    logErro.mockRestore();
   });
 
   it("mostra erro amigável em falha HTTP estruturada", async () => {
@@ -275,6 +290,78 @@ describe("SpreadsheetJourney", () => {
       expect(screen.getByText("Diagnóstico do arquivo")).toBeTruthy();
     });
     expect(espia).toHaveBeenCalledTimes(1);
+  });
+
+  it("não mostra a mesma observação duas vezes (regressão)", async () => {
+    mockFetch(respostaAnalise());
+    montar();
+    await enviarArquivo();
+    await userEvent.click(
+      screen.getByRole("button", { name: /Analisar meus dados/i }),
+    );
+    await waitFor(() => {
+      expect(screen.getByText("Diagnóstico do arquivo")).toBeTruthy();
+    });
+    // O payload traz a MESMA nota em `findings` e em `reader_warnings`.
+    expect(
+      screen.getAllByText(/16 linha\(s\) completamente identica/),
+    ).toHaveLength(1);
+  });
+
+  it("nova análise substitui a anterior por completo", async () => {
+    mockFetch(respostaAnalise());
+    montar();
+    await enviarArquivo();
+    await userEvent.click(
+      screen.getByRole("button", { name: /Analisar meus dados/i }),
+    );
+    await waitFor(() => expect(screen.getByText("7089")).toBeTruthy());
+
+    // segunda análise, com outro arquivo e outro resultado
+    mockFetch(
+      respostaAnalise({
+        analysis: {
+          metadata: { source_file: "outro.csv", extension: ".csv" },
+          leitura: {
+            selected_sheet: null,
+            header_row: 1,
+            confidence: 1,
+            available_sheets: [],
+          },
+          estrutura: { row_count: 12, column_count: 2 },
+          columns: [{ name: "A", inferred_type: "texto", empty_count: 0 }],
+          findings: [],
+          reader_warnings: [],
+        },
+      }),
+    );
+    await userEvent.click(
+      screen.getByRole("button", { name: /Analisar outro arquivo/i }),
+    );
+    await enviarArquivo("outro.csv");
+    await userEvent.click(
+      screen.getByRole("button", { name: /Analisar meus dados/i }),
+    );
+
+    await waitFor(() => expect(screen.getByText("12")).toBeTruthy());
+    // nada da análise anterior sobrou
+    expect(screen.queryByText("7089")).toBeNull();
+    expect(screen.queryByText(/16 linha\(s\)/)).toBeNull();
+  });
+
+  it("distingue observação estrutural de problema de validação", async () => {
+    mockFetch(respostaAnalise());
+    montar();
+    await enviarArquivo();
+    await userEvent.click(
+      screen.getByRole("button", { name: /Analisar meus dados/i }),
+    );
+    await waitFor(() => {
+      expect(screen.getByText("Diagnóstico do arquivo")).toBeTruthy();
+    });
+    expect(screen.getByText(/observações sobre a/i).textContent).toContain(
+      "estrutura",
+    );
   });
 });
 
