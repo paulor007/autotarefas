@@ -6,6 +6,7 @@ import SpreadsheetAnalysis from "./SpreadsheetAnalysis";
 import SpreadsheetResult from "./SpreadsheetResult";
 import SpreadsheetReview from "./SpreadsheetReview";
 import SpreadsheetSchemaChoice from "./SpreadsheetSchemaChoice";
+import SpreadsheetProfileMapping from "./SpreadsheetProfileMapping";
 import SpreadsheetSelection from "./SpreadsheetSelection";
 import TerminalView from "./TerminalView";
 
@@ -235,7 +236,23 @@ export default function SpreadsheetJourney() {
           error={error}
           summary={schema?.summary ?? null}
           onUseSuggested={() => void jornada.useSuggested()}
+          onUseProfile={() => void jornada.goToProfileChoice()}
           onUpload={(arquivo) => void jornada.sendSchema(arquivo)}
+        />
+      ) : null}
+
+      {step === "choosing_profile" ? (
+        <SpreadsheetProfileMapping
+          profiles={jornada.profiles}
+          profile={jornada.profile}
+          columns={jornada.columns}
+          mapping={jornada.mapping}
+          busy={busy}
+          error={error}
+          onPick={(id) => void jornada.pickProfile(id)}
+          onChange={jornada.setMappingField}
+          onSubmit={() => void jornada.submitProfileMapping()}
+          onBack={jornada.goToSchemaChoice}
         />
       ) : null}
 
@@ -244,6 +261,33 @@ export default function SpreadsheetJourney() {
           <p className="rounded-lg border border-ok/40 bg-ok/5 px-4 py-3 text-sm text-ok">
             Schema confirmado. Revise a configuração antes de executar.
           </p>
+          {schema.profile ? (
+            <div className="rounded-lg border border-white/6 bg-ink px-4 py-3 text-[0.85rem]">
+              <p className="font-semibold text-fg">
+                Gerado a partir do perfil {schema.profile.id}
+                {schema.profile.version !== null
+                  ? ` (versão ${schema.profile.version})`
+                  : ""}
+              </p>
+              {/* Exibimos o mapeamento CONFIRMADO pelo backend, não o estado
+                  local: mostrar o que foi enviado poderia divergir do que o
+                  núcleo realmente aplicou. */}
+              <ul className="mt-2 space-y-1 text-muted">
+                {Object.entries(schema.profile.mapping).map(
+                  ([campo, coluna]) => (
+                    <li key={campo}>
+                      {campo} → <span className="text-fg">{coluna}</span>
+                    </li>
+                  ),
+                )}
+              </ul>
+              {schema.profile.omitted.length > 0 ? (
+                <p className="mt-2 text-muted">
+                  Campos não usados: {schema.profile.omitted.join(", ")}.
+                </p>
+              ) : null}
+            </div>
+          ) : null}
           <button
             type="button"
             onClick={jornada.goToReview}

@@ -1,10 +1,14 @@
-import type { AnalysisReport, SchemaSummary } from "../lib/spreadsheets";
+import type {
+  AnalysisReport,
+  SchemaOrigin,
+  SchemaSummary,
+} from "../lib/spreadsheets";
 import SpreadsheetSchemaSummary from "./SpreadsheetSchemaSummary";
 
 interface Props {
   report: AnalysisReport;
   summary: SchemaSummary;
-  origin: "suggested" | "uploaded";
+  origin: SchemaOrigin;
   origem: "exemplo" | "upload";
   busy: boolean;
   onValidate: () => void;

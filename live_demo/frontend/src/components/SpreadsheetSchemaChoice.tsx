@@ -13,6 +13,7 @@ interface Props {
   /** Resumo do ultimo schema VALIDO, quando ja houver um. */
   summary: SchemaSummary | null;
   onUseSuggested: () => void;
+  onUseProfile: () => void;
   onUpload: (file: File) => void;
 }
 
@@ -31,6 +32,7 @@ export default function SpreadsheetSchemaChoice({
   error,
   summary,
   onUseSuggested,
+  onUseProfile,
   onUpload,
 }: Props) {
   const [schemaFile, setSchemaFile] = useState<File | null>(null);
@@ -67,6 +69,24 @@ export default function SpreadsheetSchemaChoice({
             Baixar schema sugerido
           </a>
         </div>
+      </section>
+
+      <section className="rounded-2xl border border-white/6 bg-ink p-5">
+        <h4 className="text-sm font-semibold text-fg">Usar um perfil pronto</h4>
+        <p className="mt-2 text-[0.85rem] leading-relaxed text-muted">
+          Um perfil traz regras já conhecidas para um tipo de dado — por
+          exemplo, validar CPF ou e-mail. Você indica qual coluna da sua
+          planilha corresponde a cada campo; o AutoTarefas{" "}
+          <strong>não adivinha</strong> essa correspondência.
+        </p>
+        <button
+          type="button"
+          onClick={onUseProfile}
+          disabled={busy}
+          className="mt-4 rounded-lg border border-white/12 px-5 py-2.5 text-sm font-semibold text-fg hover:border-white/25 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          Escolher um perfil
+        </button>
       </section>
 
       <section className="rounded-2xl border border-white/6 bg-ink p-5">

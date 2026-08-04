@@ -2,13 +2,17 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
   analyzeSpreadsheet,
+  confirmProfileSchema,
   confirmSuggestedSchema,
   ContractError,
+  getProfile,
   JourneyError,
+  listProfiles,
   selectReading,
   startValidation,
   uploadSchema,
   type AnalysisResponse,
+  type ProfileInfo,
   type SchemaResponse,
 } from "../lib/spreadsheets";
 import { useExecution, type UseExecution } from "./useExecution";
@@ -30,6 +34,7 @@ export type JourneyStep =
   | "needs_selection"
   | "analysis_ready"
   | "choosing_schema"
+  | "choosing_profile"
   | "schema_uploading"
   | "schema_invalid"
   | "schema_ready"
@@ -61,6 +66,14 @@ export interface UseSpreadsheetJourney {
   file: File | null;
   analysis: AnalysisResponse | null;
   schema: SchemaResponse | null;
+  /** Perfis do catalogo. Carregados sob demanda, ao abrir a opcao. */
+  profiles: ProfileInfo[];
+  /** Perfil em foco na tela de mapeamento. */
+  profile: ProfileInfo | null;
+  /** Campo conceitual -> coluna real, ainda NAO confirmado pelo backend. */
+  mapping: Record<string, string>;
+  /** Colunas da analise ATUAL — as unicas que o mapeamento pode usar. */
+  columns: string[];
   error: string | null;
   /** Mensagem do backend quando o arquivo foi recusado. */
   rejection: string | null;
@@ -75,6 +88,10 @@ export interface UseSpreadsheetJourney {
   useSuggested: () => Promise<void>;
   sendSchema: (file: File) => Promise<void>;
   goToSchemaChoice: () => void;
+  goToProfileChoice: () => Promise<void>;
+  pickProfile: (profileId: string) => Promise<void>;
+  setMappingField: (field: string, column: string) => void;
+  submitProfileMapping: () => Promise<void>;
   goToReview: () => void;
   validate: () => Promise<void>;
   reset: () => void;
@@ -85,6 +102,9 @@ export function useSpreadsheetJourney(): UseSpreadsheetJourney {
   const [file, setFile] = useState<File | null>(null);
   const [analysis, setAnalysis] = useState<AnalysisResponse | null>(null);
   const [schema, setSchema] = useState<SchemaResponse | null>(null);
+  const [profiles, setProfiles] = useState<ProfileInfo[]>([]);
+  const [profile, setProfile] = useState<ProfileInfo | null>(null);
+  const [mapping, setMapping] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
   const [rejection, setRejection] = useState<string | null>(null);
   const [token, setToken] = useState<string | null>(null);
@@ -102,17 +122,32 @@ export function useSpreadsheetJourney(): UseSpreadsheetJourney {
     };
   }, []);
 
+  /**
+   * Descarta o que foi escolhido sobre a leitura anterior.
+   *
+   * Um mapeamento aponta para COLUNAS de uma analise especifica. Se o arquivo,
+   * a aba ou o cabecalho mudam, aquelas colunas podem nem existir mais — deixar
+   * o mapeamento de pe faria a tela mostrar uma associacao que o backend
+   * recusaria (ou pior, aceitaria contra outra tabela).
+   */
+  const limparEscolhas = useCallback(() => {
+    setSchema(null);
+    setProfile(null);
+    setMapping({});
+  }, []);
+
   const reset = useCallback(() => {
     execution.reset();
     setStep("idle");
     setFile(null);
     setAnalysis(null);
-    setSchema(null);
+    setProfiles([]);
+    limparEscolhas();
     setError(null);
     setRejection(null);
     setToken(null);
     setBusy(false);
-  }, [execution]);
+  }, [execution, limparEscolhas]);
 
   /**
    * Traduz uma falha de chamada em estado de tela.
@@ -153,8 +188,9 @@ export function useSpreadsheetJourney(): UseSpreadsheetJourney {
     setToken(data.token);
     setAnalysis(data);
     // A leitura mudou: o backend ja invalidou o schema confirmado, e a tela
-    // nao pode continuar mostrando o resumo antigo como se valesse.
-    setSchema(null);
+    // nao pode continuar mostrando o resumo antigo — nem o mapeamento, que
+    // aponta para colunas que talvez nao existam mais.
+    limparEscolhas();
 
     if (data.status === "rejected_file") {
       setRejection(data.rejection ?? "Não foi possível ler este arquivo.");
@@ -285,6 +321,71 @@ export function useSpreadsheetJourney(): UseSpreadsheetJourney {
     [applySchema, handleFailure, schema, token],
   );
 
+  /** Colunas da analise ATUAL — a unica origem valida do seletor. */
+  const columns = analysis?.analysis?.columns.map((c) => c.name) ?? [];
+
+  const goToProfileChoice = useCallback(async () => {
+    setError(null);
+    setStep("choosing_profile");
+    if (profiles.length > 0) return; // catalogo ja carregado nesta jornada
+    setBusy(true);
+    try {
+      const lista = await listProfiles();
+      if (mounted.current) setProfiles(lista);
+    } catch (e: unknown) {
+      handleFailure(e);
+    } finally {
+      if (mounted.current) setBusy(false);
+    }
+  }, [handleFailure, profiles.length]);
+
+  const pickProfile = useCallback(
+    async (profileId: string) => {
+      setError(null);
+      setBusy(true);
+      // Trocar de perfil zera o mapeamento: os campos conceituais sao outros.
+      setMapping({});
+      try {
+        const dados = await getProfile(profileId);
+        if (mounted.current) setProfile(dados);
+      } catch (e: unknown) {
+        handleFailure(e);
+      } finally {
+        if (mounted.current) setBusy(false);
+      }
+    },
+    [handleFailure],
+  );
+
+  const setMappingField = useCallback((field: string, column: string) => {
+    setMapping((atual) => {
+      const proximo = { ...atual };
+      // Coluna vazia = "Nao usar": o campo sai do mapa em vez de ir vazio.
+      if (column) proximo[field] = column;
+      else delete proximo[field];
+      return proximo;
+    });
+  }, []);
+
+  const submitProfileMapping = useCallback(async () => {
+    if (!token || !profile || busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const resposta = await confirmProfileSchema(token, profile.id, mapping);
+      if (mounted.current) {
+        setSchema(resposta);
+        setStep("schema_ready");
+      }
+    } catch (e: unknown) {
+      const assumido = handleFailure(e);
+      // Permanece na tela de mapeamento para a pessoa corrigir sem recomecar.
+      if (mounted.current && !assumido) setStep("choosing_profile");
+    } finally {
+      if (mounted.current) setBusy(false);
+    }
+  }, [busy, handleFailure, mapping, profile, token]);
+
   const validate = useCallback(async () => {
     if (!token || busy || step === "validating") return;
     setBusy(true);
@@ -329,6 +430,10 @@ export function useSpreadsheetJourney(): UseSpreadsheetJourney {
     file,
     analysis,
     schema,
+    profiles,
+    profile,
+    mapping,
+    columns,
     error,
     rejection,
     token,
@@ -341,6 +446,10 @@ export function useSpreadsheetJourney(): UseSpreadsheetJourney {
     useSuggested,
     sendSchema,
     goToSchemaChoice,
+    goToProfileChoice,
+    pickProfile,
+    setMappingField,
+    submitProfileMapping,
     goToReview,
     validate,
     reset,

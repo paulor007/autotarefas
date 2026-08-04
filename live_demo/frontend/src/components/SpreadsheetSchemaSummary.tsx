@@ -1,8 +1,8 @@
-import type { SchemaSummary } from "../lib/spreadsheets";
+import type { SchemaOrigin, SchemaSummary } from "../lib/spreadsheets";
 
 interface Props {
   summary: SchemaSummary;
-  origin: "suggested" | "uploaded";
+  origin: SchemaOrigin;
 }
 
 function Regra({ children }: { children: React.ReactNode }) {
