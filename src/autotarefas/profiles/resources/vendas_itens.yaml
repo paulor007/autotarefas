@@ -1,0 +1,132 @@
+# ==========================================================================
+# Perfil: vendas_itens
+#
+# Uma planilha de ITENS de venda: cada linha e um produto dentro de um pedido,
+# e varias linhas compartilham o mesmo numero de pedido. E o formato que sai
+# da maioria dos sistemas de venda quando se pede "o detalhado".
+#
+# Este perfil existe para exercitar a outra metade do motor. O
+# `cadastro_contatos` cobre validacao POR CELULA (formato, digito verificador);
+# aqui entram as regras ENTRE LINHAS e ENTRE COLUNAS da Subetapa 1.5:
+#
+#   group_keys     o que forma um grupo (as linhas do mesmo pedido)
+#   group_checks   o que precisa concordar dentro do grupo
+#   derived_checks a conta que precisa fechar em cada linha
+#
+# O QUE ELE NAO FAZ, DE PROPOSITO:
+#
+#   - nao valida preco minimo, margem, desconto maximo, imposto ou qualquer
+#     politica comercial: isso e regra de NEGOCIO, varia de empresa para
+#     empresa, e o AutoTarefas nao conhece o negocio de ninguem;
+#   - nao exige que o numero do pedido seja unico — ele SE REPETE por
+#     construcao, e essa repeticao e o que forma o grupo;
+#   - nao decide qual valor esta certo quando o grupo diverge: mostra os
+#     valores encontrados e as linhas de cada um.
+#
+# Sobre o total do item: `total = quantidade x valor unitario` nao e uma
+# politica comercial — e aritmetica. Se a planilha traz as tres colunas, elas
+# precisam ser coerentes entre si, em qualquer empresa. Por isso a regra cabe
+# aqui; um desconto por faixa, nao.
+#
+# Sobre a tolerancia: fica ZERO. O motor usa Decimal, entao 19,90 x 3 da
+# exatamente 59,70 — a igualdade exata e alcancavel de verdade. Uma folga
+# embutida aceitaria em silencio uma diferenca que ninguem autorizou. Quem
+# arredonda em outro lugar do processo declara a tolerancia no proprio schema
+# depois de exportar.
+# ==========================================================================
+
+id: vendas_itens
+version: 1
+title: "Itens de venda (pedidos com varias linhas)"
+summary: >
+  Planilha em que cada linha e um item de um pedido. Confere a coerencia
+  dentro do pedido (mesma data e mesmo cliente em todas as linhas) e a
+  aritmetica do total de cada item. Nenhuma politica comercial e assumida.
+
+# Campos conceituais. O mapeamento para as colunas reais e sempre explicito.
+fields:
+  numero_pedido:
+    required: true
+    doc: "Numero ou codigo do pedido. Repete-se nas linhas do mesmo pedido — e isso que forma o grupo."
+  data_pedido:
+    required: false
+    doc: "Data do pedido. Quando mapeada, precisa ser a mesma em todas as linhas do pedido."
+  cliente:
+    required: false
+    doc: "Cliente ou loja do pedido. Quando mapeada, precisa ser a mesma em todas as linhas do pedido."
+  produto:
+    required: false
+    doc: "Descricao ou codigo do item."
+  quantidade:
+    required: false
+    doc: "Quantidade do item. Numero inteiro."
+  valor_unitario:
+    required: false
+    doc: "Preco unitario do item."
+  valor_total:
+    required: false
+    doc: "Total da linha. Quando mapeado junto com quantidade e valor unitario, precisa bater com a multiplicacao."
+
+# O Schema propriamente dito, validado pelo MESMO modelo Pydantic do
+# `validate`. Os `name` aqui sao os campos CONCEITUAIS; o mapeamento troca
+# cada um pelo nome real da coluna do cliente.
+#
+# Quando um campo opcional nao e mapeado, o nucleo (`remap_schema`) remove a
+# coluna E as regras que dependem dela — entao um arquivo sem `valor_total`
+# simplesmente nao recebe a checagem de calculo, em vez de falhar.
+schema:
+  columns:
+    - name: numero_pedido
+      type: str
+      required: true
+    - name: data_pedido
+      type: date
+      required: false
+    - name: cliente
+      type: str
+      required: false
+    - name: produto
+      type: str
+      required: false
+    - name: quantidade
+      type: int
+      required: false
+    - name: valor_unitario
+      type: float
+      required: false
+    - name: valor_total
+      type: float
+      required: false
+
+  # Duas linhas com o MESMO numero de pedido pertencem ao mesmo grupo.
+  group_keys:
+    - name: pedido
+      columns: ["numero_pedido"]
+
+  # Dentro de um pedido, a data e o cliente nao podem variar. Severidade
+  # `error` porque, se variam, ha duas verdades sobre o mesmo pedido e nao da
+  # para saber qual vale sem alguem olhar.
+  #
+  # SAO DUAS REGRAS, e nao uma com duas colunas, por um motivo pratico: o
+  # nucleo remove uma regra inteira quando QUALQUER coluna dela e omitida. Com
+  # `consistent: ["data_pedido", "cliente"]`, um cliente que mapeia so a data
+  # perderia tambem a checagem da data. Separadas, cada uma sobrevive por conta
+  # propria — e semanticamente sao mesmo independentes.
+  group_checks:
+    - name: data_coerente_no_pedido
+      group_key: pedido
+      consistent: ["data_pedido"]
+      severity: error
+    - name: cliente_coerente_no_pedido
+      group_key: pedido
+      consistent: ["cliente"]
+      severity: error
+
+  # Aritmetica do item. Tolerancia zero: com Decimal a igualdade exata e
+  # atingivel, e uma folga automatica esconderia divergencia real.
+  derived_checks:
+    - name: total_do_item
+      target: valor_total
+      expression: "[quantidade] * [valor_unitario]"
+      tolerance: 0
+      severity: error
