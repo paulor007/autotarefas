@@ -65,6 +65,13 @@ class Settings(BaseSettings):
         description="Nível mínimo de log.",
     )
 
+    log_retention_days: int = Field(
+        default=30,
+        ge=1,
+        le=3650,
+        description="Dias de retencao dos logs no modo real privado.",
+    )
+
     # ============================================================
     # Email (Fase 8+)
     # ============================================================
@@ -94,6 +101,16 @@ class Settings(BaseSettings):
     audit_secret_key: SecretStr = Field(
         default=SecretStr(""),
         description="Chave para HMAC-SHA256 do audit trail.",
+    )
+
+    audit_retention_days: int | None = Field(
+        default=None,
+        ge=1,
+        le=3650,
+        description=(
+            "Dias de retencao do audit no modo real privado. "
+            "None preserva o historico ate o operador configurar e confirmar o expurgo."
+        ),
     )
 
     # ============================================================

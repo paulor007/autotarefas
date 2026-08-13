@@ -41,6 +41,18 @@ class TestSettingsDefaults:
         s = make_settings()
         assert s.log_level == "INFO"
 
+    def test_log_retention_days_default_30(self) -> None:
+        s = make_settings()
+        assert s.log_retention_days == 30
+
+    def test_screenshot_retention_days_default_30(self) -> None:
+        s = make_settings()
+        assert s.screenshot_retention_days == 30
+
+    def test_audit_retention_days_default_none(self) -> None:
+        s = make_settings()
+        assert s.audit_retention_days is None
+
     def test_email_port_default_587(self) -> None:
         s = make_settings()
         assert s.email_port == 587
@@ -67,6 +79,16 @@ class TestSettingsLeEnvVars:
         s = make_settings()
         assert s.log_level == "DEBUG"
 
+    def test_le_log_retention_days_de_env(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("LOG_RETENTION_DAYS", "45")
+        s = make_settings()
+        assert s.log_retention_days == 45
+
+    def test_le_audit_retention_days_de_env(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("AUDIT_RETENTION_DAYS", "180")
+        s = make_settings()
+        assert s.audit_retention_days == 180
+
     def test_le_email_user_de_env(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("EMAIL_USER", "test@example.com")
         s = make_settings()
@@ -83,6 +105,21 @@ class TestSettingsValidation:
 
     def test_log_level_invalido_levanta(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("LOG_LEVEL", "TRACE")
+        with pytest.raises(PydanticValidationError):
+            make_settings()
+
+    def test_log_retention_days_zero_levanta(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("LOG_RETENTION_DAYS", "0")
+        with pytest.raises(PydanticValidationError):
+            make_settings()
+
+    def test_screenshot_retention_days_zero_levanta(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("SCREENSHOT_RETENTION_DAYS", "0")
+        with pytest.raises(PydanticValidationError):
+            make_settings()
+
+    def test_audit_retention_days_zero_levanta(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("AUDIT_RETENTION_DAYS", "0")
         with pytest.raises(PydanticValidationError):
             make_settings()
 

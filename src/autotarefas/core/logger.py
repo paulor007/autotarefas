@@ -107,7 +107,7 @@ def configure_logger() -> None:
 
     - Mascaramento automático de dados sensíveis
     - Sink no console (stderr) com cores
-    - Sink em arquivo (rotação diária + retenção 30 dias + compressão zip)
+    - Sink em arquivo (rotacao diaria + retencao configuravel + compressao zip)
     """
     # Remove qualquer config padrão (loguru vem com um sink default)
     logger.remove()
@@ -139,7 +139,7 @@ def configure_logger() -> None:
         level=settings.log_level,
         format=("{time:YYYY-MM-DD HH:mm:ss} | {level:8} | {name}:{function}:{line} - {message}"),
         rotation="00:00",  # Rotaciona à meia-noite
-        retention="30 days",  # Mantém 30 dias de logs
+        retention=f"{settings.log_retention_days} days",  # Politica configuravel
         compression="zip",  # Compacta logs antigos
         enqueue=True,  # Async-safe (multi-thread/process)
         encoding="utf-8",
