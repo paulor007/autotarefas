@@ -21,6 +21,7 @@ from autotarefas.cli.commands.dashboard import dashboard
 from autotarefas.cli.commands.extract import extract
 from autotarefas.cli.commands.info import info
 from autotarefas.cli.commands.init import init
+from autotarefas.cli.commands.manutencao import manutencao
 from autotarefas.cli.commands.organize import organize
 from autotarefas.cli.commands.perfis import perfis
 from autotarefas.cli.commands.report import report
@@ -84,6 +85,7 @@ cli.add_command(backup)
 cli.add_command(dashboard)
 cli.add_command(info)
 cli.add_command(init)
+cli.add_command(manutencao)
 cli.add_command(organize)
 cli.add_command(perfis)
 cli.add_command(report)

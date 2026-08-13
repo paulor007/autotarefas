@@ -24,7 +24,7 @@ Uso:
         print(entry["timestamp"], entry["status"])
 
 Princípios:
-- **Append-only** — nunca UPDATE ou DELETE
+- **Append-only no uso normal** - expurgo apenas por manutencao confirmada.
 - **Falhas não propagam** — audit é "best effort", task continua
 - **Sem dados sensíveis** — só hash de input
 - **Imutável por design** — histórico real
@@ -38,7 +38,7 @@ import json
 import os
 import sqlite3
 from contextlib import closing
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -118,7 +118,7 @@ class AuditTrail:
     """
     Sistema de audit trail em SQLite.
 
-    - **Append-only**: nunca UPDATE ou DELETE.
+    - **Append-only no uso normal**: exclusao apenas por manutencao confirmada.
     - **Falhas não propagam**: erros gravam warning no log, não interrompem
       a task que estava sendo auditada.
     - **Sem dados sensíveis**: só hash HMAC-SHA256 do input.
@@ -269,6 +269,33 @@ class AuditTrail:
         except sqlite3.Error as e:  # pragma: no cover
             logger.warning("Falha ao consultar audit: {err}", err=str(e))
             return []
+
+    def count_before(self, cutoff: datetime) -> int:
+        """Conta registros anteriores ao limite UTC, sem alterar o banco."""
+        if cutoff.tzinfo is None or cutoff.utcoffset() is None:
+            raise ValueError("cutoff precisa possuir timezone")
+
+        cutoff_iso = cutoff.astimezone(UTC).isoformat()
+        with closing(sqlite3.connect(self.db_path)) as conn:
+            row = conn.execute(
+                "SELECT COUNT(*) FROM audit WHERE julianday(timestamp) < julianday(?)",
+                (cutoff_iso,),
+            ).fetchone()
+        return int(row[0]) if row is not None else 0
+
+    def purge_before(self, cutoff: datetime) -> int:
+        """Remove registros antigos em uma manutencao explicitamente confirmada."""
+        if cutoff.tzinfo is None or cutoff.utcoffset() is None:
+            raise ValueError("cutoff precisa possuir timezone")
+
+        cutoff_iso = cutoff.astimezone(UTC).isoformat()
+        with closing(sqlite3.connect(self.db_path)) as conn:
+            cursor = conn.execute(
+                "DELETE FROM audit WHERE julianday(timestamp) < julianday(?)",
+                (cutoff_iso,),
+            )
+            conn.commit()
+            return max(cursor.rowcount, 0)
 
 
 # ============================================================
