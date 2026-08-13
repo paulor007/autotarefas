@@ -211,3 +211,6 @@ site/
 # As copias publicadas ficam em docs/live/assets/ (essas SIM sao versionadas).
 examples/output/
 emails_recebidos/
+
+# Preserva o lockfile do frontend Live para npm ci e CI reproduzivel
+!live_demo/frontend/package-lock.json
