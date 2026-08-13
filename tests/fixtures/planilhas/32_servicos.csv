@@ -1,0 +1,5 @@
+Numero,Servico,Responsavel,Prazo,Situacao
+OS-100,Troca de filtro,Equipe A,10/01/2026,Concluido
+OS-101,Revisao eletrica,Equipe B,12/01/2026,Em andamento
+OS-102,Pintura,Equipe A,20/01/2026,Aguardando
+OS-103,Limpeza de calha,Equipe C,25/01/2026,Aguardando

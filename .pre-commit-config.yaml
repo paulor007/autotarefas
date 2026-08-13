@@ -26,6 +26,7 @@ repos:
     hooks:
       # Remove espaços em branco no fim das linhas
       - id: trailing-whitespace
+        exclude: ^tests/fixtures/planilhas/29_espacos_extras\.csv$
       # Garante que arquivo termina com nova linha
       - id: end-of-file-fixer
       # Valida sintaxe YAML
