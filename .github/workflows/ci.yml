@@ -1,16 +1,11 @@
-# ============================================================
-# AutoTarefas - CI (Integração Contínua)
-# ============================================================
-# Roda a cada push e pull request na branch main:
-#   ruff (lint) -> ruff (formato) -> mypy -> bandit -> pytest
+# AutoTarefas - Integracao Continua
 #
-# Tudo no GitHub Actions (gratuito e ilimitado para repos públicos).
-# Os testes mockam o navegador (Playwright), então NÃO baixamos os
-# browsers — o CI fica rápido.
+# Valida:
+# - qualidade e testes da aplicacao Python;
+# - backend do Live System;
+# - dependencias, tipos, testes e build do frontend.
 #
-# Destino deste arquivo:
-#   .github/workflows/ci.yml
-# ============================================================
+# Os testes com navegador real permanecem fora da CI rapida.
 
 name: CI
 
@@ -20,7 +15,6 @@ on:
   pull_request:
     branches: [main]
 
-# Cancela execuções antigas do mesmo branch/PR quando chega um push novo
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -49,7 +43,7 @@ jobs:
           cache: pip
           cache-dependency-path: pyproject.toml
 
-      - name: Instalar dependências
+      - name: Instalar dependencias
         run: |
           python -m pip install --upgrade pip
           pip install -e ".[dev,demo]"
@@ -57,14 +51,55 @@ jobs:
       - name: Ruff (lint)
         run: ruff check .
 
-      - name: Ruff (formatação)
+      - name: Ruff (formatacao)
         run: ruff format --check .
 
       - name: Mypy (tipos)
         run: mypy src/
 
-      - name: Bandit (segurança)
+      - name: Bandit (seguranca)
         run: bandit -c pyproject.toml -r src
 
-      - name: Pytest (testes + cobertura)
+      - name: Pytest (suite principal e cobertura)
         run: pytest
+
+      - name: Pytest (backend Live)
+        if: matrix.python-version == '3.13'
+        run: pytest live_demo/backend/tests --no-cov
+
+  frontend:
+    name: Frontend Live (Node 22)
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: live_demo/frontend
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configurar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: live_demo/frontend/package-lock.json
+
+      - name: Instalar dependencias
+        run: npm ci
+
+      - name: Auditar todas as dependencias
+        run: npm audit
+
+      - name: Auditar dependencias de producao
+        run: npm audit --omit=dev
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Testes
+        run: npm test
+
+      - name: Build
+        run: npm run build
