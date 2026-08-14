@@ -122,8 +122,8 @@ export default function ExecutionPanel({
       <section id="execucao" className="bg-elevated py-20">
         <div className="container-page">
           <SectionHeader
-            title="Análise e validação de planilhas"
-            subtitle="Analise CSV e XLSX, revise a estrutura, confirme as regras e separe registros válidos dos que precisam de revisão"
+            title="Análise e organização de planilhas"
+            subtitle="Analise CSV e XLSX, revise a estrutura, confirme as regras e as correções seguras, e separe registros válidos dos que precisam de revisão"
           />
           <div className="overflow-hidden rounded-2xl border border-white/6 bg-surface">
             <div className="space-y-6 p-6 sm:p-8">

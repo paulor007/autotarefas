@@ -119,6 +119,49 @@ def _journey_of(token: str) -> tuple[jobs.Job, jobs.Journey] | JSONResponse:
     return job, job.journey
 
 
+def _duplicate_rows_found(journey: jobs.Journey) -> int:
+    """
+    Quantas linhas COMPLETAMENTE identicas a analise encontrou.
+
+    Vem do achado estrutural do leitor (`linhas_duplicadas`), que conta as
+    ocorrencias EXCEDENTES — a primeira de cada grupo e o original. Nao
+    confundir com chave repetida: numa planilha de vendas o mesmo codigo
+    aparece varias vezes por item da venda, e isso e esperado.
+    """
+    for achado in journey.analysis.get("findings") or []:
+        if not isinstance(achado, dict) or achado.get("code") != "linhas_duplicadas":
+            continue
+        quantidade = achado.get("count")
+        if isinstance(quantidade, int) and quantidade > 0:
+            return quantidade
+        # `count` nem sempre vem preenchido neste achado; o numero abre a
+        # mensagem ("16 linha(s) completamente identica(s)...").
+        primeiro = str(achado.get("message", "")).split(" ", 1)[0]
+        return int(primeiro) if primeiro.isdigit() else 0
+    return 0
+
+
+def _ativar_deteccao_de_duplicadas(schema_path: Path) -> None:
+    """
+    Liga `detect_duplicate_rows` no schema CONFIRMADO.
+
+    O schema sugerido deixa essa regra comentada de proposito: o nucleo nao
+    inventa regra de negocio. Aqui ela so e ligada porque a PESSOA confirmou
+    na tela de revisao, depois de ver quantas linhas repetidas existem. O
+    arquivo alterado e o mesmo que vira `schema_efetivo.yaml` no pacote, entao
+    a evidencia mostra exatamente o que rodou.
+    """
+    conteudo = yaml.safe_load(schema_path.read_text(encoding="utf-8")) or {}
+    if not isinstance(conteudo, dict):  # pragma: no cover - schema ja validado
+        return
+    if conteudo.get("detect_duplicate_rows") is True:
+        return
+    conteudo["detect_duplicate_rows"] = True
+    schema_path.write_text(
+        yaml.safe_dump(conteudo, allow_unicode=True, sort_keys=False), encoding="utf-8"
+    )
+
+
 def _analysis_payload(token: str, journey: jobs.Journey) -> dict[str, Any]:
     """
     Resposta das etapas de analise.
@@ -139,6 +182,10 @@ def _analysis_payload(token: str, journey: jobs.Journey) -> dict[str, Any]:
         "schema_suggestion_available": (
             journey.status in {"analysis_ready", "schema_ready", "validating"}
         ),
+        # Linhas 100% identicas encontradas na leitura. A interface usa este
+        # numero para OFERECER a sinalizacao — sem ele, a pessoa so descobriria
+        # as repetidas depois de executar, ou nem isso.
+        "duplicate_rows": _duplicate_rows_found(journey),
     }
 
 
@@ -729,6 +776,7 @@ async def validate(
     strict_warnings: bool = Form(default=False),
     max_issues: int | None = Form(default=None),
     apply_cleaning: bool = Form(default=False),
+    flag_duplicate_rows: bool = Form(default=False),
 ) -> JSONResponse:
     """
     Executa a validacao com as escolhas CONFIRMADAS e gera as evidencias.
@@ -773,6 +821,12 @@ async def validate(
         return _error(
             _HTTP_BAD_REQUEST, "o limite de problemas comeca em 1", code="invalid_max_issues"
         )
+
+    # Linhas repetidas so viram problema quando a pessoa confirma. Elas NUNCA
+    # sao removidas: viram aviso com o numero da linha, para alguem olhar.
+    if flag_duplicate_rows:
+        _ativar_deteccao_de_duplicadas(journey.schema_path)
+    journey.flag_duplicate_rows = flag_duplicate_rows
 
     options = recipes.JourneyOptions(
         schema_path=journey.schema_path,

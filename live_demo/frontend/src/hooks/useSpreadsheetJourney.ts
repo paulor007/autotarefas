@@ -89,6 +89,15 @@ export interface UseSpreadsheetJourney {
    */
   applyCleaning: boolean;
   setApplyCleaning: (value: boolean) => void;
+  /**
+   * Sinalizar linhas 100% repetidas para revisao.
+   *
+   * Vem LIGADO quando a analise encontrou repetidas — nao para decidir por
+   * ninguem, mas porque esconder o achado seria pior: as linhas continuam na
+   * planilha, e nenhuma e removida em hipotese alguma.
+   */
+  flagDuplicateRows: boolean;
+  setFlagDuplicateRows: (value: boolean) => void;
 
   chooseFile: (file: File | null) => void;
   analyzeFile: () => Promise<void>;
@@ -119,6 +128,7 @@ export function useSpreadsheetJourney(): UseSpreadsheetJourney {
   const [token, setToken] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [applyCleaning, setApplyCleaning] = useState(false);
+  const [flagDuplicateRows, setFlagDuplicateRows] = useState(false);
 
   const execution = useExecution();
 
@@ -158,6 +168,7 @@ export function useSpreadsheetJourney(): UseSpreadsheetJourney {
     setToken(null);
     setBusy(false);
     setApplyCleaning(false);
+    setFlagDuplicateRows(false);
   }, [execution, limparEscolhas]);
 
   /**
@@ -202,6 +213,9 @@ export function useSpreadsheetJourney(): UseSpreadsheetJourney {
     // nao pode continuar mostrando o resumo antigo — nem o mapeamento, que
     // aponta para colunas que talvez nao existam mais.
     limparEscolhas();
+    // Achou linha repetida? A sinalizacao ja vem marcada — a pessoa pode
+    // desmarcar, mas nao vai descobrir a repeticao por acaso depois.
+    setFlagDuplicateRows(data.duplicate_rows > 0);
 
     if (data.status === "rejected_file") {
       setRejection(data.rejection ?? "Não foi possível ler este arquivo.");
@@ -404,7 +418,8 @@ export function useSpreadsheetJourney(): UseSpreadsheetJourney {
     setStep("validating");
     try {
       const started = await startValidation(token, {
-        applyCleaning: applyCleaning,
+        applyCleaning,
+        flagDuplicateRows,
       });
       execution.attach(started.token, started.stream_url);
     } catch (e: unknown) {
@@ -413,7 +428,15 @@ export function useSpreadsheetJourney(): UseSpreadsheetJourney {
     } finally {
       if (mounted.current) setBusy(false);
     }
-  }, [applyCleaning, busy, execution, handleFailure, step, token]);
+  }, [
+    applyCleaning,
+    busy,
+    execution,
+    flagDuplicateRows,
+    handleFailure,
+    step,
+    token,
+  ]);
 
   // Enquanto valida, a etapa segue o resultado REAL da execucao — nunca o
   // texto do terminal. Exit 1 e "concluido com problemas nos dados", nao
@@ -450,6 +473,8 @@ export function useSpreadsheetJourney(): UseSpreadsheetJourney {
     error,
     applyCleaning,
     setApplyCleaning,
+    flagDuplicateRows,
+    setFlagDuplicateRows,
     rejection,
     token,
     execution,

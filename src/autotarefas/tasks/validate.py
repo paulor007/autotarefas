@@ -655,7 +655,7 @@ class ValidateTask(BaseTask):
                 error_message=f"Colunas obrigatorias faltando: {missing}",
                 error_type="MissingColumnsError",
                 data={
-                    "file": str(self.file_path),
+                    "file": self.file_path.name,
                     "expected_columns": self.schema.column_names,
                     "actual_columns": list(df.columns),
                     "missing": missing,
@@ -690,7 +690,7 @@ class ValidateTask(BaseTask):
                 error_message=erro_de_regra,
                 error_type="RuleConfigError",
                 data={
-                    "file": str(self.file_path),
+                    "file": self.file_path.name,
                     "actual_columns": list(df.columns),
                 },
             )
@@ -705,7 +705,11 @@ class ValidateTask(BaseTask):
         # 7. Monta resultado final
         issue_dicts = [self._issue_to_dict(i) for i in collector.issues]
         base_data: dict[str, Any] = {
-            "file": str(self.file_path),
+            # SO O NOME do arquivo, nunca o caminho: o relatorio circula por
+            # e-mail e por download, e o caminho no disco revela a estrutura
+            # de pastas de quem processou (no Live, o workspace do servidor).
+            # E a mesma decisao ja tomada no servico de analise.
+            "file": self.file_path.name,
             "mode": self.mode,
             "rows": len(df),
             "columns": list(df.columns),

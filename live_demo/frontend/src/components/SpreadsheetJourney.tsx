@@ -312,6 +312,9 @@ export default function SpreadsheetJourney() {
           busy={busy}
           applyCleaning={jornada.applyCleaning}
           onApplyCleaningChange={jornada.setApplyCleaning}
+          duplicateRows={analysis.duplicate_rows}
+          flagDuplicateRows={jornada.flagDuplicateRows}
+          onFlagDuplicateRowsChange={jornada.setFlagDuplicateRows}
           onValidate={() => void jornada.validate()}
           onBack={jornada.goToSchemaChoice}
         />
@@ -328,6 +331,7 @@ export default function SpreadsheetJourney() {
         step={step}
         result={execution.result}
         report={relatorio}
+        appliedCleaning={jornada.applyCleaning}
       />
 
       {execution.lines.length > 0 ? (

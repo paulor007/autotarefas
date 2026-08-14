@@ -14,6 +14,8 @@ interface Props {
    * quantos valores foram normalizados. Null enquanto o arquivo nao chegou.
    */
   report?: ValidationReport | null;
+  /** True quando a pessoa confirmou as correções seguras nesta execução. */
+  appliedCleaning?: boolean;
 }
 
 interface Aparencia {
@@ -126,9 +128,24 @@ function tamanho(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-export default function SpreadsheetResult({ step, result, report }: Props) {
+export default function SpreadsheetResult({
+  step,
+  result,
+  report,
+  appliedCleaning = false,
+}: Props) {
   const visual = aparencia(step);
   if (!visual) return null;
+
+  // Zero correções pode significar duas coisas MUITO diferentes: "não pedi
+  // correção" ou "pedi e nada precisou ser corrigido". Um contador em zero,
+  // sozinho, não distingue as duas — e a segunda é uma boa notícia.
+  const nenhumaCorrecaoNecessaria =
+    appliedCleaning && report !== null && report?.total_cleaned === 0;
+
+  // "16" sozinho é ambíguo: são 16 pares? 16 linhas? A categoria conta as
+  // ocorrências EXCEDENTES, então 16 repetidas = 32 linhas envolvidas.
+  const duplicadas = report?.issues_by_category?.duplicado ?? 0;
 
   return (
     <div className="space-y-4" aria-live="polite">
@@ -136,6 +153,35 @@ export default function SpreadsheetResult({ step, result, report }: Props) {
         <p className="text-sm font-semibold">{visual.titulo}</p>
         <p className="mt-1 text-[0.85rem] opacity-90">{visual.texto}</p>
       </div>
+
+      {duplicadas > 0 ? (
+        <div className="rounded-lg border border-warn/30 bg-warn/[0.05] px-4 py-3">
+          <p className="text-sm font-semibold text-warn">
+            {duplicadas} linha(s) repetida(s) — {duplicadas * 2} linha(s)
+            envolvida(s)
+          </p>
+          <p className="mt-1 text-[0.85rem] text-muted">
+            São ocorrências <strong>excedentes</strong>: a primeira de cada par
+            é tratada como o registro original. Nenhuma foi removida — cada uma
+            aparece no relatório com o número da linha e o par correspondente,
+            para você decidir. Chave repetida (a mesma venda com vários itens)
+            não entra nessa conta.
+          </p>
+        </div>
+      ) : null}
+
+      {nenhumaCorrecaoNecessaria ? (
+        <div className="rounded-lg border border-ok/30 bg-ok/[0.05] px-4 py-3">
+          <p className="text-sm font-semibold text-ok">
+            Nenhuma correção segura foi necessária
+          </p>
+          <p className="mt-1 text-[0.85rem] text-muted">
+            Você pediu as correções seguras e o AutoTarefas não encontrou nada
+            para normalizar: a planilha tratada preserva os dados originais,
+            célula por célula.
+          </p>
+        </div>
+      ) : null}
 
       {report ? <ValidationSummary report={report} /> : null}
 

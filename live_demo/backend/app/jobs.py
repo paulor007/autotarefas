@@ -72,6 +72,8 @@ class Journey:
     """"suggested", "profile" ou "uploaded" — de onde o schema confirmado veio."""
     apply_cleaning: bool = False
     """Correcoes seguras CONFIRMADAS na revisao (modo limpeza na execucao)."""
+    flag_duplicate_rows: bool = False
+    """Sinalizacao de linhas 100% repetidas CONFIRMADA na revisao."""
     profile_id: str | None = None
     """Perfil que originou o schema, quando a origem foi um perfil."""
     profile_version: int | None = None

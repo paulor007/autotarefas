@@ -14,6 +14,10 @@ interface Props {
   /** Correcoes seguras confirmadas pela pessoa (desligado por padrao). */
   applyCleaning: boolean;
   onApplyCleaningChange: (value: boolean) => void;
+  /** Linhas 100% repetidas encontradas na analise (0 = nenhuma). */
+  duplicateRows: number;
+  flagDuplicateRows: boolean;
+  onFlagDuplicateRowsChange: (value: boolean) => void;
   onValidate: () => void;
   onBack: () => void;
 }
@@ -40,6 +44,9 @@ export default function SpreadsheetReview({
   busy,
   applyCleaning,
   onApplyCleaningChange,
+  duplicateRows,
+  flagDuplicateRows,
+  onFlagDuplicateRowsChange,
   onValidate,
   onBack,
 }: Props) {
@@ -108,6 +115,38 @@ export default function SpreadsheetReview({
           </p>
         )}
       </div>
+
+      {duplicateRows > 0 && (
+        <div className="rounded-lg border border-warn/30 bg-warn/[0.05] p-4">
+          <label className="flex cursor-pointer items-start gap-3">
+            <input
+              type="checkbox"
+              checked={flagDuplicateRows}
+              disabled={busy}
+              onChange={(e) => onFlagDuplicateRowsChange(e.target.checked)}
+              className="mt-0.5 h-4 w-4 accent-signal"
+            />
+            <span>
+              <span className="block text-[0.9rem] font-semibold text-fg">
+                Sinalizar as {duplicateRows} linha(s) repetida(s) para revisão
+              </span>
+              <span className="mt-1 block text-[0.85rem] text-muted">
+                A leitura encontrou {duplicateRows} linha(s) idêntica(s) a
+                outra, envolvendo {duplicateRows * 2} linha(s) no total (a
+                primeira de cada par é tratada como o registro original).
+                Nenhuma é removida: elas entram no relatório com o número da
+                linha, para alguém decidir.
+              </span>
+              <span className="mt-2 block text-[0.8rem] text-muted">
+                Isso é diferente de <strong>chave repetida</strong>: numa
+                planilha de vendas o mesmo código aparece uma vez por item da
+                venda, e isso é esperado — só a linha inteira repetida é
+                sinalizada.
+              </span>
+            </span>
+          </label>
+        </div>
+      )}
 
       <p className="rounded-lg border border-white/6 bg-ink px-4 py-3 text-[0.85rem] text-muted">
         O arquivo original não é alterado. A validação trabalha sobre uma cópia

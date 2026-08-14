@@ -245,7 +245,7 @@ def test_catalogo_validate_reposicionado(client: TestClient) -> None:
     """
     catalog = client.get("/api/catalog").json()
     validate = next(a for a in catalog["automations"] if a["id"] == "validate")
-    assert validate["title"] == "Análise e validação de planilhas"
+    assert validate["title"] == "Análise e organização de planilhas"
     assert validate["upload"] == "spreadsheet"
     assert ".xlsx" in validate["upload_hint"]
     texto = f"{validate['subtitle']} {validate['description']}".lower()

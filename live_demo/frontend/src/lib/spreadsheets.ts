@@ -92,6 +92,14 @@ export interface AnalysisResponse {
   selected_sheet: string | null;
   header_row: number | null;
   schema_suggestion_available: boolean;
+  /**
+   * Linhas COMPLETAMENTE identicas encontradas na leitura (ocorrencias
+   * excedentes: a primeira de cada grupo e o original).
+   *
+   * Nao confundir com chave repetida — numa planilha de vendas o mesmo
+   * codigo aparece uma vez por item, e isso e esperado.
+   */
+  duplicate_rows: number;
   /** Preenchido quando o arquivo foi recusado. */
   rejection: string | null;
 }
@@ -449,6 +457,7 @@ export function parseAnalysis(bruto: unknown): AnalysisResponse {
     selected_sheet: textoOuNulo(bruto.selected_sheet),
     header_row: numeroOuNulo(bruto.header_row),
     schema_suggestion_available: bruto.schema_suggestion_available === true,
+    duplicate_rows: Math.max(0, numeroOuNulo(bruto.duplicate_rows) ?? 0),
     rejection: recusa,
   };
 }
@@ -706,6 +715,7 @@ export function startValidation(
     strictWarnings?: boolean;
     maxIssues?: number;
     applyCleaning?: boolean;
+    flagDuplicateRows?: boolean;
   } = {},
 ): Promise<ValidateStartResponse> {
   const form = new FormData();
@@ -714,6 +724,7 @@ export function startValidation(
     form.append("max_issues", String(opts.maxIssues));
   }
   if (opts.applyCleaning) form.append("apply_cleaning", "true");
+  if (opts.flagDuplicateRows) form.append("flag_duplicate_rows", "true");
   return postJourney<ValidateStartResponse>(
     `/api/spreadsheets/${encodeURIComponent(token)}/validate`,
     form,

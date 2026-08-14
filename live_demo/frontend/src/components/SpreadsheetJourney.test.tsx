@@ -69,10 +69,12 @@ function mockFetch(
  * Mock que responde conforme a rota — a jornada faz chamadas diferentes em
  * sequencia (analise, schema, validacao) e cada uma tem contrato proprio.
  */
-function mockFetchPorRota(): ReturnType<typeof vi.fn> {
+function mockFetchPorRota(
+  analise: Record<string, unknown> = {},
+): ReturnType<typeof vi.fn> {
   const espia = vi.fn(async (url: unknown) => {
     const alvo = String(url);
-    let corpo: unknown = respostaAnalise();
+    let corpo: unknown = respostaAnalise(analise);
     if (alvo.includes("/schema")) {
       corpo = {
         token: "tok-1",
@@ -123,8 +125,10 @@ function mockFetchPorRota(): ReturnType<typeof vi.fn> {
 }
 
 /** Leva a jornada ate a etapa de revisao (a ultima antes de executar). */
-async function irAteRevisao(): Promise<ReturnType<typeof vi.fn>> {
-  const espia = mockFetchPorRota();
+async function irAteRevisao(
+  analise: Record<string, unknown> = {},
+): Promise<ReturnType<typeof vi.fn>> {
+  const espia = mockFetchPorRota(analise);
   montar();
   await userEvent.click(
     screen.getByRole("button", { name: /Testar com exemplo/i }),
@@ -204,6 +208,37 @@ describe("SpreadsheetJourney", () => {
     // ...e a estrutura da página continua de pé.
     expect(screen.getByLabelText("principal")).toBeTruthy();
     expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("oferece sinalizar as linhas repetidas quando a análise encontra", async () => {
+    await irAteRevisao({ duplicate_rows: 16 });
+
+    const caixa = screen.getByRole("checkbox", {
+      name: /Sinalizar as 16 linha\(s\) repetida\(s\)/i,
+    }) as HTMLInputElement;
+    // Vem marcada: esconder um achado seria pior do que oferecer a escolha.
+    expect(caixa.checked).toBe(true);
+    // E explica a diferença que gera falso positivo em planilha de vendas.
+    expect(screen.getByText(/chave repetida/i)).toBeTruthy();
+    expect(screen.getByText(/32 linha\(s\) no total/i)).toBeTruthy();
+  });
+
+  it("não oferece a sinalização quando não há linha repetida", async () => {
+    await irAteRevisao();
+    expect(screen.queryByRole("checkbox", { name: /repetida/i })).toBeNull();
+  });
+
+  it("envia flag_duplicate_rows quando há repetidas confirmadas", async () => {
+    const espia = await irAteRevisao({ duplicate_rows: 16 });
+    await userEvent.click(
+      screen.getByRole("button", { name: /Executar validação/i }),
+    );
+
+    const chamada = espia.mock.calls.find((args) =>
+      String(args[0]).includes("/validate"),
+    );
+    const corpo = (chamada?.[1] as { body?: FormData })?.body;
+    expect(corpo?.get("flag_duplicate_rows")).toBe("true");
   });
 
   it("oferece as correções seguras na revisão, desligadas por padrão", async () => {

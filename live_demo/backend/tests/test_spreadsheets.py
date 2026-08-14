@@ -541,6 +541,89 @@ class TestCorrecoesConfirmadas:
 
 
 # ============================================================
+# Linhas repetidas: sinalizadas quando confirmado, nunca removidas
+# ============================================================
+
+
+HOMOLOGACAO = Path(__file__).resolve().parents[3] / "tests" / "fixtures" / "homologacao"
+
+
+class TestLinhasRepetidas:
+    """
+    A analise ENCONTRA linhas 100% repetidas; a validacao so as acusa quando
+    a pessoa confirma. O schema sugerido deixa essa regra comentada de
+    proposito — o nucleo nao inventa regra de negocio.
+    """
+
+    def _enviar_homologacao(self, client: TestClient, nome: str) -> dict[str, Any]:
+        caminho = HOMOLOGACAO / nome
+        with caminho.open("rb") as handle:
+            r = client.post("/api/spreadsheets/analyze", files={"files": (nome, handle, XLSX_MIME)})
+        assert r.status_code == HTTP_OK, r.text[:200]
+        return dict(r.json())
+
+    def test_analise_informa_quantas_linhas_repetidas(self, client: TestClient) -> None:
+        d = self._enviar_homologacao(client, "A_vendas_com_anomalias.xlsx")
+        assert d["duplicate_rows"] == 1
+
+    def test_arquivo_sem_repetidas_informa_zero(self, client: TestClient) -> None:
+        d = _enviar(client, "01_csv_limpo.csv")
+        assert d["duplicate_rows"] == 0
+
+    def test_sem_confirmacao_a_repetida_nao_vira_problema(self, client: TestClient) -> None:
+        d = self._enviar_homologacao(client, "A_vendas_com_anomalias.xlsx")
+        token = d["token"]
+        client.post(f"/api/spreadsheets/{token}/schema", data={"source": "suggested"})
+        client.post(f"/api/spreadsheets/{token}/validate")
+        res = _concluir(client, token)
+
+        relatorio = next(a for a in res["artifacts"] if a["name"] == "validacao_report.json")
+        dados = client.get(relatorio["download_url"]).json()
+        assert not [i for i in dados["issues"] if "duplicad" in str(i["message"]).lower()]
+
+    def test_confirmada_a_repetida_aparece_com_o_numero_da_linha(self, client: TestClient) -> None:
+        d = self._enviar_homologacao(client, "A_vendas_com_anomalias.xlsx")
+        token = d["token"]
+        client.post(f"/api/spreadsheets/{token}/schema", data={"source": "suggested"})
+        client.post(f"/api/spreadsheets/{token}/validate", data={"flag_duplicate_rows": "true"})
+        res = _concluir(client, token)
+
+        relatorio = next(a for a in res["artifacts"] if a["name"] == "validacao_report.json")
+        dados = client.get(relatorio["download_url"]).json()
+        duplicadas = [i for i in dados["issues"] if "duplicad" in str(i["message"]).lower()]
+        assert len(duplicadas) == 1
+        assert duplicadas[0]["line"] == 12
+
+    def test_a_regra_confirmada_entra_no_schema_efetivo(self, client: TestClient) -> None:
+        """O pacote guarda o que REALMENTE rodou, nao o que foi sugerido."""
+        d = self._enviar_homologacao(client, "A_vendas_com_anomalias.xlsx")
+        token = d["token"]
+        client.post(f"/api/spreadsheets/{token}/schema", data={"source": "suggested"})
+        client.post(f"/api/spreadsheets/{token}/validate", data={"flag_duplicate_rows": "true"})
+        res = _concluir(client, token)
+
+        pacote = next(a for a in res["artifacts"] if a["name"] == "pacote_execucao.zip")
+        conteudo = client.get(pacote["download_url"]).content
+        with zipfile.ZipFile(io.BytesIO(conteudo)) as zf:
+            efetivo = zf.read("schema_efetivo.yaml").decode("utf-8")
+        assert "detect_duplicate_rows: true" in efetivo
+
+    def test_nenhuma_linha_e_removida(self, client: TestClient) -> None:
+        d = self._enviar_homologacao(client, "A_vendas_com_anomalias.xlsx")
+        token = d["token"]
+        client.post(f"/api/spreadsheets/{token}/schema", data={"source": "suggested"})
+        client.post(
+            f"/api/spreadsheets/{token}/validate",
+            data={"flag_duplicate_rows": "true", "apply_cleaning": "true"},
+        )
+        res = _concluir(client, token)
+
+        relatorio = next(a for a in res["artifacts"] if a["name"] == "validacao_report.json")
+        dados = client.get(relatorio["download_url"]).json()
+        assert dados["rows"] == 17  # as 17 linhas de dados da fixture, inteiras
+
+
+# ============================================================
 # Isolamento e seguranca
 # ============================================================
 
@@ -568,6 +651,20 @@ class TestIsolamento:
     def test_path_traversal_barrado(self, client: TestClient, nome: str) -> None:
         token, _ = _jornada_completa(client, "32_servicos.csv")
         assert client.get(f"/api/download/{token}/{nome}").status_code == HTTP_NOT_FOUND
+
+    def test_relatorio_baixado_nao_expoe_caminho_do_servidor(self, client: TestClient) -> None:
+        """
+        Regressao: o `validacao_report.json` trazia o caminho completo do
+        arquivo dentro do workspace — a estrutura de pastas do servidor ia
+        junto no download. Agora o relatorio guarda so o NOME.
+        """
+        _, res = _jornada_completa(client, "32_servicos.csv")
+        artefato = next(a for a in res["artifacts"] if a["name"] == "validacao_report.json")
+        texto = client.get(artefato["download_url"]).text
+
+        assert str(engine._root()) not in texto
+        assert "workspace" not in texto
+        assert json.loads(texto)["file"] == "32_servicos.csv"
 
     def test_arquivo_de_entrada_nao_e_baixavel(self, client: TestClient) -> None:
         """Nada em `in/` sai pelo endpoint publico."""
