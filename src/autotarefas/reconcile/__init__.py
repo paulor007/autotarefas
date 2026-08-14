@@ -59,8 +59,15 @@ from autotarefas.reconcile.result import (
     SourceInfo,
     TableSource,
 )
-from autotarefas.reconcile.task import ComparisonTask, ReconciliationTask, SourceSelection
+from autotarefas.reconcile.task import (
+    ComparisonTask,
+    ReconciliationTask,
+    SourceSelection,
+    TransferTask,
+)
 from autotarefas.reconcile.tolerance import Tolerance, parse_tolerance, parse_tolerances
+from autotarefas.reconcile.transfer import TransferPolicy, TransferResult, transfer_values
+from autotarefas.reconcile.transfer_artifacts import write_transfer_artifacts
 
 __all__ = [
     "JSON_REPORT_NAME",
@@ -86,11 +93,16 @@ __all__ = [
     "SourceSelection",
     "TableSource",
     "Tolerance",
+    "TransferPolicy",
+    "TransferResult",
+    "TransferTask",
     "build_report_payload",
     "compare_tables",
     "parse_tolerance",
     "parse_tolerances",
     "reconcile_tables",
+    "transfer_values",
     "write_comparison_artifacts",
     "write_reconciliation_artifacts",
+    "write_transfer_artifacts",
 ]

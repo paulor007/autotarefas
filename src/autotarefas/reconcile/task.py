@@ -29,6 +29,10 @@ from autotarefas.reconcile.merge_artifacts import (
     build_report_payload as build_reconciliation_payload,
 )
 from autotarefas.reconcile.result import ComparisonResult, TableSource
+from autotarefas.reconcile.transfer import TransferPolicy, TransferResult, transfer_values
+from autotarefas.reconcile.transfer_artifacts import (
+    build_report_payload as build_transfer_payload,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -179,6 +183,60 @@ class ComparisonTask(BaseTask):
         )
 
 
+class TransferTask(ComparisonTask):
+    """
+    Enriquece o destino com os campos autorizados da fonte (REC-003).
+
+    O destino e o lado A da comparacao; a fonte, o lado B. O arquivo de
+    destino nao e alterado: o resultado sai em `transfer.rows`.
+    """
+
+    name = "transferir"
+    description = "Copia campos autorizados de uma planilha para outra"
+
+    def __init__(  # noqa: PLR0913 - quatro opcionais keyword-only
+        self,
+        destination: SourceSelection,
+        source: SourceSelection,
+        *,
+        key_columns: Sequence[str],
+        policy: TransferPolicy,
+        normalizations: Sequence[str] = (),
+        tolerances: Sequence[Tolerance] = (),
+        dry_run: bool = False,
+    ) -> None:
+        super().__init__(
+            destination,
+            source,
+            key_columns=key_columns,
+            normalizations=normalizations,
+            tolerances=tolerances,
+            dry_run=dry_run,
+        )
+        self.policy = policy
+        self.transfer: TransferResult | None = None
+
+    def execute(self) -> TaskResult:
+        """Compara destino x fonte e aplica a transferencia autorizada."""
+        started_at = datetime.now(UTC)
+        comparacao = self._compare()
+        if self.table_a is None or self.table_b is None:  # pragma: no cover - garantido acima
+            msg = "as fontes nao foram lidas"
+            raise CompareError(msg)
+
+        transferencia = transfer_values(self.table_a, self.table_b, comparacao, self.policy)
+        self.transfer = transferencia
+
+        data: dict[str, Any] = build_transfer_payload(transferencia, self.table_b)
+        return self._make_result(
+            status=TaskStatus.SUCCESS,
+            started_at=started_at,
+            rows_affected=transferencia.changed_count,
+            rows_failed=len(transferencia.not_found),
+            data=data,
+        )
+
+
 class ReconciliationTask(ComparisonTask):
     """
     Compara e DECIDE: gera a base conciliada e a lista de revisao (REC-002).
@@ -235,4 +293,4 @@ class ReconciliationTask(ComparisonTask):
         )
 
 
-__all__ = ["ComparisonTask", "ReconciliationTask", "SourceSelection"]
+__all__ = ["ComparisonTask", "ReconciliationTask", "SourceSelection", "TransferTask"]

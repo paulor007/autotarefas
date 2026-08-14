@@ -18,7 +18,11 @@ aprovados; comando `autotarefas comparar` homologado sobre as fixtures
 (RF-REC-002, 14/08/2026) — comando `autotarefas conciliar` homologado sobre as
 mesmas fixtures (campo autorizado atualizado, divergência não autorizada para
 revisão, chave duplicada fora da base) com os 4 artefatos gerados; suíte local
-verde · **[H]** evidência
+verde · **[B3]** Fase B3 (RF-REC-003, 14/08/2026) — comando `autotarefas
+transferir` homologado sobre `tests/fixtures/transferencia/` (e-mail vazio
+preenchido, e-mail antigo atualizado, valor igual mantido, `nome` não autorizado
+intacto, `00129` sem correspondente listado); hashes dos dois arquivos de
+entrada conferidos antes e depois · **[H]** evidência
 colhida manualmente na auditoria
 (saídas de `--help`, leitura de código com linha citada).
 
@@ -49,7 +53,7 @@ colhida manualmente na auditoria
 | RF-PLA-010 | NÃO INICIADO | **OBRIG. V1** (etapa 4 do resultado) | — | — | — | catálogo de correções confirmadas | PLA-006, REC-003 | Fase B5 |
 | RF-REC-001 | CONCLUÍDO | **OBRIG. V1** (DP-04 decidida 05/08) | `src/autotarefas/reconcile/` + `cli/commands/comparar.py` | `tests/reconcile/` (3 arquivos), `tests/cli/test_comparar_cli.py` | [B1] | tolerâncias → REC-002 | PLA-001/006 | manter |
 | RF-REC-002 | CONCLUÍDO | **OBRIG. V1** | `src/autotarefas/reconcile/{tolerance,merge,merge_artifacts}.py` + `cli/commands/conciliar.py` | `tests/reconcile/test_{tolerance,merge,merge_artifacts}.py`, `tests/cli/test_conciliar_cli.py` | [B2] | YAML da reconciliação → REC-004 | REC-001 | manter |
-| RF-REC-003 | NÃO INICIADO | **OBRIG. V1** | — | — | — | tudo | REC-001 | Fase B3 |
+| RF-REC-003 | CONCLUÍDO | **OBRIG. V1** | `src/autotarefas/reconcile/{transfer,transfer_artifacts}.py` + `cli/commands/transferir.py` | `tests/reconcile/test_transfer.py`, `tests/cli/test_transferir_cli.py` | [B3] | — | REC-001 | manter |
 | RF-REC-004 | NÃO INICIADO | **OBRIG. V1** (etapa 11 do resultado) | — | — | — | tudo | REC-002, CORE-006 | Fase B6 |
 | RF-INT-001 | CONCLUÍDO | OBRIG. V1 | `src/autotarefas/tasks/{extract_api,extract_artifacts}.py` | `tests/tasks/test_extract_api.py`, `test_extract_artifacts.py`, `tests/cli/test_extract_cli.py` | [N][L] | paginação única | CORE-001 | manter |
 | RF-INT-002 | CONCLUÍDO | OBRIG. V1 | `src/autotarefas/tasks/{send_api,send_artifacts,send_result}.py` | `tests/tasks/test_send_api.py`, `test_send_artifacts.py`, `test_send_result.py`, `tests/cli/test_send_cli.py` | [N][L] | mapeamento → INT-005 (obrig. V1) | CORE-001 | manter |

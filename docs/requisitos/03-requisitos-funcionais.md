@@ -386,7 +386,11 @@ sobre esse núcleo.*
 **Objetivo:** preencher/atualizar colunas de uma base a partir de outra (o "PROCV com evidência").
 **Descrição detalhada:** localizar registro correspondente na fonte, copiar campos autorizados para o destino **em arquivo novo**, coluna opcional `_origem_<campo>`, relatório de tudo que foi preenchido/atualizado/não-encontrado; combinação de bases em planilha consolidada com coluna de origem.
 **Critérios de aceite:** campo não autorizado jamais alterado; não-encontrados listados com a chave buscada.
-**Prioridade:** OBRIGATÓRIO V1 — DP-04 (05/08/2026) e DP-01(a) (10/08/2026): realiza a etapa 5 do resultado operacional (01 §9.1). **Fase:** B3. **Status:** NÃO INICIADO. **Demais campos:** padrão do módulo.
+**Prioridade:** OBRIGATÓRIO V1 — DP-04 (05/08/2026) e DP-01(a) (10/08/2026): realiza a etapa 5 do resultado operacional (01 §9.1). **Fase:** B3. **Status:** CONCLUÍDO (14/08/2026).
+**Evidências:** `src/autotarefas/reconcile/{transfer,transfer_artifacts}.py`, comando `autotarefas transferir` (`src/autotarefas/cli/commands/transferir.py`), fixtures em `tests/fixtures/transferencia/`; testes em `tests/reconcile/test_transfer.py` e `tests/cli/test_transferir_cli.py`.
+**Como ficou:** o pareamento reusa a comparação da REC-001 (destino = A, fonte = B), o que dá chave composta, normalização e conflitos de chave sem código novo. Cada célula tocada vira uma linha de evidência com ação explícita (`preenchido`, `atualizado`, `mantido`, `sem_valor_na_fonte`); `--somente-vazios` nunca sobrescreve; `--marcar-origem` gera `_origem_<campo>`; campo ausente na fonte vira aviso, não erro. Não-encontrados saem em `nao_encontrados.csv` com a chave buscada e a linha do destino.
+**Artefatos:** `planilha_enriquecida.xlsx` (abas Planilha enriquecida, Transferências, Não encontrados e Resumo), `planilha_enriquecida.csv`, `nao_encontrados.csv` e `transferencia_report.json`.
+**Decisão de escopo:** a "planilha consolidada com coluna de origem" citada na descrição é entregue pelo `conciliar --manter-novos` (coluna `_origem`), em vez de um segundo caminho de código que faria a mesma coisa.
 
 ### RF-REC-004 — Configuração de reconciliação reutilizável
 **Objetivo:** a conferência mensal configurada uma vez.
