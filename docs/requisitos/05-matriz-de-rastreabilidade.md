@@ -27,7 +27,12 @@ entrada conferidos antes e depois · **[B4]** Fase B4 (RF-PLA-009,
 `tests/fixtures/apresentacao/original_formatado.xlsx` gerou
 `planilha_tratada.xlsx` com painel congelado, autofiltro, largura, fonte e
 preenchimento do cabeçalho e formato `R$ #,##0.00` intactos, valores
-normalizados aplicados e `preservacao_report.json` sem perdas · **[H]** evidência
+normalizados aplicados e `preservacao_report.json` sem perdas · **[B5]** Fase B5
+(RF-PLA-010, 14/08/2026) — `autotarefas corrigir` sobre
+`tests/fixtures/correcoes/` aplicou 7 correções confirmadas (de/para,
+padronização e preenchimento de vazios) e mandou apenas o valor desconhecido
+("Sao Jorge") para `itens_para_revisao.csv`, com a apresentação do original
+preservada na planilha corrigida · **[H]** evidência
 colhida manualmente na auditoria
 (saídas de `--help`, leitura de código com linha citada).
 
@@ -55,7 +60,7 @@ colhida manualmente na auditoria
 | RF-PLA-007 | CONCLUÍDO | OBRIG. V1 | `src/autotarefas/tasks/{artifacts,report,report_xlsx}.py` | `tests/tasks/test_artifacts.py`, `test_report.py`, `test_report_xlsx.py` | [N] | — | PLA-005 | manter |
 | RF-PLA-008 | CONCLUÍDO | OBRIG. V1 | `src/autotarefas/tasks/execution_package.py` | `tests/tasks/test_execution_package.py` | [N] | — | PLA-007 | manter |
 | RF-PLA-009 | CONCLUÍDO | **OBRIG. V1** (etapa 6 do resultado, 01 §9.1) | `src/autotarefas/tasks/presentation.py` (+ `cli/commands/validate.py`) | `tests/tasks/test_presentation.py`, `tests/cli/test_validate_tratada_cli.py` | [B4] | gráficos/imagens declarados como não preserváveis (R-13) | PLA-007 | manter |
-| RF-PLA-010 | NÃO INICIADO | **OBRIG. V1** (etapa 4 do resultado) | — | — | — | catálogo de correções confirmadas | PLA-006, REC-003 | Fase B5 |
+| RF-PLA-010 | CONCLUÍDO | **OBRIG. V1** (etapa 4 do resultado) | `src/autotarefas/tasks/{corrections,correction_artifacts}.py` + `cli/commands/corrigir.py` | `tests/tasks/test_corrections.py`, `tests/cli/test_corrigir_cli.py` | [B5] | catálogo com 3 tipos (de_para, padronizar, preencher) | PLA-006, REC-003 | ampliar catálogo sob demanda real |
 | RF-REC-001 | CONCLUÍDO | **OBRIG. V1** (DP-04 decidida 05/08) | `src/autotarefas/reconcile/` + `cli/commands/comparar.py` | `tests/reconcile/` (3 arquivos), `tests/cli/test_comparar_cli.py` | [B1] | tolerâncias → REC-002 | PLA-001/006 | manter |
 | RF-REC-002 | CONCLUÍDO | **OBRIG. V1** | `src/autotarefas/reconcile/{tolerance,merge,merge_artifacts}.py` + `cli/commands/conciliar.py` | `tests/reconcile/test_{tolerance,merge,merge_artifacts}.py`, `tests/cli/test_conciliar_cli.py` | [B2] | YAML da reconciliação → REC-004 | REC-001 | manter |
 | RF-REC-003 | CONCLUÍDO | **OBRIG. V1** | `src/autotarefas/reconcile/{transfer,transfer_artifacts}.py` + `cli/commands/transferir.py` | `tests/reconcile/test_transfer.py`, `tests/cli/test_transferir_cli.py` | [B3] | — | REC-001 | manter |

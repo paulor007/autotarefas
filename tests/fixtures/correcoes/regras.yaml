@@ -1,0 +1,18 @@
+# Regras CONFIRMADAS de correcao (RF-PLA-010).
+# Nada e corrigido fora do que esta declarado aqui.
+correcoes:
+  - coluna: uf
+    tipo: de_para
+    mapa:
+      "sao paulo": SP
+      "rio de janeiro": RJ
+    fora_da_regra: revisao
+
+  - coluna: situacao
+    tipo: padronizar
+    valores: [Ativo, Inativo]
+    fora_da_regra: revisao
+
+  - coluna: origem
+    tipo: preencher
+    valor: planilha

@@ -345,7 +345,12 @@ módulo" para não repetir texto.
 **Objetivo:** ir além da limpeza determinística quando o usuário autorizar regra explícita.
 **Descrição detalhada (alvo):** catálogo de correções parametrizáveis (ex.: mapear valores de/para, completar campo por lookup fixo, padronizar categoria) **sempre** confirmadas por configuração, com separação clara no relatório entre automático-seguro, normalização, regra-confirmada e item-para-revisão.
 **Regras de negócio:** nenhuma correção fora de regra confirmada; original preservado; nenhuma decisão incerta silenciosa — caso fora da regra vai para revisão.
-**Prioridade:** OBRIGATÓRIO V1 (revisão 2 — etapa 4 do resultado operacional, 01 §9.1). **Fase:** B5 (após REC, que fornece o lookup). **Status:** NÃO INICIADO. **Demais campos:** padrão do módulo.
+**Prioridade:** OBRIGATÓRIO V1 (revisão 2 — etapa 4 do resultado operacional, 01 §9.1). **Fase:** B5 (após REC, que fornece o lookup). **Status:** CONCLUÍDO (14/08/2026).
+**Evidências:** `src/autotarefas/tasks/{corrections,correction_artifacts}.py`, comando `autotarefas corrigir` (`src/autotarefas/cli/commands/corrigir.py`), fixtures em `tests/fixtures/correcoes/`; testes em `tests/tasks/test_corrections.py` e `tests/cli/test_corrigir_cli.py`.
+**Catálogo inicial (3 tipos, declarados em YAML):** `de_para` (troca valores conhecidos por um canônico, ignorando caixa e acentos), `padronizar` (encaixa o valor em uma lista declarada) e `preencher` (completa **apenas células vazias** com um valor fixo). Cada regra declara `fora_da_regra: revisao | manter`.
+**Separação exigida pela ficha:** o relatório traz as quatro naturezas em um só lugar — `automatico_seguro` (conversões do leitor), `normalizacao`, `regra_confirmada` e `revisao`.
+**Comportamento seguro:** valor que já é o destino da regra não vira revisão (não se pede conferência do que está certo); valor desconhecido nunca é alterado — vai para `itens_para_revisao.csv` com o motivo. A planilha corrigida sai preservando a apresentação do original (reusa PLA-009) e o arquivo de entrada nunca é modificado (verificado por hash).
+**Artefatos:** `planilha_corrigida.xlsx`, `planilha_corrigida.csv`, `itens_para_revisao.csv` e `correcoes_report.json`.
 
 ---
 
