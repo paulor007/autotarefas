@@ -1,0 +1,38 @@
+# Fluxo de exemplo (RF-CORE-006 recorte + RF-REC-004).
+#
+# E a conferencia mensal inteira em um arquivo: comparar as duas bases,
+# conciliar pelas regras declaradas e aplicar as correcoes confirmadas.
+#
+# Os caminhos sao relativos a ESTA pasta. Nenhuma credencial mora aqui:
+# o fluxo guarda o que fazer, nunca o segredo.
+nome: Conferencia mensal
+passos:
+  - tipo: comparar
+    nome: Diferencas entre as bases
+    a: ../comparacao/base_a.xlsx
+    b: ../comparacao/base_b.xlsx
+    chave: [codigo]
+    normalizar: [espacos, caixa]
+    tolerancia: ["valor=0,01"]
+
+  - tipo: conciliar
+    nome: Base conciliada
+    a: ../comparacao/base_a.xlsx
+    b: ../comparacao/base_b.xlsx
+    chave: [codigo]
+    principal: a
+    atualizar: [valor]
+    tolerancia: ["valor=0,01"]
+
+  - tipo: transferir
+    nome: Completar contatos
+    destino: ../transferencia/destino_cadastro.xlsx
+    fonte: ../transferencia/fonte_contatos.xlsx
+    chave: [codigo]
+    campos: [email, telefone]
+    marcar_origem: true
+
+  - tipo: corrigir
+    nome: Padronizar cadastro
+    arquivo: ../correcoes/base_para_corrigir.xlsx
+    regras: ../correcoes/regras.yaml

@@ -36,7 +36,12 @@ preservada na planilha corrigida · **[B7]** Fase B7 (RF-INT-005, 14/08/2026) �
 `send api --map/--map-file/--obrigatorio/--previa` exercitado com as três
 estruturas da ficha (contatos, produtos e vendas): payload sai no vocabulário do
 destino, mapeamento inválido aborta antes do primeiro POST (exit 2) e linha com
-obrigatório vazio é rejeitada com motivo, sem virar requisição · **[H]** evidência
+obrigatório vazio é rejeitada com motivo, sem virar requisição · **[B6]** Fase B6
+(RF-CORE-006 recorte + RF-REC-004, 14/08/2026) — `autotarefas run
+tests/fixtures/fluxo/conferencia_mensal.yaml --out-dir …` executou os 4 passos
+(comparar → conciliar → transferir → corrigir) gravando cada um em sua pasta;
+segredo embutido no YAML é recusado na leitura (exit 2) e `--out-dir` da CLI
+vence o do arquivo · **[H]** evidência
 colhida manualmente na auditoria
 (saídas de `--help`, leitura de código com linha citada).
 
@@ -47,7 +52,7 @@ colhida manualmente na auditoria
 | RF-CORE-003 | CONCLUÍDO | OBRIG. V1 | `src/autotarefas/core/security.py` | `tests/core/test_security.py` | [N] | — | — | manter |
 | RF-CORE-004 | CONCLUÍDO | OBRIG. V1 | `src/autotarefas/core/settings.py` | `tests/core/test_settings.py` | [N] | `.env.example` vazio | — | preencher exemplo (A2) |
 | RF-CORE-005 | CONCLUÍDO | OBRIG. V1 | `src/autotarefas/cli/main.py` + `commands/` | `tests/cli/` (19 arquivos) | [N][H] | — | CORE-001 | manter |
-| RF-CORE-006 | PARCIAL | **OBRIG. V1** (recorte aprovado — DP-01(d)) | `src/autotarefas/profiles/` (parte existente) | `tests/profiles/` | [N] | `run <fluxo.yaml>` inexistente | REC-004 | especificar formato (B6) |
+| RF-CORE-006 | CONCLUÍDO (recorte V1) | **OBRIG. V1** (recorte aprovado — DP-01(d)) | `src/autotarefas/flow.py` + `cli/commands/run.py` (+ `profiles/`) | `tests/test_flow.py`, `tests/profiles/` | [B6] | encadeamento genérico e agendamento seguem PÓS-V1 (D4) | REC-004 | manter |
 | RF-CORE-007 | NÃO INICIADO | PÓS-V1 | — (semente: `live_demo/frontend/src/components/ValidationSummary.tsx`) | — | [H] | motor de regras | CORE-006 | Fase D1 |
 | RF-CORE-008 | NÃO INICIADO | PÓS-V1 | — | — | — | tudo | CORE-006 | Fase D4 |
 | RF-ARQ-001 | CONCLUÍDO | OBRIG. V1 | `src/autotarefas/tasks/backup.py` | `tests/tasks/test_backup.py`, `tests/cli/test_backup_cli.py` | [N][L] | manifesto/restauração → ARQ-002 | CORE-001 | manter |
@@ -68,7 +73,7 @@ colhida manualmente na auditoria
 | RF-REC-001 | CONCLUÍDO | **OBRIG. V1** (DP-04 decidida 05/08) | `src/autotarefas/reconcile/` + `cli/commands/comparar.py` | `tests/reconcile/` (3 arquivos), `tests/cli/test_comparar_cli.py` | [B1] | tolerâncias → REC-002 | PLA-001/006 | manter |
 | RF-REC-002 | CONCLUÍDO | **OBRIG. V1** | `src/autotarefas/reconcile/{tolerance,merge,merge_artifacts}.py` + `cli/commands/conciliar.py` | `tests/reconcile/test_{tolerance,merge,merge_artifacts}.py`, `tests/cli/test_conciliar_cli.py` | [B2] | YAML da reconciliação → REC-004 | REC-001 | manter |
 | RF-REC-003 | CONCLUÍDO | **OBRIG. V1** | `src/autotarefas/reconcile/{transfer,transfer_artifacts}.py` + `cli/commands/transferir.py` | `tests/reconcile/test_transfer.py`, `tests/cli/test_transferir_cli.py` | [B3] | — | REC-001 | manter |
-| RF-REC-004 | NÃO INICIADO | **OBRIG. V1** (etapa 11 do resultado) | — | — | — | tudo | REC-002, CORE-006 | Fase B6 |
+| RF-REC-004 | CONCLUÍDO | **OBRIG. V1** (etapa 11 do resultado) | `src/autotarefas/flow.py` (passos `comparar`/`conciliar`/`transferir`/`corrigir`) + fixture `tests/fixtures/fluxo/conferencia_mensal.yaml` | `tests/test_flow.py` | [B6] | — | REC-002, CORE-006 | manter |
 | RF-INT-001 | CONCLUÍDO | OBRIG. V1 | `src/autotarefas/tasks/{extract_api,extract_artifacts}.py` | `tests/tasks/test_extract_api.py`, `test_extract_artifacts.py`, `tests/cli/test_extract_cli.py` | [N][L] | paginação única | CORE-001 | manter |
 | RF-INT-002 | CONCLUÍDO | OBRIG. V1 | `src/autotarefas/tasks/{send_api,send_artifacts,send_result}.py` | `tests/tasks/test_send_api.py`, `test_send_artifacts.py`, `test_send_result.py`, `tests/cli/test_send_cli.py` | [N][L] | mapeamento → INT-005 (obrig. V1) | CORE-001 | manter |
 | RF-INT-003 | CONCLUÍDO | OBRIG. V1 (real) | `src/autotarefas/tasks/sync_api.py` | `tests/tasks/test_sync_api.py`, `tests/cli/test_sync_cli.py` | [N] | Live → LIVE-006a | INT-001, INT-002 | ativar no Live (A3) |

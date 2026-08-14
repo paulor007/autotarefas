@@ -403,7 +403,9 @@ sobre esse núcleo.*
 ### RF-REC-004 — Configuração de reconciliação reutilizável
 **Objetivo:** a conferência mensal configurada uma vez.
 **Descrição detalhada:** YAML de reconciliação (fontes/aba/cabeçalho por padrão de nome, chaves, colunas, tolerâncias, prioridades, campos atualizáveis, tratamento de ausentes/conflitos) validado por pydantic; é o primeiro consumidor do formato de configuração de fluxo (CORE-006, recorte V1).
-**Prioridade:** OBRIGATÓRIO V1 (revisão 2 — etapa 11 do resultado operacional). **Fase:** B6, junto de CORE-006. **Status:** NÃO INICIADO. **Demais campos:** padrão do módulo.
+**Prioridade:** OBRIGATÓRIO V1 (revisão 2 — etapa 11 do resultado operacional). **Fase:** B6, junto de CORE-006. **Status:** CONCLUÍDO (14/08/2026).
+**Evidências:** `src/autotarefas/flow.py` (modelo pydantic `FlowConfig`/`FlowStep` + executor), comando `autotarefas run` (`src/autotarefas/cli/commands/run.py`), fluxo de exemplo em `tests/fixtures/fluxo/conferencia_mensal.yaml`; testes em `tests/test_flow.py`.
+**Como ficou:** um YAML com `passos`, cada um do tipo `comparar`, `conciliar`, `transferir` ou `corrigir`, com os mesmos parâmetros dos comandos (chave, tolerâncias, fonte principal, campos atualizáveis, campos autorizados, regras). O executor **não reimplementa nada** — chama as mesmas tasks da CLI. Três garantias: **segredo embutido é recusado na leitura** (qualquer chave com api_key/token/senha/password/secret/bearer, com a mensagem indicando variável de ambiente); **precedência CLI > configuração > padrão** (`--out-dir`); e **cada passo grava em `out/<n>-<tipo>/`**, para um passo não apagar o outro. Caminhos relativos são resolvidos a partir da pasta do próprio YAML. Um passo que falha interrompe o fluxo (os seguintes dependem dele).
 
 ---
 
