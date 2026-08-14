@@ -483,10 +483,10 @@ sobre esse núcleo.*
 **Modo Live:** o mapeamento permanece definido pelo servidor — o visitante nunca informa caminho, comando ou credencial; a demonstração pode exibir o mapa efetivo aplicado.
 **Modo real:** `autotarefas send api --map "Coluna=campo" ...` ou `--map-file mapa.yaml`.
 **Testes necessários:** unidade do validador de mapa (repetido, inexistente, obrigatório ausente); montagem de payload; dry-run sem I/O externo; CLI; três fixtures de estrutura distinta (contatos, produtos, vendas); teste de que a entrada não é modificada.
-**Prioridade:** **OBRIGATÓRIO V1** — promovido em 10/08/2026 (DP-01(a) e DP-01(c)): corrigir a planilha e adequá-la ao contrato de uma API são responsabilidades distintas. **Fase:** B7, obrigatória, depois de B1–B6. **Status:** NÃO INICIADO.
-**Evidências:** — nenhuma; busca por mapeamento configurável em `src/autotarefas/tasks/send_api.py` e no grupo de comandos `src/autotarefas/cli/commands/send/` sem resultados neste snapshot.
-**Lacunas:** tudo — as 12 exigências funcionais consolidadas em 11 critérios de aceite acima.
-**Próxima ação:** implementar na Fase B7; **bloqueia a homologação C1 e o release V1**.
+**Prioridade:** **OBRIGATÓRIO V1** — promovido em 10/08/2026 (DP-01(a) e DP-01(c)): corrigir a planilha e adequá-la ao contrato de uma API são responsabilidades distintas. **Fase:** B7, obrigatória, depois de B1–B6. **Status:** CONCLUÍDO (14/08/2026).
+**Evidências:** `src/autotarefas/tasks/field_mapping.py` (leitura, validação e aplicação do mapa), integração em `src/autotarefas/tasks/send_api.py` e as opções `--map`, `--map-file`, `--obrigatorio`, `--enviar-nao-mapeadas` e `--previa` em `src/autotarefas/cli/commands/send/api.py`; testes em `tests/tasks/test_field_mapping.py` (com as três estruturas exigidas: contatos, produtos e vendas) e `tests/cli/test_send_mapping_cli.py`.
+**Como ficou:** o mapa vem do arquivo (YAML/JSON, chaves `mapa`/`obrigatorios`) e/ou da CLI, com **precedência CLI > arquivo > padrão**. A validação roda **antes da primeira requisição** e aborta a execução inteira (exit 2, `error_type=MappingError`) em três casos: coluna inexistente, dois mapeamentos para o mesmo campo e campo obrigatório sem origem. Linha com campo obrigatório vazio é **rejeitada antes do envio**, com o motivo, e aparece no relatório — nunca é enviada pela metade. Coluna fora do mapa é ignorada por padrão (ou enviada com `--enviar-nao-mapeadas`), e colunas de metadado do próprio AutoTarefas (`_`) nunca entram no payload. `--previa N` mostra o payload real já mapeado; com `--dry-run` nada sai. O mapa efetivo é gravado em `result.data["mapeamento"]` (relatório e audit).
+**Lacunas:** nenhuma para a V1; inferência automática por semelhança de nome segue fora de escopo por decisão da própria ficha.
 
 ### RF-INT-006 — Checkpoint e retomada
 **Objetivo:** lote de 50 mil linhas cair no meio e continuar do ponto certo.

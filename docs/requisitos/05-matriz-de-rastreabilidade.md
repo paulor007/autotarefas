@@ -32,7 +32,11 @@ normalizados aplicados e `preservacao_report.json` sem perdas · **[B5]** Fase B
 `tests/fixtures/correcoes/` aplicou 7 correções confirmadas (de/para,
 padronização e preenchimento de vazios) e mandou apenas o valor desconhecido
 ("Sao Jorge") para `itens_para_revisao.csv`, com a apresentação do original
-preservada na planilha corrigida · **[H]** evidência
+preservada na planilha corrigida · **[B7]** Fase B7 (RF-INT-005, 14/08/2026) —
+`send api --map/--map-file/--obrigatorio/--previa` exercitado com as três
+estruturas da ficha (contatos, produtos e vendas): payload sai no vocabulário do
+destino, mapeamento inválido aborta antes do primeiro POST (exit 2) e linha com
+obrigatório vazio é rejeitada com motivo, sem virar requisição · **[H]** evidência
 colhida manualmente na auditoria
 (saídas de `--help`, leitura de código com linha citada).
 
@@ -69,7 +73,7 @@ colhida manualmente na auditoria
 | RF-INT-002 | CONCLUÍDO | OBRIG. V1 | `src/autotarefas/tasks/{send_api,send_artifacts,send_result}.py` | `tests/tasks/test_send_api.py`, `test_send_artifacts.py`, `test_send_result.py`, `tests/cli/test_send_cli.py` | [N][L] | mapeamento → INT-005 (obrig. V1) | CORE-001 | manter |
 | RF-INT-003 | CONCLUÍDO | OBRIG. V1 (real) | `src/autotarefas/tasks/sync_api.py` | `tests/tasks/test_sync_api.py`, `tests/cli/test_sync_cli.py` | [N] | Live → LIVE-006a | INT-001, INT-002 | ativar no Live (A3) |
 | RF-INT-004 | NÃO INICIADO | PÓS-V1 (DP-01(b) e DP-08 aprovadas; formato só após 2 sistemas reais) | — | — | [H] (grep "conector" vazio) | tudo | — | Fase D3 |
-| RF-INT-005 | NÃO INICIADO | **OBRIG. V1** (promovido em 10/08 — DP-01(c)) | — | — | — | tudo (12 exigências funcionais consolidadas em 11 critérios de aceite na ficha 03) | INT-002 | **Fase B7 — bloqueia C1 e o release** |
+| RF-INT-005 | CONCLUÍDO | **OBRIG. V1** (promovido em 10/08 — DP-01(c)) | `src/autotarefas/tasks/field_mapping.py` + `tasks/send_api.py` + `cli/commands/send/api.py` | `tests/tasks/test_field_mapping.py` (inclui contatos, produtos e vendas), `tests/cli/test_send_mapping_cli.py` | [B7] | — | INT-002 | manter |
 | RF-INT-006 | NÃO INICIADO | RECOM. V1 (confirmado em DP-01(c); não bloqueia) | — | — | — | checkpoint | INT-002 | Fase B8 (posterior a B7) |
 | RF-COM-001 | CONCLUÍDO | OBRIG. V1 (real) | `src/autotarefas/tasks/send_email.py` | `tests/tasks/test_send_email.py`, `tests/cli/test_send_email_cli.py` | [N] | Live → LIVE-006a; anexos | CORE-004 | ativar no Live (A3) |
 | RF-COM-002 | CONCLUÍDO | OBRIG. V1 | `src/autotarefas/tasks/send_telegram.py` | `tests/tasks/test_send_telegram.py`, `tests/cli/test_send_telegram_cli.py`, `tests/tools/demo_server/test_telegram_mock.py` | [N][L] | — | CORE-001 | manter |

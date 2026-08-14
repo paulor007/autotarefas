@@ -12,7 +12,8 @@ from urllib.parse import urlparse
 import click
 
 from autotarefas.core.base import TaskStatus
-from autotarefas.core.exceptions import ValidationError
+from autotarefas.core.exceptions import ConfigError, ValidationError
+from autotarefas.tasks.field_mapping import build_mapping
 from autotarefas.tasks.send_api import SendApiTask
 from autotarefas.tasks.send_artifacts import write_send_artifacts
 
@@ -31,6 +32,36 @@ _SEP = "=" * 60
 def _is_localhost(url: str) -> bool:
     """True se a URL aponta para um host local."""
     return urlparse(url).hostname in _LOCAL_HOSTS
+
+
+def _mostrar_previa(result: TaskResult, quantas: int) -> None:
+    """
+    Mostra os primeiros payloads JA MAPEADOS.
+
+    A previa existe para conferir o de/para antes de mexer no sistema do
+    cliente — por isso ela mostra o payload real, com os nomes de campo do
+    destino, e nao a linha da planilha.
+    """
+    if quantas <= 0:
+        return
+    previa: list[dict[str, Any]] = result.data.get("previa", [])
+    if not previa:
+        return
+    click.echo("Previa do payload (ja mapeado):")
+    for payload in previa[:quantas]:
+        click.echo(f"  {payload}")
+    click.echo("")
+
+
+def _mostrar_rejeitados(result: TaskResult) -> None:
+    """Lista as linhas que nao chegaram a ser enviadas, com o motivo."""
+    rejeitados: list[dict[str, Any]] = result.data.get("rejeitados", [])
+    if not rejeitados:
+        return
+    click.secho(f"{len(rejeitados)} linha(s) rejeitada(s) antes do envio:", fg="yellow", err=True)
+    for item in rejeitados:
+        click.secho(f"  - linha {item['linha']}: {item['motivo']}", fg="yellow", err=True)
+    click.echo("")
 
 
 def _imprimir_resumo(result_data: dict[str, Any]) -> None:
@@ -147,8 +178,48 @@ def _gerar_artefatos(task: SendApiTask, result: TaskResult, out_dir: Path) -> No
         "e importacao_report.json."
     ),
 )
+@click.option(
+    "--map",
+    "-m",
+    "mapeamentos",
+    multiple=True,
+    help=(
+        "De/para de coluna para campo do destino: 'Coluna da planilha=campo'. "
+        "Repita para cada campo. Sem --map, as colunas vao com o nome original."
+    ),
+)
+@click.option(
+    "--map-file",
+    "map_file",
+    default=None,
+    type=click.Path(exists=True, dir_okay=False, readable=True, path_type=Path),
+    help="Arquivo YAML/JSON com o mapeamento (chaves 'mapa' e 'obrigatorios').",
+)
+@click.option(
+    "--obrigatorio",
+    "obrigatorios",
+    multiple=True,
+    help=(
+        "Campo que o destino exige (repita). Linha com o campo vazio e "
+        "REJEITADA antes do envio, com o motivo."
+    ),
+)
+@click.option(
+    "--enviar-nao-mapeadas",
+    is_flag=True,
+    default=False,
+    help="Envia tambem as colunas sem mapeamento, com o nome original.",
+)
+@click.option(
+    "--previa",
+    "previa",
+    default=0,
+    type=click.IntRange(min=0),
+    show_default=True,
+    help="Mostra os N primeiros payloads ja mapeados antes de enviar (0 = nao mostra).",
+)
 @click.pass_obj
-def api_command(
+def api_command(  # noqa: PLR0915 - orquestracao linear do comando (sem ramos ocultos)
     ctx: CLIContext,
     planilha: Path,
     url: str,
@@ -159,6 +230,11 @@ def api_command(
     max_retries: int,
     report: Path | None,
     out_dir: Path | None,
+    mapeamentos: tuple[str, ...],
+    map_file: Path | None,
+    obrigatorios: tuple[str, ...],
+    enviar_nao_mapeadas: bool,
+    previa: int,
 ) -> None:
     """
     Envia os registros de uma planilha para uma API (POST por linha).
@@ -171,6 +247,8 @@ def api_command(
     Exemplos:
       autotarefas send api -p clientes.csv -u http://localhost:5555/api/clientes
       autotarefas send api -p clientes.xlsx -u https://api.empresa.com/clientes -r saida.csv --delay 0.2
+      autotarefas send api -p clientes.xlsx -u ... --map "E-mail=email" --obrigatorio email
+      autotarefas --dry-run send api -p clientes.xlsx -u ... --map-file mapa.yaml --previa 3
     """  # noqa: E501
     # Validacao de URL (erro de uso -> exit 2)
     if not url.startswith(("http://", "https://")):
@@ -212,6 +290,22 @@ def api_command(
         if isinstance(tentativas, int) and tentativas > 1:
             click.secho(f"      ({tentativas} tentativas)", fg="yellow")
 
+    # Mapeamento de colunas (RF-INT-005): erro aqui e de USO, nao de envio.
+    try:
+        mapping = build_mapping(
+            mapeamentos,
+            map_file,
+            obrigatorios,
+            keep_unmapped=enviar_nao_mapeadas,
+        )
+    except ConfigError as exc:
+        click.secho(f"Mapeamento invalido: {exc}", fg="red", err=True)
+        raise SystemExit(_EXIT_USAGE) from exc
+
+    if not mapping.is_empty:
+        click.echo(f"Mapeamento: {mapping.describe()}")
+        click.echo("")
+
     # Cria a task (ValidationError -> exit 2)
     try:
         task = SendApiTask(
@@ -224,6 +318,7 @@ def api_command(
             max_retries=max_retries,
             report_path=report,
             on_progress=None if dry_run else _on_progress,
+            mapping=mapping,
             dry_run=dry_run,
         )
     except ValidationError as exc:
@@ -231,6 +326,16 @@ def api_command(
         raise SystemExit(_EXIT_USAGE) from exc
 
     result = task.run()
+
+    # Mapeamento invalido: nada foi enviado e o motivo e de configuracao.
+    if result.error_type == "MappingError":
+        click.secho("Nenhum registro foi enviado — o mapeamento nao se aplica:", fg="red")
+        for problema in result.data.get("problemas_de_mapeamento", []):
+            click.secho(f"  - {problema['mensagem']}", fg="red", err=True)
+        raise SystemExit(_EXIT_USAGE)
+
+    _mostrar_previa(result, previa)
+    _mostrar_rejeitados(result)
 
     # Resultado
     click.echo("")

@@ -46,6 +46,12 @@ from tenacity import (
 from autotarefas.core.base import BaseTask, TaskResult, TaskStatus
 from autotarefas.core.exceptions import ValidationError
 from autotarefas.core.logger import logger
+from autotarefas.tasks.field_mapping import (
+    FieldMapping,
+    apply_mapping,
+    preview_payloads,
+    validate_mapping,
+)
 from autotarefas.tasks.send_result import (
     ItemEnvio,
     classify_status,
@@ -151,6 +157,7 @@ class SendApiTask(BaseTask):
         max_retries: int = _DEFAULT_MAX_RETRIES,
         report_path: Path | None = None,
         on_progress: Callable[[ProgressInfo], None] | None = None,
+        mapping: FieldMapping | None = None,
         dry_run: bool = False,
     ) -> None:
         """
@@ -165,6 +172,8 @@ class SendApiTask(BaseTask):
             report_path: Se informado, salva relatorio por linha
                 (.csv/.xlsx/.json).
             on_progress: Callback chamado a cada linha enviada.
+            mapping: De/para coluna -> campo do destino (RF-INT-005). Sem
+                mapeamento, as colunas vao com o nome original.
             dry_run: Se True, nao envia nada; so conta as linhas.
         """
         super().__init__(dry_run=dry_run)
@@ -211,6 +220,7 @@ class SendApiTask(BaseTask):
         self.max_retries = max_retries
         self.report_path = report_path
         self.on_progress = on_progress
+        self.mapping = mapping if mapping is not None else FieldMapping()
         #: DataFrame lido da planilha (preenchido no execute); usado pela
         #: geracao de artefatos (fase 4), como na Auditoria de planilha.
         self.processed_dataframe: pd.DataFrame | None = None
@@ -424,7 +434,7 @@ class SendApiTask(BaseTask):
         registro["_pode_reenviar"] = item.pode_reenviar
         return registro
 
-    def execute(self) -> TaskResult:  # noqa: PLR0912
+    def execute(self) -> TaskResult:  # noqa: PLR0912, PLR0915
         """Executa o envio."""
         started_at = datetime.now(UTC)
 
@@ -445,6 +455,28 @@ class SendApiTask(BaseTask):
         # Guarda o DataFrame lido para a geracao de artefatos (fase 4),
         # mesma convencao do processed_dataframe da Auditoria.
         self.processed_dataframe = df
+
+        # Mapeamento (RF-INT-005): conferido ANTES de qualquer requisicao.
+        # Mapeamento invalido nao e "falha de envio" — e configuracao errada,
+        # e mandar metade dos registros seria pior do que nao mandar nenhum.
+        problemas = validate_mapping(self.mapping, [str(c) for c in df.columns])
+        if problemas:
+            for problema in problemas:
+                logger.error(f"Mapeamento invalido: {problema.message}")
+            return self._make_result(
+                status=TaskStatus.FAILURE,
+                started_at=started_at,
+                error_message="; ".join(p.message for p in problemas),
+                error_type="MappingError",
+                data={
+                    "total": total,
+                    "url": self.url,
+                    "mapeamento": self.mapping.as_dict(),
+                    "problemas_de_mapeamento": [
+                        {"codigo": p.code, "mensagem": p.message} for p in problemas
+                    ],
+                },
+            )
 
         auth_note = ""
         if self.api_key or self.bearer_token:
@@ -467,17 +499,27 @@ class SendApiTask(BaseTask):
                 },
             )
 
-        # Dry-run: nao envia
+        mapeadas = apply_mapping(rows, self.mapping)
+        aceitas = [m for m in mapeadas if m.accepted]
+        rejeitadas = [m for m in mapeadas if not m.accepted]
+
+        # Dry-run: nao envia — mas ja mostra o payload REAL que sairia.
         if self.dry_run:
-            logger.info(f"[dry-run] Enviaria {total} registros")
+            logger.info(f"[dry-run] Enviaria {len(aceitas)} registros")
             return self._make_result(
                 status=TaskStatus.SUCCESS,
                 started_at=started_at,
+                rows_failed=len(rejeitadas),
                 data={
                     "dry_run": True,
-                    "would_send": total,
+                    "would_send": len(aceitas),
                     "url": self.url,
                     "planilha": str(self.planilha_path),
+                    "mapeamento": self.mapping.as_dict(),
+                    "previa": preview_payloads(mapeadas),
+                    "rejeitados": [
+                        {"linha": m.line, "motivo": m.rejected_reason} for m in rejeitadas
+                    ],
                 },
             )
 
@@ -487,26 +529,32 @@ class SendApiTask(BaseTask):
         enviados = 0
         falhas = 0
 
-        for idx, row in enumerate(rows, start=1):
-            # Colunas iniciadas por "_" sao metadado dos artefatos do
-            # AutoTarefas (ex. _motivo do registros_falhos.csv) e NAO
-            # fazem parte do registro: ignora-las torna o arquivo de
-            # falhos reenviavel com a MESMA Idempotency-Key.
-            payload = {str(k): v for k, v in row.items() if not str(k).startswith("_")}
-            # linha FISICA na planilha (cabecalho = 1; 1a de dados = 2),
-            # mesma convencao da Auditoria de planilha.
-            item = self._enviar_um(payload, linha=idx + 1)
+        # Rejeitadas pelo mapeamento nao viram requisicao: entram no
+        # relatorio com o motivo, para virar correcao na planilha.
+        for rejeitada in rejeitadas:
+            registro = dict(rejeitada.payload)
+            registro["_linha"] = rejeitada.line
+            registro["_status"] = "rejeitado"
+            registro["_motivo"] = rejeitada.rejected_reason
+            resultados.append(registro)
+            logger.warning(f"Linha {rejeitada.line} rejeitada: {rejeitada.rejected_reason}")
+
+        for idx, mapeada in enumerate(aceitas, start=1):
+            # As colunas iniciadas por "_" (metadado dos artefatos) e o
+            # de/para do mapeamento ja foram resolvidos em apply_mapping:
+            # aqui so sai o payload no vocabulario do destino.
+            item = self._enviar_um(mapeada.payload, linha=mapeada.line)
             items.append(item)
-            resultados.append(self._registro_legado(payload, item))
+            resultados.append(self._registro_legado(mapeada.payload, item))
 
             if item.sucesso:
                 enviados += 1
             else:
                 falhas += 1
 
-            self._notify(idx, total, item)
+            self._notify(idx, len(aceitas), item)
 
-            if self.delay_s > 0 and idx < total:
+            if self.delay_s > 0 and idx < len(aceitas):
                 time.sleep(self.delay_s)
 
         # Relatorio
@@ -518,29 +566,36 @@ class SendApiTask(BaseTask):
             except (OSError, ValueError) as exc:
                 logger.warning(f"Falha ao salvar relatorio: {exc}")
 
-        # Status agregado
-        if falhas == 0:
+        # Status agregado. Registro rejeitado pelo mapeamento conta como
+        # nao processado: a execucao so e "success" quando tudo entrou.
+        nao_processados = falhas + len(rejeitadas)
+        if nao_processados == 0:
             status = TaskStatus.SUCCESS
         elif enviados == 0:
             status = TaskStatus.FAILURE
         else:
             status = TaskStatus.PARTIAL
 
-        logger.info(f"Envio concluido: {enviados} enviados, {falhas} falhas")
+        logger.info(
+            f"Envio concluido: {enviados} enviados, {falhas} falhas, "
+            f"{len(rejeitadas)} rejeitados no mapeamento"
+        )
         return self._make_result(
             status=status,
             started_at=started_at,
             rows_affected=enviados,
-            rows_failed=falhas,
+            rows_failed=nao_processados,
             data={
                 "total": total,
                 "enviados": enviados,
                 "falhas": falhas,
+                "rejeitados": [{"linha": m.line, "motivo": m.rejected_reason} for m in rejeitadas],
                 "reenviaveis": total_reenviaveis(items),
                 "falhas_por_categoria": falhas_por_categoria(items),
                 "items": [item.to_dict() for item in items],
                 "url": self.url,
                 "planilha": str(self.planilha_path),
+                "mapeamento": self.mapping.as_dict(),
                 "report_path": report_saved,
             },
         )
