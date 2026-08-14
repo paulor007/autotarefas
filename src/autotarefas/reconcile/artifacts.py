@@ -62,6 +62,7 @@ _SHEET_DIVERGENCIAS = "Divergencias"
 _SHEET_SOMENTE_A = "Somente em A"
 _SHEET_SOMENTE_B = "Somente em B"
 _SHEET_CONFLITOS = "Conflitos de chave"
+_SHEET_TOLERADAS = "Diferencas toleradas"
 
 _LABEL_DIFF_COLUMN = "coluna divergente"
 _LABEL_VALUE_A = "valor em A"
@@ -140,7 +141,18 @@ def build_report_payload(
             "chave": list(result.key_columns),
             "colunas_comparadas": list(result.compared_columns),
             "normalizacoes": list(result.normalizations),
-            "resumo": result.counts,
+            "tolerancias": list(result.tolerances),
+            "resumo": {**result.counts, "toleradas": result.tolerated_count},
+            "toleradas": [
+                {
+                    "chave": _key_as_dict(result, record.key),
+                    "coluna": diferenca.column,
+                    "a": diferenca.value_a,
+                    "b": diferenca.value_b,
+                }
+                for record in result.records
+                for diferenca in record.tolerated
+            ],
             "divergencias": [_record_payload(result, r) for r in result.by_category("divergente")],
             "somente_a": [_record_payload(result, r) for r in result.by_category("somente_a")],
             "somente_b": [_record_payload(result, r) for r in result.by_category("somente_b")],
@@ -237,11 +249,18 @@ def write_only_csvs(
 # ============================================================
 
 
-def _divergences_frame(result: ComparisonResult) -> pd.DataFrame:
-    """Uma linha por CELULA divergente — o formato que se filtra no Excel."""
+def _cells_frame(result: ComparisonResult, *, tolerated: bool) -> pd.DataFrame:
+    """
+    Uma linha por CELULA — o formato que se filtra no Excel.
+
+    ``tolerated=False`` traz as divergencias; ``True``, as diferencas que a
+    tolerancia declarada absorveu (que ficam numa aba propria, para que
+    "tolerado" nunca seja confundido com "igual").
+    """
     linhas: list[dict[str, Any]] = []
-    for record in result.by_category("divergente"):
-        for diff in record.differences:
+    for record in result.records:
+        celulas = record.tolerated if tolerated else record.differences
+        for diff in celulas:
             linha: dict[str, Any] = _key_as_dict(result, record.key)
             linha[_LABEL_DIFF_COLUMN] = diff.column
             linha[_LABEL_VALUE_A] = diff.value_a
@@ -286,11 +305,13 @@ def _build_resumo(ws: Worksheet, result: ComparisonResult) -> None:
         ("Chave", ", ".join(result.key_columns)),
         ("Colunas comparadas", ", ".join(result.compared_columns) or "(nenhuma)"),
         ("Normalizacoes", ", ".join(result.normalizations) or "(nenhuma)"),
+        ("Tolerancias", "; ".join(result.tolerances) or "(nenhuma)"),
         (CATEGORY_LABELS["identico"], contagem["identico"]),
         (CATEGORY_LABELS["divergente"], contagem["divergente"]),
         (CATEGORY_LABELS["somente_a"], contagem["somente_a"]),
         (CATEGORY_LABELS["somente_b"], contagem["somente_b"]),
         (CATEGORY_LABELS["conflitos"], contagem["conflitos"]),
+        ("Diferencas toleradas", result.tolerated_count),
     ]
     destaques = {
         CATEGORY_LABELS["identico"]: OK_FILL,
@@ -348,7 +369,9 @@ def write_divergencias_xlsx(
     resumo.title = _SHEET_RESUMO
     _build_resumo(resumo, result)
 
-    write_dataframe_sheet(wb.create_sheet(_SHEET_DIVERGENCIAS), _divergences_frame(result))
+    write_dataframe_sheet(
+        wb.create_sheet(_SHEET_DIVERGENCIAS), _cells_frame(result, tolerated=False)
+    )
     write_dataframe_sheet(
         wb.create_sheet(_SHEET_SOMENTE_A), _rows_frame(result, table_a, "somente_a")
     )
@@ -356,6 +379,7 @@ def write_divergencias_xlsx(
         wb.create_sheet(_SHEET_SOMENTE_B), _rows_frame(result, table_b, "somente_b")
     )
     write_dataframe_sheet(wb.create_sheet(_SHEET_CONFLITOS), _conflicts_frame(result))
+    write_dataframe_sheet(wb.create_sheet(_SHEET_TOLERADAS), _cells_frame(result, tolerated=True))
 
     path.parent.mkdir(parents=True, exist_ok=True)
     wb.save(path)
@@ -402,6 +426,9 @@ def generate_summary(result: ComparisonResult, *, max_rows: int = 10) -> str:
         f"  {CATEGORY_LABELS[categoria]:<20} {contagem[categoria]}"
         for categoria in ("identico", "divergente", "somente_a", "somente_b", "conflitos")
     )
+    if result.tolerated_count:
+        partes.append(f"  {'Toleradas':<20} {result.tolerated_count}")
+        partes.append(f"  (tolerancias: {'; '.join(result.tolerances)})")
 
     divergentes = result.by_category("divergente")
     if divergentes:

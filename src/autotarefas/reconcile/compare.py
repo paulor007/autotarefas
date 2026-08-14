@@ -32,7 +32,7 @@ import math
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from autotarefas.core.exceptions import AutoTarefasError
+from autotarefas.reconcile.errors import CompareError
 from autotarefas.reconcile.result import (
     CellDifference,
     CompareWarning,
@@ -41,6 +41,7 @@ from autotarefas.reconcile.result import (
     RecordComparison,
     TableSource,
 )
+from autotarefas.reconcile.tolerance import Tolerance, index_tolerances, within_tolerance
 from autotarefas.tasks.cleaning import normalize_whitespace
 from autotarefas.tasks.duplicates import normalize_digits
 
@@ -55,20 +56,12 @@ NORMALIZATION_OPTIONS: tuple[str, ...] = ("espacos", "caixa", "digitos")
 #: Limites DESTA fatia, declarados no relatorio para que ninguem confunda
 #: "nao encontrou diferenca" com "nao sabe procurar esse tipo de diferenca".
 LIMITATIONS: tuple[str, ...] = (
-    "comparacao textual: nao ha tolerancia numerica nem de data (RF-REC-002)",
-    "'10' e '10,00' sao valores diferentes; use --normalizar para espacos/caixa/digitos",
+    "comparacao textual: sem tolerancia declarada, '10' e '10,00' sao diferentes "
+    "(use --tolerancia para numeros/datas e --normalizar para espacos/caixa/digitos)",
     "uma tabela por arquivo: a comparacao roda sobre a aba selecionada na leitura",
     "chave duplicada ou vazia nao e pareada — vai para a lista de conflitos",
     "colunas presentes em apenas uma das fontes ficam fora da comparacao (com aviso)",
 )
-
-
-class CompareError(AutoTarefasError):
-    """A comparacao pedida nao pode ser executada (erro de uso).
-
-    Ex.: chave que nao existe em uma das fontes, ou nenhuma chave informada.
-    Nao e "as bases diferem" — e "o pedido nao faz sentido para estes arquivos".
-    """
 
 
 # ============================================================
@@ -300,31 +293,50 @@ def _conflicts(a: _Indexed, b: _Indexed) -> tuple[tuple[KeyConflict, ...], set[t
     return tuple(conflitos), set(duplicadas)
 
 
+@dataclass(frozen=True, slots=True)
+class _Rules:
+    """O que a comparacao considera igual: colunas, normalizacoes, tolerancias."""
+
+    columns: tuple[str, ...]
+    normalizations: tuple[str, ...]
+    tolerances: dict[str, Tolerance]
+
+
 def _differences(
     a: _Indexed,
     b: _Indexed,
     positions: tuple[int, int],
-    columns: tuple[str, ...],
-    normalizations: tuple[str, ...],
-) -> tuple[CellDifference, ...]:
-    """Colunas que diferem entre as duas linhas pareadas (valores ORIGINAIS)."""
+    rules: _Rules,
+) -> tuple[tuple[CellDifference, ...], tuple[CellDifference, ...]]:
+    """
+    Separa o que difere de verdade do que a tolerancia declarada absorve.
+
+    Returns:
+        ``(divergencias, toleradas)`` — ambas com os valores ORIGINAIS.
+    """
     pos_a, pos_b = positions
-    achadas: list[CellDifference] = []
-    for coluna in columns:
+    divergentes: list[CellDifference] = []
+    toleradas: list[CellDifference] = []
+    for coluna in rules.columns:
         valor_a = a.value(coluna, pos_a)
         valor_b = b.value(coluna, pos_b)
-        if normalize_for_comparison(valor_a, normalizations) != normalize_for_comparison(
-            valor_b, normalizations
+        if normalize_for_comparison(valor_a, rules.normalizations) == normalize_for_comparison(
+            valor_b, rules.normalizations
         ):
-            achadas.append(CellDifference(column=coluna, value_a=valor_a, value_b=valor_b))
-    return tuple(achadas)
+            continue
+        diferenca = CellDifference(column=coluna, value_a=valor_a, value_b=valor_b)
+        tolerancia = rules.tolerances.get(coluna)
+        if tolerancia is not None and within_tolerance(tolerancia, valor_a, valor_b):
+            toleradas.append(diferenca)
+        else:
+            divergentes.append(diferenca)
+    return tuple(divergentes), tuple(toleradas)
 
 
 def _classify(
     a: _Indexed,
     b: _Indexed,
-    columns: tuple[str, ...],
-    normalizations: tuple[str, ...],
+    rules: _Rules,
     conflicting: set[tuple[str, ...]],
 ) -> tuple[RecordComparison, ...]:
     """Percorre as chaves de A (na ordem do arquivo) e depois as exclusivas de B."""
@@ -345,7 +357,7 @@ def _classify(
             )
             continue
         pos_b = posicoes_b[0]
-        diferencas = _differences(a, b, (pos_a, pos_b), columns, normalizations)
+        diferencas, toleradas = _differences(a, b, (pos_a, pos_b), rules)
         registros.append(
             RecordComparison(
                 key=chave,
@@ -353,6 +365,7 @@ def _classify(
                 row_a=a.table.physical_row(pos_a),
                 row_b=b.table.physical_row(pos_b),
                 differences=diferencas,
+                tolerated=toleradas,
             )
         )
 
@@ -398,18 +411,43 @@ def _skipped_rows_warnings(table_a: TableSource, table_b: TableSource) -> list[C
     return avisos
 
 
+def _tolerance_warnings(
+    tolerances: Sequence[Tolerance],
+    compared_columns: tuple[str, ...],
+) -> list[CompareWarning]:
+    """
+    Tolerancia declarada para coluna que nao esta sendo comparada e AVISO.
+
+    Sem isso, um erro de digitacao no nome da coluna passaria despercebido e
+    o usuario acreditaria estar tolerando algo que continua divergindo.
+    """
+    return [
+        CompareWarning(
+            code="tolerancia_sem_coluna",
+            message=(
+                f"tolerancia declarada para '{t.column}', que nao esta entre as colunas "
+                "comparadas: ela nao teve efeito"
+            ),
+            column=t.column,
+        )
+        for t in tolerances
+        if t.column not in compared_columns
+    ]
+
+
 # ============================================================
 # Entry point
 # ============================================================
 
 
-def compare_tables(
+def compare_tables(  # noqa: PLR0913 - quatro opcionais keyword-only
     table_a: TableSource,
     table_b: TableSource,
     *,
     key_columns: Sequence[str],
     columns: Sequence[str] | None = None,
     normalizations: Sequence[str] = (),
+    tolerances: Sequence[Tolerance] = (),
 ) -> ComparisonResult:
     """
     Compara duas tabelas por chave e classifica cada registro.
@@ -422,6 +460,9 @@ def compare_tables(
         columns: colunas a comparar. None = todas as comuns, menos a chave.
         normalizations: subconjunto de :data:`NORMALIZATION_OPTIONS`,
             aplicado apenas para efeito de comparacao.
+        tolerances: tolerancias declaradas por coluna (REC-002). Uma
+            diferenca dentro da tolerancia NAO conta como divergencia, mas
+            fica registrada em ``RecordComparison.tolerated``.
 
     Returns:
         ComparisonResult com registros, conflitos, avisos e limitacoes.
@@ -448,12 +489,18 @@ def compare_tables(
     normalizacoes = _validate_normalizations(normalizations)
     comparadas, avisos = _resolve_columns(table_a.frame, table_b.frame, chave, columns)
     avisos.extend(_skipped_rows_warnings(table_a, table_b))
+    avisos.extend(_tolerance_warnings(tolerances, comparadas))
 
     indexada_a = _index_table(table_a, chave, comparadas, normalizacoes)
     indexada_b = _index_table(table_b, chave, comparadas, normalizacoes)
 
+    regras = _Rules(
+        columns=comparadas,
+        normalizations=normalizacoes,
+        tolerances=index_tolerances(tuple(tolerances)),
+    )
     conflitos, chaves_conflitantes = _conflicts(indexada_a, indexada_b)
-    registros = _classify(indexada_a, indexada_b, comparadas, normalizacoes, chaves_conflitantes)
+    registros = _classify(indexada_a, indexada_b, regras, chaves_conflitantes)
 
     return ComparisonResult(
         source_a=table_a.info(),
@@ -464,6 +511,7 @@ def compare_tables(
         conflicts=conflitos,
         warnings=tuple(avisos),
         normalizations=normalizacoes,
+        tolerances=tuple(t.describe() for t in tolerances),
         limitations=LIMITATIONS,
     )
 

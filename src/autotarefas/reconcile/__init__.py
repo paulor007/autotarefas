@@ -38,9 +38,18 @@ from autotarefas.reconcile.artifacts import (
 from autotarefas.reconcile.compare import (
     LIMITATIONS,
     NORMALIZATION_OPTIONS,
-    CompareError,
     compare_tables,
 )
+from autotarefas.reconcile.errors import CompareError
+from autotarefas.reconcile.merge import (
+    FieldDecision,
+    ReconciledRecord,
+    ReconcilePolicy,
+    ReconciliationResult,
+    ReviewItem,
+    reconcile_tables,
+)
+from autotarefas.reconcile.merge_artifacts import write_reconciliation_artifacts
 from autotarefas.reconcile.result import (
     CellDifference,
     CompareWarning,
@@ -50,7 +59,8 @@ from autotarefas.reconcile.result import (
     SourceInfo,
     TableSource,
 )
-from autotarefas.reconcile.task import ComparisonTask, SourceSelection
+from autotarefas.reconcile.task import ComparisonTask, ReconciliationTask, SourceSelection
+from autotarefas.reconcile.tolerance import Tolerance, parse_tolerance, parse_tolerances
 
 __all__ = [
     "JSON_REPORT_NAME",
@@ -64,12 +74,23 @@ __all__ = [
     "CompareWarning",
     "ComparisonResult",
     "ComparisonTask",
+    "FieldDecision",
     "KeyConflict",
+    "ReconcilePolicy",
+    "ReconciledRecord",
+    "ReconciliationResult",
+    "ReconciliationTask",
     "RecordComparison",
+    "ReviewItem",
     "SourceInfo",
     "SourceSelection",
     "TableSource",
+    "Tolerance",
     "build_report_payload",
     "compare_tables",
+    "parse_tolerance",
+    "parse_tolerances",
+    "reconcile_tables",
     "write_comparison_artifacts",
+    "write_reconciliation_artifacts",
 ]

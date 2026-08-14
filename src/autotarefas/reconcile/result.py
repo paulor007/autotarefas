@@ -57,6 +57,12 @@ class RecordComparison:
     row_b: int | None = None
     differences: tuple[CellDifference, ...] = ()
     """Preenchido apenas na categoria ``divergente``."""
+    tolerated: tuple[CellDifference, ...] = ()
+    """Diferencas absorvidas por tolerancia declarada (REC-002).
+
+    Ficam FORA de ``differences`` — por isso o registro pode ser
+    ``identico`` — mas continuam registradas: tolerar nao e esconder.
+    """
 
 
 @dataclass(frozen=True, slots=True)
@@ -146,6 +152,8 @@ class ComparisonResult:
     conflicts: tuple[KeyConflict, ...] = ()
     warnings: tuple[CompareWarning, ...] = ()
     normalizations: tuple[str, ...] = ()
+    tolerances: tuple[str, ...] = ()
+    """Tolerancias declaradas, ja em texto legivel (``Tolerance.describe()``)."""
     limitations: tuple[str, ...] = field(default_factory=tuple)
     """Limites declarados desta fatia (ex.: sem tolerancias numericas)."""
 
@@ -161,6 +169,11 @@ class ComparisonResult:
             totais[record.category] += 1
         totais["conflitos"] = len(self.conflicts)
         return totais
+
+    @property
+    def tolerated_count(self) -> int:
+        """Quantas celulas ficaram dentro de uma tolerancia declarada."""
+        return sum(len(r.tolerated) for r in self.records)
 
     @property
     def has_differences(self) -> bool:

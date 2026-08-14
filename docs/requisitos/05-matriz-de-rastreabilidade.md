@@ -14,7 +14,11 @@ inspeção dos workflows locais; o clone público serviu apenas de referência
 histórica · **[B1]** Fase B1 (RF-REC-001, 14/08/2026) — suíte local **2161 passed,
 cobertura 92,75 %**, `ruff check .`, `ruff format --check .` e `mypy src/`
 aprovados; comando `autotarefas comparar` homologado sobre as fixtures
-`tests/fixtures/comparacao/` com os 4 artefatos gerados · **[H]** evidência
+`tests/fixtures/comparacao/` com os 4 artefatos gerados · **[B2]** Fase B2
+(RF-REC-002, 14/08/2026) — comando `autotarefas conciliar` homologado sobre as
+mesmas fixtures (campo autorizado atualizado, divergência não autorizada para
+revisão, chave duplicada fora da base) com os 4 artefatos gerados; suíte local
+verde · **[H]** evidência
 colhida manualmente na auditoria
 (saídas de `--help`, leitura de código com linha citada).
 
@@ -44,7 +48,7 @@ colhida manualmente na auditoria
 | RF-PLA-009 | NÃO INICIADO | **OBRIG. V1** (etapa 6 do resultado, 01 §9.1) | — | — | — | preservação de estilo | PLA-007 | Fase B4 |
 | RF-PLA-010 | NÃO INICIADO | **OBRIG. V1** (etapa 4 do resultado) | — | — | — | catálogo de correções confirmadas | PLA-006, REC-003 | Fase B5 |
 | RF-REC-001 | CONCLUÍDO | **OBRIG. V1** (DP-04 decidida 05/08) | `src/autotarefas/reconcile/` + `cli/commands/comparar.py` | `tests/reconcile/` (3 arquivos), `tests/cli/test_comparar_cli.py` | [B1] | tolerâncias → REC-002 | PLA-001/006 | manter |
-| RF-REC-002 | NÃO INICIADO | **OBRIG. V1** | — | — | — | tudo | REC-001 | Fase B2 |
+| RF-REC-002 | CONCLUÍDO | **OBRIG. V1** | `src/autotarefas/reconcile/{tolerance,merge,merge_artifacts}.py` + `cli/commands/conciliar.py` | `tests/reconcile/test_{tolerance,merge,merge_artifacts}.py`, `tests/cli/test_conciliar_cli.py` | [B2] | YAML da reconciliação → REC-004 | REC-001 | manter |
 | RF-REC-003 | NÃO INICIADO | **OBRIG. V1** | — | — | — | tudo | REC-001 | Fase B3 |
 | RF-REC-004 | NÃO INICIADO | **OBRIG. V1** (etapa 11 do resultado) | — | — | — | tudo | REC-002, CORE-006 | Fase B6 |
 | RF-INT-001 | CONCLUÍDO | OBRIG. V1 | `src/autotarefas/tasks/{extract_api,extract_artifacts}.py` | `tests/tasks/test_extract_api.py`, `test_extract_artifacts.py`, `tests/cli/test_extract_cli.py` | [N][L] | paginação única | CORE-001 | manter |

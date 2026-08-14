@@ -35,7 +35,9 @@ from autotarefas.cli.console import Console
 from autotarefas.cli.context import CLIContext
 from autotarefas.reconcile.artifacts import generate_summary, write_comparison_artifacts
 from autotarefas.reconcile.compare import NORMALIZATION_OPTIONS
+from autotarefas.reconcile.errors import CompareError
 from autotarefas.reconcile.task import ComparisonTask, SourceSelection
+from autotarefas.reconcile.tolerance import parse_tolerances
 
 #: Erro de uso: chave inexistente, arquivo ilegivel, aba impossivel.
 #: Distinto do exit 1, que (com --falhar-se-diferente) significa
@@ -76,6 +78,16 @@ _ARQUIVO = click.Path(exists=True, dir_okay=False, readable=True, path_type=Path
         "Ignora diferencas de forma na COMPARACAO (os valores do relatorio "
         "continuam sendo os do arquivo): espacos | caixa | digitos "
         "('digitos' vale so para a chave)."
+    ),
+)
+@click.option(
+    "--tolerancia",
+    "tolerancias",
+    multiple=True,
+    help=(
+        "O que nao conta como diferenca: 'coluna=0,01' (absoluta), "
+        "'coluna=1%' (percentual) ou 'coluna=2d' (dias). A diferenca tolerada "
+        "continua registrada no relatorio."
     ),
 )
 @click.option(
@@ -123,6 +135,7 @@ def comparar(
     chaves: tuple[str, ...],
     colunas: tuple[str, ...],
     normalizacoes: tuple[str, ...],
+    tolerancias: tuple[str, ...],
     out_dir: Path | None,
     sheet_a: str | None,
     sheet_b: str | None,
@@ -134,12 +147,19 @@ def comparar(
     """Compara duas planilhas por chave e mostra o que difere entre elas."""
     console = Console(ctx)
 
+    try:
+        tolerancias_lidas = parse_tolerances(list(tolerancias))
+    except CompareError as exc:
+        console.error(str(exc))
+        raise click.exceptions.Exit(_EXIT_USAGE) from exc
+
     task = ComparisonTask(
         SourceSelection(path=arquivo_a, sheet=sheet_a, header_row=header_row_a),
         SourceSelection(path=arquivo_b, sheet=sheet_b, header_row=header_row_b),
         key_columns=chaves,
         columns=list(colunas) if colunas else None,
         normalizations=normalizacoes,
+        tolerances=tolerancias_lidas,
         dry_run=ctx.dry_run,
     )
     console.info(f"Comparando: {arquivo_a.name}  x  {arquivo_b.name}")

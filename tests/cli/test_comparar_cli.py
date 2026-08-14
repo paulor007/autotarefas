@@ -76,6 +76,32 @@ class TestExecucaoBasica:
         assert "2 divergente(s)" in sem.output
         assert "1 divergente(s)" in com.output
 
+    def test_tolerancia_absorve_a_diferenca_de_centavos(
+        self, cli_ctx: CLIContext, tmp_path: Path
+    ) -> None:
+        """Um centavo de arredondamento nao pode virar divergencia (REC-002)."""
+        a = tmp_path / "a.csv"
+        b = tmp_path / "b.csv"
+        a.write_text("codigo,valor\n1,1000.00\n", encoding="utf-8")
+        b.write_text("codigo,valor\n1,1000.01\n", encoding="utf-8")
+
+        result = CliRunner().invoke(
+            comparar,
+            [str(a), str(b), "--chave", "codigo", "--tolerancia", "valor=0,01"],
+            obj=cli_ctx,
+        )
+        assert result.exit_code == 0
+        assert "equivalentes" in result.output
+        assert "Toleradas" in result.output
+
+    def test_tolerancia_invalida_e_erro_de_uso(self, cli_ctx: CLIContext) -> None:
+        result = CliRunner().invoke(
+            comparar,
+            [BASE_A, BASE_B, "--chave", "codigo", "--tolerancia", "valor"],
+            obj=cli_ctx,
+        )
+        assert result.exit_code == 2
+
     def test_coluna_restringe_a_comparacao(self, cli_ctx: CLIContext) -> None:
         result = CliRunner().invoke(
             comparar,

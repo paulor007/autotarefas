@@ -376,7 +376,11 @@ sobre esse núcleo.*
 **Descrição detalhada:** sobre a REC-001: tolerâncias numéricas/percentuais e de datas; declaração de fonte principal × complementar; campos atualizáveis autorizados; geração de `base_conciliada.xlsx` + `conflitos_para_revisao.xlsx` + relatório de decisões (por registro: valor escolhido, fonte, regra aplicada).
 **Regras de negócio:** conflito fora das regras declaradas nunca é resolvido automaticamente; toda decisão automática registrada com a regra que a justificou.
 **Critérios de aceite:** tolerância de R$ 0,01 não gera divergência; conflito real sempre presente no arquivo de revisão.
-**Prioridade:** OBRIGATÓRIO V1 — DP-04 (05/08/2026) e DP-01(a) (10/08/2026): realiza a etapa 3 do resultado operacional (01 §9.1). **Fase:** B2. **Status:** NÃO INICIADO. **Demais campos:** padrão do módulo.
+**Prioridade:** OBRIGATÓRIO V1 — DP-04 (05/08/2026) e DP-01(a) (10/08/2026): realiza a etapa 3 do resultado operacional (01 §9.1). **Fase:** B2. **Status:** CONCLUÍDO (14/08/2026).
+**Evidências:** `src/autotarefas/reconcile/{tolerance,merge,merge_artifacts}.py`, comando `autotarefas conciliar` (`src/autotarefas/cli/commands/conciliar.py`); testes em `tests/reconcile/test_tolerance.py`, `test_merge.py`, `test_merge_artifacts.py` e `tests/cli/test_conciliar_cli.py`.
+**Como ficou:** tolerâncias declaradas por coluna em uma sintaxe (`coluna=0,01` absoluta, `coluna=1%` percentual, `coluna=2d` dias), aplicadas também no `comparar`; diferença tolerada nunca vira divergência, mas fica registrada (`RecordComparison.tolerated`, aba "Diferencas toleradas" e regra `tolerancia` no relatório de decisões). Política declarada: `--principal a|b`, `--atualizar COLUNA` (campos autorizados) e `--manter-novos/--revisar-novos`. Divergência em campo **não autorizado** preserva o valor da fonte principal e vai inteira para `conflitos_para_revisao.xlsx`; chave duplicada ou vazia nunca entra na base conciliada.
+**Artefatos:** `base_conciliada.xlsx` (abas Base conciliada, Decisões e Resumo), `base_conciliada.csv`, `conflitos_para_revisao.xlsx` e `reconciliacao_report.json`.
+**Lacunas:** configuração reutilizável em YAML (REC-004, fase B6).
 
 ### RF-REC-003 — Transferência e enriquecimento entre planilhas
 **Objetivo:** preencher/atualizar colunas de uma base a partir de outra (o "PROCV com evidência").

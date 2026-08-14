@@ -196,6 +196,7 @@ class TestPlanilhaDeDivergencias:
             "Somente em A",
             "Somente em B",
             "Conflitos de chave",
+            "Diferencas toleradas",
         ]
 
     def test_uma_linha_por_celula_divergente(
