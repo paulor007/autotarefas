@@ -22,7 +22,12 @@ verde · **[B3]** Fase B3 (RF-REC-003, 14/08/2026) — comando `autotarefas
 transferir` homologado sobre `tests/fixtures/transferencia/` (e-mail vazio
 preenchido, e-mail antigo atualizado, valor igual mantido, `nome` não autorizado
 intacto, `00129` sem correspondente listado); hashes dos dois arquivos de
-entrada conferidos antes e depois · **[H]** evidência
+entrada conferidos antes e depois · **[B4]** Fase B4 (RF-PLA-009,
+14/08/2026) — `validate --mode limpeza --out-dir` sobre
+`tests/fixtures/apresentacao/original_formatado.xlsx` gerou
+`planilha_tratada.xlsx` com painel congelado, autofiltro, largura, fonte e
+preenchimento do cabeçalho e formato `R$ #,##0.00` intactos, valores
+normalizados aplicados e `preservacao_report.json` sem perdas · **[H]** evidência
 colhida manualmente na auditoria
 (saídas de `--help`, leitura de código com linha citada).
 
@@ -49,7 +54,7 @@ colhida manualmente na auditoria
 | RF-PLA-006 | CONCLUÍDO | OBRIG. V1 | `src/autotarefas/tasks/cleaning.py` | `tests/tasks/test_cleaning.py` | [N] | — | PLA-005 | manter |
 | RF-PLA-007 | CONCLUÍDO | OBRIG. V1 | `src/autotarefas/tasks/{artifacts,report,report_xlsx}.py` | `tests/tasks/test_artifacts.py`, `test_report.py`, `test_report_xlsx.py` | [N] | — | PLA-005 | manter |
 | RF-PLA-008 | CONCLUÍDO | OBRIG. V1 | `src/autotarefas/tasks/execution_package.py` | `tests/tasks/test_execution_package.py` | [N] | — | PLA-007 | manter |
-| RF-PLA-009 | NÃO INICIADO | **OBRIG. V1** (etapa 6 do resultado, 01 §9.1) | — | — | — | preservação de estilo | PLA-007 | Fase B4 |
+| RF-PLA-009 | CONCLUÍDO | **OBRIG. V1** (etapa 6 do resultado, 01 §9.1) | `src/autotarefas/tasks/presentation.py` (+ `cli/commands/validate.py`) | `tests/tasks/test_presentation.py`, `tests/cli/test_validate_tratada_cli.py` | [B4] | gráficos/imagens declarados como não preserváveis (R-13) | PLA-007 | manter |
 | RF-PLA-010 | NÃO INICIADO | **OBRIG. V1** (etapa 4 do resultado) | — | — | — | catálogo de correções confirmadas | PLA-006, REC-003 | Fase B5 |
 | RF-REC-001 | CONCLUÍDO | **OBRIG. V1** (DP-04 decidida 05/08) | `src/autotarefas/reconcile/` + `cli/commands/comparar.py` | `tests/reconcile/` (3 arquivos), `tests/cli/test_comparar_cli.py` | [B1] | tolerâncias → REC-002 | PLA-001/006 | manter |
 | RF-REC-002 | CONCLUÍDO | **OBRIG. V1** | `src/autotarefas/reconcile/{tolerance,merge,merge_artifacts}.py` + `cli/commands/conciliar.py` | `tests/reconcile/test_{tolerance,merge,merge_artifacts}.py`, `tests/cli/test_conciliar_cli.py` | [B2] | YAML da reconciliação → REC-004 | REC-001 | manter |

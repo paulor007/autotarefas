@@ -336,7 +336,10 @@ módulo" para não repetir texto.
 **Descrição detalhada (alvo):** ao gerar a versão tratada de um XLSX, copiar estilos/larguras/alturas/filtros/painéis/formatos das células correspondentes quando tecnicamente possível (openpyxl), com relatório do que não pôde ser preservado; quando o original não tiver apresentação, cair na formatação profissional já existente (PLA-007).
 **Critérios de aceite:** cabeçalho colorido, painel congelado e formato de moeda do original presentes na tratada; significado dos dados jamais alterado pela formatação.
 **Riscos:** fidelidade limitada do openpyxl (gráficos, temas) — declarar limites no relatório de preservação (risco R-13).
-**Prioridade:** OBRIGATÓRIO V1 (revisão 2 — etapa 6 do resultado operacional, 01 §9.1). **Fase:** B4. **Status:** NÃO INICIADO. **Demais campos:** padrão do módulo.
+**Prioridade:** OBRIGATÓRIO V1 (revisão 2 — etapa 6 do resultado operacional, 01 §9.1). **Fase:** B4. **Status:** CONCLUÍDO (14/08/2026).
+**Evidências:** `src/autotarefas/tasks/presentation.py`; artefatos `planilha_tratada.xlsx` e `preservacao_report.json` gerados por `validate --mode limpeza --out-dir`; fixture `tests/fixtures/apresentacao/original_formatado.xlsx`; testes em `tests/tasks/test_presentation.py` e `tests/cli/test_validate_tratada_cli.py`.
+**Como ficou (decisão técnica):** em vez de recriar estilos célula a célula, o AutoTarefas **parte de uma cópia do arquivo original e reescreve apenas as células que a limpeza mudou**. Consequência: cores, larguras, painel congelado, autofiltro, formatos de número, fórmulas não tocadas, validações e formatação condicional continuam exatamente como o cliente entregou — e o valor tratado entra **tipado** (vem do DataFrame processado, não do texto do audit trail).
+**Limites declarados (R-13):** gráficos e imagens não sobrevivem ao round-trip do openpyxl; são **detectados antes de salvar** e listados em `preservacao_report.json` (`nao_preservado`). CSV não tem apresentação a preservar — nesse caso valem os artefatos formatados do PLA-007. O arquivo original nunca é alterado (verificado por hash nos testes).
 
 ### RF-PLA-010 — Correções por regras confirmadas
 **Objetivo:** ir além da limpeza determinística quando o usuário autorizar regra explícita.

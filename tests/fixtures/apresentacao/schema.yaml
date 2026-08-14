@@ -1,0 +1,10 @@
+columns:
+- name: codigo
+  type: str
+- name: nome
+  type: str
+- format: email
+  name: email
+  type: str
+- name: valor
+  type: str

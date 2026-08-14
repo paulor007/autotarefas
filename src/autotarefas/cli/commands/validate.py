@@ -256,6 +256,13 @@ def validate(  # noqa: PLR0912, PLR0915
                 json_path = out_dir / JSON_REPORT_NAME
                 write_json_report(result, json_path)
                 console.success(f"Relatorio JSON:      {json_path}")
+
+                _gerar_planilha_tratada(
+                    out_dir,
+                    task=task,
+                    result=result,
+                    console=console,
+                )
             except OSError as e:
                 console.error(f"Erro ao gerar artefatos: {e}")
 
@@ -296,6 +303,59 @@ def validate(  # noqa: PLR0912, PLR0915
     # Falha — tem errors
     console.error(f"Validacao falhou: {total_errors} erro(s).")
     raise click.exceptions.Exit(1)
+
+
+#: Nome fixo do relatorio de preservacao (RF-PLA-009).
+PRESERVATION_REPORT_NAME = "preservacao_report.json"
+
+
+def _gerar_planilha_tratada(
+    out_dir: Path,
+    *,
+    task: ValidateTask,
+    result: TaskResult,
+    console: Console,
+) -> None:
+    """
+    Gera `planilha_tratada.xlsx` preservando a apresentacao do original (PLA-009).
+
+    So faz sentido no modo limpeza e com entrada XLSX/XLSM: sem alteracoes a
+    aplicar nao ha versao tratada, e um CSV nao tem apresentacao a preservar
+    (nesse caso os artefatos formatados do PLA-007 ja cumprem o papel).
+    """
+    import json
+
+    from autotarefas.tasks.presentation import (
+        TREATED_XLSX_NAME,
+        supports_presentation,
+        write_treated_xlsx,
+    )
+
+    changes: list[dict[str, object]] = result.data.get("cleaning_changes", [])
+    if not supports_presentation(task.file_path):
+        return
+    if task.mode != "limpeza":
+        return
+
+    destino = out_dir / TREATED_XLSX_NAME
+    relatorio = write_treated_xlsx(
+        task.file_path,
+        destino,
+        changes,
+        dataframe=task.processed_dataframe,
+        header_row=task.header_row or 1,
+        sheet=task.sheet,
+    )
+    console.success(f"Planilha tratada:    {destino}")
+
+    caminho_relatorio = out_dir / PRESERVATION_REPORT_NAME
+    caminho_relatorio.write_text(
+        json.dumps(relatorio.as_dict(), indent=2, ensure_ascii=False),
+        encoding="utf-8",
+    )
+    console.success(f"Preservacao:         {caminho_relatorio}")
+    for perdido in relatorio.not_preserved:
+        console.warning(f"  {perdido}")
 
 
 def _gerar_pacote(
