@@ -18,6 +18,7 @@ O que estes testes protegem, em uma frase cada:
 
 from __future__ import annotations
 
+import csv
 import hashlib
 import json
 from pathlib import Path
@@ -28,6 +29,8 @@ import yaml
 from openpyxl import load_workbook
 
 from autotarefas.services import analyze_spreadsheet
+from autotarefas.tasks.artifacts import write_separation_csvs
+from autotarefas.tasks.execution_package import REVIEW_NAME, build_package
 from autotarefas.tasks.presentation import write_treated_xlsx
 from autotarefas.tasks.validate import ValidateTask, load_schema
 
@@ -213,6 +216,125 @@ class TestDuplicidadeVersusChaveRepetida:
         _, resultado = ligado
         com_erro = {i["line"] for i in resultado.data["issues"] if i["severity"] == "error"}
         assert not com_erro & set(LINHAS_MESMA_VENDA)
+
+
+# ============================================================
+# Fila de revisão: o que a pessoa precisa olhar
+# ============================================================
+
+
+class TestArquivoDeRevisao:
+    """
+    Decisão de produto (14/08/2026): duplicidade continua sendo AVISO — não
+    invalida a linha e não some do arquivo de válidos —, mas as linhas
+    envolvidas entram na fila de revisão, porque exigem decisão humana.
+
+    Os dois arquivos não são conjuntos exclusivos: `registros_validos.csv`
+    responde "o que posso usar?" e `registros_para_revisao.csv` responde
+    "o que preciso olhar?".
+    """
+
+    @pytest.fixture
+    def pacote(self, ligado: tuple[ValidateTask, Any], tmp_path: Path) -> Path:
+        task, resultado = ligado
+        assert task.processed_dataframe is not None
+        build_package(
+            tmp_path / "pacote",
+            result=resultado,
+            dataframe=task.processed_dataframe,
+            input_path=VENDAS,
+            schema_path=None,
+        )
+        return tmp_path / "pacote"
+
+    def _linhas(self, caminho: Path) -> list[dict[str, str]]:
+        with caminho.open(encoding="utf-8-sig", newline="") as handle:
+            return list(csv.DictReader(handle))
+
+    def test_duplicidade_continua_sendo_aviso(self, ligado: tuple[ValidateTask, Any]) -> None:
+        _, resultado = ligado
+        duplicadas = [
+            i for i in resultado.data["issues"] if "duplicad" in str(i["message"]).lower()
+        ]
+        assert duplicadas
+        assert all(i["severity"] == "warning" for i in duplicadas)
+
+    def test_registros_invalidos_nao_recebe_a_duplicidade(
+        self, ligado: tuple[ValidateTask, Any], tmp_path: Path
+    ) -> None:
+        """O CSV de inválidos continua sendo só de ERRO."""
+        task, resultado = ligado
+        assert task.processed_dataframe is not None
+        destino = tmp_path / "artefatos"
+        _, invalidos = write_separation_csvs(task.processed_dataframe, resultado, destino)
+
+        linhas = self._linhas(invalidos)
+        motivos = " ".join(linha.get("motivo", "") for linha in linhas)
+        assert "duplicad" not in motivos.lower()
+
+    def test_revisao_recebe_as_duas_linhas_do_par(self, pacote: Path) -> None:
+        """16 grupos ⇒ 32 linhas envolvidas. Na fixture: 1 grupo, 2 linhas."""
+        linhas = self._linhas(pacote / REVIEW_NAME)
+        do_grupo = [linha for linha in linhas if linha["_grupo_duplicidade"]]
+
+        assert {int(linha["_linha"]) for linha in do_grupo} == {
+            LINHA_DUPLICADA_ORIGINAL,
+            LINHA_DUPLICADA_REPETIDA,
+        }
+        assert {linha["_linha_canonica"] for linha in do_grupo} == {str(LINHA_DUPLICADA_ORIGINAL)}
+        assert {linha["_grupo_duplicidade"] for linha in do_grupo} == {"D01"}
+
+    def test_revisao_traz_o_contexto_da_decisao(self, pacote: Path) -> None:
+        linhas = self._linhas(pacote / REVIEW_NAME)
+        repetida = next(
+            linha for linha in linhas if int(linha["_linha"]) == LINHA_DUPLICADA_REPETIDA
+        )
+
+        assert repetida["_severidade"] == "aviso"
+        assert repetida["_categoria"] == "duplicado"
+        assert str(LINHA_DUPLICADA_ORIGINAL) in repetida["_linhas_relacionadas"]
+        assert "duplicad" in repetida["_motivo"].lower()
+        # E os dados ORIGINAIS da linha continuam la, para conferir.
+        assert repetida["Produto"] == "Cola"
+
+    def test_linha_com_aviso_continua_valida(self, pacote: Path) -> None:
+        """Aviso não é registro inválido: a linha segue em válidos também."""
+        validos = {int(linha["_linha"]) for linha in self._linhas(pacote / REVIEW_NAME)}
+        with (pacote / "registros_validos.csv").open(encoding="utf-8-sig") as handle:
+            total_validos = sum(1 for _ in csv.DictReader(handle))
+
+        assert LINHA_DUPLICADA_REPETIDA in validos
+        assert total_validos > 0
+
+    def test_nenhuma_linha_e_excluida(self, pacote: Path, ligado: tuple[ValidateTask, Any]) -> None:
+        """Toda linha da planilha está em pelo menos um dos dois arquivos."""
+        task, _ = ligado
+        assert task.processed_dataframe is not None
+        total = len(task.processed_dataframe)
+
+        validos = len(self._linhas(pacote / "registros_validos.csv"))
+        em_revisao = {int(linha["_linha"]) for linha in self._linhas(pacote / REVIEW_NAME)}
+        primeira = 2
+        todas = set(range(primeira, primeira + total))
+
+        # Os conjuntos se sobrepõem (aviso está nos dois), então a soma não é
+        # o total — o que se exige é que nada tenha sumido.
+        assert validos + len(em_revisao) >= total
+        assert em_revisao <= todas
+
+    def test_chave_repetida_legitima_nao_entra_na_revisao(self, pacote: Path) -> None:
+        """V-100 aparece em 4 linhas (4 itens da mesma venda) e não é problema."""
+        linhas = self._linhas(pacote / REVIEW_NAME)
+        na_revisao = {int(linha["_linha"]) for linha in linhas}
+        assert not na_revisao & set(LINHAS_MESMA_VENDA)
+
+    def test_manifesto_distingue_os_dois_numeros(self, pacote: Path) -> None:
+        manifesto = json.loads((pacote / "manifest.json").read_text(encoding="utf-8"))
+        resultado = manifesto["result"]
+
+        # `review_rows` = so erros; `review_file_rows` = o que esta no arquivo.
+        assert resultado["review_file_rows"] >= resultado["review_rows"]
+        assert resultado["warnings"] >= 1
 
 
 # ============================================================

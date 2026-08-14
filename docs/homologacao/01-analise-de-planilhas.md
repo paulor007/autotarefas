@@ -2,9 +2,11 @@
 
 **Status: AGUARDANDO HOMOLOGAÇÃO DO USUÁRIO**
 
-Esta é a primeira jornada preparada para teste humano com planilha real. Os
-testes automatizados **não** encerram este item: o card só passa a CONCLUÍDO
-depois que o proprietário rodar o fluxo no navegador e aprovar.
+**Implementação preparada para homologação.** Os testes automatizados — mesmo
+os de navegador real — **não** homologam nada: eles reduzem o risco. O card só
+passa a CONCLUÍDO depois que o proprietário rodar o fluxo no navegador, com o
+próprio arquivo, e aprovar. Nada neste documento deve ser lido como
+"homologação concluída".
 
 > **Correção desta revisão.** A versão anterior deste documento afirmou que a
 > planilha real tinha painel congelado em `A2`, cabeçalho `#1F4E78`, largura 40
@@ -107,11 +109,38 @@ plantam cada caso e declaram o resultado esperado antes da execução:
 
 Cobertos por `tests/homologacao/test_jornada_planilhas.py` (24 testes).
 
-### C. Ainda NÃO testado
+### C. Comprovado por teste com NAVEGADOR REAL (Chromium)
 
-- **Teste com navegador real (Playwright)** para esta jornada: não foi
-  implementado nesta sessão. A jornada foi percorrida manualmente no navegador
-  e é coberta por testes de componente (vitest) e de API (TestClient).
+**Arquivo:** `tests/e2e/test_jornada_planilhas_e2e.py`
+**Comando:** `python -m pytest tests/e2e/test_jornada_planilhas_e2e.py -v`
+**Resultado:** 1 passed (~8 s)
+
+O teste sobe o Live de verdade (o backend serve o `dist/` na própria origem,
+como em produção), abre o Chromium via Playwright e percorre a jornada
+clicando na tela:
+
+| Etapa | O que o teste faz / verifica |
+|---|---|
+| Abertura do Live | `page.goto` na URL do servidor recém-subido |
+| Seleção do card | clica em **Selecionar** no card "Análise e organização de planilhas" |
+| Upload | `set_input_files` com a fixture sintética `A_vendas_com_anomalias.xlsx` |
+| Diagnóstico | espera o botão da etapa seguinte e confere nome do arquivo e aba detectada no texto renderizado |
+| Escolha da validação | **Escolher como validar** → **Confirmar schema sugerido** |
+| Revisão | confere que as correções seguras **começam desligadas** e que a sinalização de repetidas **vem marcada** ("Sinalizar as 1 linha…"); marca as correções |
+| Execução | clica em **Executar validação** |
+| SSE | espera o bloco "Arquivos desta execução", que só aparece quando o stream termina e o resultado chega |
+| Resultado | confere "1 linha(s) repetida(s)" e "2 linha(s) envolvida(s)" |
+| Downloads | confere os rótulos (Planilha tratada, Registros válidos, Pacote completo de evidências) e **baixa** o primeiro artefato: HTTP 200 com corpo |
+
+**Limitações do teste:** exige `playwright install chromium` e o build do
+frontend (`npm --prefix live_demo/frontend run build`) — sem qualquer um dos
+dois ele **pula**, não falha. Usa só fixture sintética (nenhum arquivo
+privado). Cobre um caminho: upload + schema sugerido; os caminhos de perfil
+de domínio, schema YAML próprio e ambiguidade de aba seguem cobertos por
+testes de componente e de API, não pelo navegador.
+
+### D. Ainda NÃO testado
+
 - **Perfil de domínio aplicado à planilha real**: os perfis existentes são de
   contatos/vendas-itens; o mapeamento foi exercitado por teste, não sobre o
   arquivo do proprietário.
@@ -119,6 +148,7 @@ Cobertos por `tests/homologacao/test_jornada_planilhas.py` (24 testes).
   foram implementados. Só fariam sentido com o perfil e o mapeamento
   confirmando a semântica das colunas — no modo de análise geral, o
   AutoTarefas não sabe o que é "valor" nem "quantidade".
+- **Navegador real nos caminhos de perfil, YAML próprio e duas abas.**
 
 ---
 
@@ -131,16 +161,28 @@ Cobertos por `tests/homologacao/test_jornada_planilhas.py` (24 testes).
 | `pacote_execucao.zip → problemas.csv` | 16 linhas com `physical_line`, `related_lines` e a mensagem "Linha duplicada (identica a linha N)" |
 | `pacote_execucao.zip → resumo.json` | `warnings: 16` e `warned_rows: 32` — a distinção explícita |
 | `planilha_validada.xlsx` (aba Resumo) | "Duplicados: 16" na tabela de erros por categoria |
-| `registros_invalidos.csv` / `registros_para_revisao.csv` | **vazios** — ver a nota abaixo |
+| `pacote_execucao.zip → registros_para_revisao.csv` | **as 32 linhas envolvidas**, em 16 grupos (`D01`…`D16`), com a linha canônica de cada um |
+| `registros_invalidos.csv` | **vazio** — ele carrega só ERRO, e duplicidade é aviso |
 
-**Nota honesta sobre a severidade.** Uma linha 100% repetida entra como
-**aviso**, não como erro. Consequência: ela **não** vai para
-`registros_invalidos.csv` nem para `registros_para_revisao.csv`, que carregam
-as linhas com erro. A razão é de produto: duas vendas idênticas do mesmo
-produto, no mesmo dia, **podem ser legítimas** — o AutoTarefas sinaliza e
-mostra o par, mas não decide que a linha é inválida. Se você preferir que
-repetidas sejam tratadas como erro (indo para os CSVs de revisão), isso é uma
-decisão de produto a tomar, e vira uma alteração pequena no núcleo.
+**Severidade e os dois arquivos (decisão de produto, 14/08/2026).** Uma linha
+100% repetida continua sendo **aviso**: ela não é inválida (o dado está
+correto) e **não é removida**. Duas vendas idênticas do mesmo produto, no
+mesmo dia, podem ser legítimas — quem decide é você. Por isso:
+
+- `registros_invalidos.csv` continua contendo **somente erros**;
+- `registros_para_revisao.csv` contém **erros e avisos que exigem decisão
+  humana** — é lá que estão as 32 linhas;
+- as linhas com aviso **também** seguem em `registros_validos.csv`.
+
+**Os arquivos não são conjuntos exclusivos.** `registros_validos.csv` responde
+"o que posso usar?"; `registros_para_revisao.csv` responde "o que preciso
+olhar?". Somar as duas listas **não** dá o total de linhas.
+
+Colunas de `registros_para_revisao.csv`: as colunas originais da sua planilha,
+intactas, seguidas dos metadados `_linha`, `_severidade`, `_categoria`,
+`_grupo_duplicidade`, `_linha_canonica`, `_linhas_relacionadas` e `_motivo`.
+No `manifest.json`, `review_rows` conta só os erros e `review_file_rows` conta
+o que foi de fato gravado no arquivo (na sua planilha: 0 e 32).
 
 ## Artefatos e equivalência de nomes
 
@@ -150,8 +192,8 @@ rótulos legíveis:
 | Rótulo na tela | Arquivo | Observação |
 |---|---|---|
 | Planilha tratada (a sua, com as correções seguras) | `planilha_tratada.xlsx` | Só em XLSX **com** correções confirmadas |
-| Registros válidos | `registros_validos.csv` | ≡ "dados limpos" |
-| Registros para revisão | `registros_invalidos.csv` | Linhas com **erro** |
+| Registros válidos | `registros_validos.csv` | ≡ "dados limpos"; inclui linhas com aviso |
+| Registros para revisão | `registros_invalidos.csv` | Linhas com **erro**. A fila completa (erros + avisos) está em `pacote_execucao.zip → registros_para_revisao.csv` |
 | Relatório da validação (JSON) | `validacao_report.json` | ≡ "relatório da análise" |
 | Relatório em planilha (resumo e registros) | `planilha_validada.xlsx` | Relatório profissional, 4 abas |
 | O que foi preservado da planilha original | `preservacao_report.json` | |
@@ -182,6 +224,13 @@ rótulos legíveis:
    completo do arquivo dentro do workspace do servidor. Agora guarda **só o
    nome** — vale também no modo real, onde relatórios circulam por e-mail.
 5. **Nome do card** passou a ser "Análise e organização de planilhas".
+6. **Fila de revisão vazia.** A tela oferecia "sinalizar as N linhas repetidas
+   para revisão" e o `registros_para_revisao.csv` saía vazio, porque só
+   carregava erros. Agora ele carrega **erros e avisos que exigem decisão
+   humana**, com os metadados de contexto (grupo, linha canônica,
+   relacionadas, motivo). A severidade **não** mudou: duplicidade continua
+   sendo aviso e nenhuma linha é removida.
+7. **Teste com navegador real** (Chromium) para a jornada — ver seção C.
 
 ## Limites conhecidos
 
@@ -191,4 +240,8 @@ rótulos legíveis:
 - Upload até 10 MB e execução até 60 s por padrão (`MAX_UPLOAD_MB`,
   `RUN_TIMEOUT_S`).
 - Uma aba por execução.
-- Sem teste de navegador real para esta jornada (ver seção C).
+- O teste de navegador real cobre **um** caminho (upload + schema sugerido);
+  perfil de domínio, YAML próprio e duas abas seguem cobertos só por testes
+  de componente e de API (seção D).
+- A fila de revisão completa vive dentro do `pacote_execucao.zip`; a tela
+  ainda não oferece esse CSV como download avulso.

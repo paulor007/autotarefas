@@ -21,11 +21,19 @@ entrada; um teste confere que ele e o mesmo antes e depois.
 
 POLITICA DE CLASSIFICACAO (uma so, e explicita):
 
-    linha com ERRO            -> revisao
-    linha so com AVISO        -> valida, e sinalizada no manifesto
+    linha com ERRO            -> invalida; entra na revisao
+    linha so com AVISO        -> VALIDA (segue em registros_validos.csv) e
+                                 tambem entra na revisao, porque exige
+                                 decisao humana
     linha sem problema        -> valida
     problema de grupo         -> TODAS as linhas do grupo vao para revisao
     problema sem linha        -> entra em problemas.csv, nao classifica ninguem
+
+OS DOIS ARQUIVOS NAO SAO CONJUNTOS EXCLUSIVOS. `registros_validos.csv`
+responde "o que posso usar?"; `registros_para_revisao.csv` responde "o que
+preciso olhar?". Uma linha 100% repetida aparece nos dois: ela e valida (o
+dado esta correto) e, ao mesmo tempo, exige que alguem decida se a
+repeticao e legitima. Contar as duas listas juntas NAO da o total de linhas.
 
     `--strict-warnings` muda o RESULTADO DA EXECUCAO (status e exit code),
     nunca o destino de uma linha. Se um aviso mudasse a linha de arquivo, a
@@ -212,22 +220,141 @@ def write_problems_csv(result: TaskResult, path: Path) -> None:
             )
 
 
+@dataclass(frozen=True, slots=True)
+class ReviewRow:
+    """Uma linha na fila de trabalho de quem vai conferir."""
+
+    line: int
+    """Linha FISICA na planilha (a mesma numeracao do Excel)."""
+    severity: str
+    """'erro' ou 'aviso' — o mais grave que pesa sobre a linha."""
+    categories: tuple[str, ...]
+    duplicate_group: str = ""
+    """Identificador do grupo de linhas identicas (vazio quando nao ha)."""
+    canonical_line: int | None = None
+    """Primeira ocorrencia do grupo — a que se costuma manter."""
+    related_lines: tuple[int, ...] = ()
+    reasons: tuple[str, ...] = ()
+
+
+#: Colunas de METADADO da revisao. Vao no FIM, depois das colunas do cliente,
+#: e com prefixo `_` — a mesma convencao dos demais artefatos do projeto.
+REVIEW_META_COLUMNS: tuple[str, ...] = (
+    "_linha",
+    "_severidade",
+    "_categoria",
+    "_grupo_duplicidade",
+    "_linha_canonica",
+    "_linhas_relacionadas",
+    "_motivo",
+)
+
+#: Categoria dos problemas de linha inteira repetida.
+_DUPLICATE_CATEGORY = "duplicado"
+
+
+def build_review_rows(result: TaskResult) -> tuple[ReviewRow, ...]:
+    """
+    Quais linhas entram no arquivo de revisao — e por que cada uma entrou.
+
+    Regra (decisao de produto de 14/08/2026): entra **toda linha que carrega
+    um problema localizado**, seja ERRO ou AVISO. Um aviso nao torna a linha
+    invalida — ela continua em `registros_validos.csv` —, mas exige decisao
+    humana, e uma fila de revisao vazia enquanto a tela diz "16 linhas
+    repetidas sinalizadas para revisao" seria uma contradicao para quem usa.
+
+    Os dois arquivos, portanto, NAO sao conjuntos exclusivos: uma linha com
+    aviso aparece nos dois, cada um respondendo a uma pergunta diferente
+    ("o que posso usar?" x "o que preciso olhar?").
+
+    Para linhas repetidas, `related_lines` traz o grupo inteiro: as duas (ou
+    mais) linhas entram, com o mesmo `duplicate_group` e a mesma
+    `canonical_line` (a primeira ocorrencia). Assim da para examinar as 32
+    linhas envolvidas nos 16 grupos, e nao so as 16 excedentes.
+    """
+    primeira = _first_data_line(result)
+    issues: list[dict[str, Any]] = result.data.get("issues", [])
+
+    severidades: dict[int, str] = {}
+    categorias: dict[int, list[str]] = {}
+    motivos: dict[int, list[str]] = {}
+    relacionadas: dict[int, set[int]] = {}
+    grupos: dict[int, str] = {}
+    canonicas: dict[int, int] = {}
+    proximo_grupo = 0
+
+    for issue in issues:
+        cruas = issue.get("related_lines") or [issue.get("line")]
+        linhas = sorted({n for n in cruas if isinstance(n, int) and n >= primeira})
+        if not linhas:
+            continue
+
+        categoria = issue.get("category") or categorize_message(str(issue.get("message", "")))
+        severidade = "erro" if issue.get("severity") == "error" else "aviso"
+        mensagem = str(issue.get("message", ""))
+
+        if categoria == _DUPLICATE_CATEGORY and len(linhas) > 1:
+            canonica = linhas[0]
+            if canonica not in canonicas.values():
+                proximo_grupo += 1
+            identificador = f"D{proximo_grupo:02d}"
+            for numero in linhas:
+                grupos.setdefault(numero, identificador)
+                canonicas.setdefault(numero, canonica)
+
+        for numero in linhas:
+            if severidades.get(numero) != "erro":
+                severidades[numero] = severidade
+            if categoria not in categorias.setdefault(numero, []):
+                categorias[numero].append(categoria)
+            if mensagem and mensagem not in motivos.setdefault(numero, []):
+                motivos[numero].append(mensagem)
+            relacionadas.setdefault(numero, set()).update(n for n in linhas if n != numero)
+
+    return tuple(
+        ReviewRow(
+            line=numero,
+            severity=severidades[numero],
+            categories=tuple(categorias.get(numero, ())),
+            duplicate_group=grupos.get(numero, ""),
+            canonical_line=canonicas.get(numero),
+            related_lines=tuple(sorted(relacionadas.get(numero, set()))),
+            reasons=tuple(motivos.get(numero, ())),
+        )
+        for numero in sorted(severidades)
+    )
+
+
 def write_review_csv(
     dataframe: pd.DataFrame,
-    review_lines: tuple[int, ...],
+    review_rows: tuple[ReviewRow, ...],
     path: Path,
     first_data_line: int = 2,
 ) -> None:
     """
     As linhas que precisam de revisao, com os VALORES ORIGINAIS.
 
-    Sem coluna tecnica no meio das colunas do cliente e sem correcao
-    automatica: isto nao e um "arquivo corrigido", e a fila de trabalho de
-    quem vai corrigir. O cruzamento com `problemas.csv` e por numero de
-    linha fisica, que a coluna `physical_line` de la carrega.
+    Nenhuma correcao automatica: isto nao e um "arquivo corrigido", e a fila
+    de trabalho de quem vai corrigir. As colunas do cliente vem primeiro,
+    intactas; os metadados da revisao (linha, severidade, categoria, grupo de
+    duplicidade, linha canonica, relacionadas e motivo) vao no fim, com
+    prefixo `_`, para nao se misturarem aos dados.
     """
-    indices = [n - first_data_line for n in review_lines]
-    recorte = dataframe.iloc[indices] if indices else dataframe.iloc[0:0]
+    indices = [linha.line - first_data_line for linha in review_rows]
+    recorte = (dataframe.iloc[indices] if indices else dataframe.iloc[0:0]).copy()
+
+    recorte[REVIEW_META_COLUMNS[0]] = [linha.line for linha in review_rows]
+    recorte[REVIEW_META_COLUMNS[1]] = [linha.severity for linha in review_rows]
+    recorte[REVIEW_META_COLUMNS[2]] = [", ".join(linha.categories) for linha in review_rows]
+    recorte[REVIEW_META_COLUMNS[3]] = [linha.duplicate_group for linha in review_rows]
+    recorte[REVIEW_META_COLUMNS[4]] = [
+        "" if linha.canonical_line is None else linha.canonical_line for linha in review_rows
+    ]
+    recorte[REVIEW_META_COLUMNS[5]] = [
+        " ".join(str(n) for n in linha.related_lines) for linha in review_rows
+    ]
+    recorte[REVIEW_META_COLUMNS[6]] = [" | ".join(linha.reasons) for linha in review_rows]
+
     recorte.to_csv(path, index=False, encoding="utf-8-sig")
 
 
@@ -323,7 +450,8 @@ def build_package(  # noqa: PLR0913 - todos nomeados; agrupar em objeto so piora
         arquivos.append(_artifact_entry(caminho_validos, "registros_validos"))
 
         caminho_revisao = temporario / REVIEW_NAME
-        write_review_csv(dataframe, classificacao.review_lines, caminho_revisao, primeira_linha)
+        linhas_de_revisao = build_review_rows(result)
+        write_review_csv(dataframe, linhas_de_revisao, caminho_revisao, primeira_linha)
         arquivos.append(_artifact_entry(caminho_revisao, "registros_para_revisao"))
 
         if schema_path is not None and schema_path.is_file():
@@ -429,6 +557,12 @@ def _build_manifest(  # noqa: PLR0913 - montador do manifesto, campos nomeados
             "valid_rows": len(classificacao.valid_lines),
             "review_rows": len(classificacao.review_lines),
             "warned_rows": len(classificacao.warned_lines),
+            # Linhas EFETIVAMENTE gravadas em registros_para_revisao.csv:
+            # erros + avisos localizados. Fica separado de `review_rows`
+            # (so erros) porque os dois numeros respondem perguntas
+            # diferentes, e o manifesto nao pode deixar duvida sobre qual
+            # deles descreve o arquivo.
+            "review_file_rows": len(build_review_rows(result)),
             "errors": dados.get("total_errors", 0),
             "warnings": dados.get("total_warnings", 0),
             "total_issues": dados.get("total_issues", 0),
