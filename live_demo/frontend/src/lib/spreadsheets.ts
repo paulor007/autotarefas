@@ -693,16 +693,27 @@ export async function uploadSchema(
   );
 }
 
-/** Dispara a validacao com as escolhas confirmadas. */
+/**
+ * Dispara a validacao com as escolhas confirmadas.
+ *
+ * `applyCleaning` e a confirmacao das correcoes seguras: sem ela o AutoTarefas
+ * apenas aponta os problemas; com ela, normaliza o que e seguro normalizar e
+ * (em XLSX) devolve a planilha tratada preservando a apresentacao original.
+ */
 export function startValidation(
   token: string,
-  opts: { strictWarnings?: boolean; maxIssues?: number } = {},
+  opts: {
+    strictWarnings?: boolean;
+    maxIssues?: number;
+    applyCleaning?: boolean;
+  } = {},
 ): Promise<ValidateStartResponse> {
   const form = new FormData();
   if (opts.strictWarnings) form.append("strict_warnings", "true");
   if (opts.maxIssues !== undefined) {
     form.append("max_issues", String(opts.maxIssues));
   }
+  if (opts.applyCleaning) form.append("apply_cleaning", "true");
   return postJourney<ValidateStartResponse>(
     `/api/spreadsheets/${encodeURIComponent(token)}/validate`,
     form,

@@ -38,6 +38,15 @@ class JourneyOptions:
     header_row: int | None = None
     strict_warnings: bool = False
     max_issues: int | None = None
+    apply_cleaning: bool = False
+    """Correcoes seguras confirmadas pelo visitante (modo limpeza).
+
+    Default False de proposito: sem confirmacao explicita, a jornada apenas
+    AUDITA — aponta os problemas sem tocar em valor nenhum. Quando a pessoa
+    confirma, a validacao roda em `--mode limpeza`, que normaliza o que e
+    seguro normalizar (espacos, caixa, formato) e, para XLSX, produz a
+    `planilha_tratada.xlsx` preservando a apresentacao do original.
+    """
 
 
 def build_argv(  # noqa: PLR0911
@@ -176,6 +185,10 @@ def _validate_journey_argv(
     e `--header-row` quando houve escolha. Cada valor vem de um campo tipado
     de `JourneyOptions`; nada e concatenado a partir de texto livre do
     navegador, e nenhum caminho e fornecido pelo cliente.
+
+    O MODO depende de uma confirmacao explicita: sem ela, `auditoria` (so
+    aponta); com ela, `limpeza` (normaliza o que e seguro e gera a planilha
+    tratada). O AutoTarefas nao corrige dado de ninguem sem pedir.
     """
     argv = [
         *base,
@@ -184,7 +197,7 @@ def _validate_journey_argv(
         "-s",
         str(journey.schema_path),
         "--mode",
-        "auditoria",
+        "limpeza" if journey.apply_cleaning else "auditoria",
         "--out-dir",
         str(out_dir),
         "--artefatos",

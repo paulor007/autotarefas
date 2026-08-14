@@ -1,10 +1,19 @@
-import type { RunResult } from "../lib/api";
+import type { RunResult, ValidationReport } from "../lib/api";
 import { EVIDENCE_PACKAGE_NAME } from "../lib/spreadsheets";
 import type { JourneyStep } from "../hooks/useSpreadsheetJourney";
+import ValidationSummary from "./ValidationSummary";
 
 interface Props {
   step: JourneyStep;
   result: RunResult | null;
+  /**
+   * Resumo lido do `validacao_report.json` desta execucao.
+   *
+   * E o que responde "o que aconteceu com a MINHA planilha": quantos
+   * registros entraram, quantos seguem, quantos voltam para revisao e
+   * quantos valores foram normalizados. Null enquanto o arquivo nao chegou.
+   */
+  report?: ValidationReport | null;
 }
 
 interface Aparencia {
@@ -81,6 +90,8 @@ function aparencia(step: JourneyStep): Aparencia | null {
 const ROTULOS: Record<string, string> = {
   "validacao_report.json": "Relatório da validação (JSON)",
   "planilha_validada.xlsx": "Relatório em planilha (resumo e registros)",
+  "planilha_tratada.xlsx": "Planilha tratada (a sua, com as correções seguras)",
+  "preservacao_report.json": "O que foi preservado da planilha original",
   "registros_validos.csv": "Registros válidos",
   "registros_invalidos.csv": "Registros para revisão",
   "schema_sugerido.yaml": "Schema sugerido (estrutura observada)",
@@ -88,13 +99,34 @@ const ROTULOS: Record<string, string> = {
   [EVIDENCE_PACKAGE_NAME]: "Pacote completo de evidências",
 };
 
+/**
+ * Ordem de exibicao: o que a pessoa mais quer baixar primeiro.
+ *
+ * A planilha tratada e o resultado do trabalho — ela abre a lista. O pacote
+ * de evidencias e o schema interessam a quem vai auditar, e ficam no fim.
+ */
+const PRIORIDADE = [
+  "planilha_tratada.xlsx",
+  "registros_validos.csv",
+  "registros_invalidos.csv",
+  "planilha_validada.xlsx",
+  "validacao_report.json",
+  "preservacao_report.json",
+  EVIDENCE_PACKAGE_NAME,
+];
+
+function ordemDoArtefato(nome: string): number {
+  const posicao = PRIORIDADE.indexOf(nome);
+  return posicao === -1 ? PRIORIDADE.length : posicao;
+}
+
 function tamanho(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-export default function SpreadsheetResult({ step, result }: Props) {
+export default function SpreadsheetResult({ step, result, report }: Props) {
   const visual = aparencia(step);
   if (!visual) return null;
 
@@ -104,6 +136,8 @@ export default function SpreadsheetResult({ step, result }: Props) {
         <p className="text-sm font-semibold">{visual.titulo}</p>
         <p className="mt-1 text-[0.85rem] opacity-90">{visual.texto}</p>
       </div>
+
+      {report ? <ValidationSummary report={report} /> : null}
 
       {result ? (
         <>
@@ -118,27 +152,31 @@ export default function SpreadsheetResult({ step, result }: Props) {
                 Arquivos desta execução
               </h4>
               <ul className="space-y-2">
-                {result.artifacts.map((artefato) => (
-                  <li key={artefato.name}>
-                    <a
-                      href={artefato.download_url}
-                      download
-                      className="flex items-center justify-between gap-3 rounded-lg border border-white/6 bg-ink px-4 py-3 text-sm hover:border-white/20"
-                    >
-                      <span className="min-w-0">
-                        <span className="font-semibold text-fg">
-                          {ROTULOS[artefato.name] ?? artefato.name}
+                {[...result.artifacts]
+                  .sort(
+                    (a, b) => ordemDoArtefato(a.name) - ordemDoArtefato(b.name),
+                  )
+                  .map((artefato) => (
+                    <li key={artefato.name}>
+                      <a
+                        href={artefato.download_url}
+                        download
+                        className="flex items-center justify-between gap-3 rounded-lg border border-white/6 bg-ink px-4 py-3 text-sm hover:border-white/20"
+                      >
+                        <span className="min-w-0">
+                          <span className="font-semibold text-fg">
+                            {ROTULOS[artefato.name] ?? artefato.name}
+                          </span>
+                          <span className="ml-2 text-[0.8rem] text-muted">
+                            {tamanho(artefato.bytes)}
+                          </span>
                         </span>
-                        <span className="ml-2 text-[0.8rem] text-muted">
-                          {tamanho(artefato.bytes)}
+                        <span className="whitespace-nowrap text-[0.8rem] text-signal">
+                          Baixar
                         </span>
-                      </span>
-                      <span className="whitespace-nowrap text-[0.8rem] text-signal">
-                        Baixar
-                      </span>
-                    </a>
-                  </li>
-                ))}
+                      </a>
+                    </li>
+                  ))}
               </ul>
             </div>
           ) : null}

@@ -728,6 +728,7 @@ async def validate(
     token: str,
     strict_warnings: bool = Form(default=False),
     max_issues: int | None = Form(default=None),
+    apply_cleaning: bool = Form(default=False),
 ) -> JSONResponse:
     """
     Executa a validacao com as escolhas CONFIRMADAS e gera as evidencias.
@@ -735,8 +736,14 @@ async def validate(
     Roda pelo mesmo subprocesso isolado da 1.8A (sem shell, argv por
     allowlist), com o arquivo interno do workspace, o schema confirmado e as
     escolhas de aba/cabecalho que o visitante viu na analise. Nada de argv
-    vindo do navegador: `strict_warnings` e `max_issues` sao campos tipados
-    que o servidor traduz em opcao.
+    vindo do navegador: `strict_warnings`, `max_issues` e `apply_cleaning`
+    sao campos tipados que o servidor traduz em opcao.
+
+    `apply_cleaning` e a confirmacao das CORRECOES SEGURAS. Sem ela a jornada
+    apenas audita; com ela, o nucleo normaliza o que e seguro (espacos, caixa,
+    formato), registra cada mudanca no antes/depois e, para XLSX, entrega a
+    `planilha_tratada.xlsx` com a apresentacao original preservada. O arquivo
+    de entrada continua intocado nos dois casos.
 
     O acompanhamento continua nos endpoints existentes: `/api/stream/{token}`,
     `/api/result/{token}` e `/api/download/{token}/{nome}`.
@@ -773,7 +780,9 @@ async def validate(
         header_row=journey.header_row,
         strict_warnings=strict_warnings,
         max_issues=max_issues,
+        apply_cleaning=apply_cleaning,
     )
+    journey.apply_cleaning = apply_cleaning
 
     journey.status = "validating"
     job.status = "running"

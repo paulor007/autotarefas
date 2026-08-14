@@ -467,6 +467,80 @@ class TestValidacao:
 
 
 # ============================================================
+# Correcoes seguras confirmadas (modo limpeza na jornada)
+# ============================================================
+
+
+class TestCorrecoesConfirmadas:
+    """
+    A jornada so normaliza valor quando a pessoa CONFIRMA.
+
+    Sem confirmacao, o AutoTarefas audita: aponta o que encontrou e nao toca
+    em nada. Com confirmacao, normaliza o que e seguro e — em XLSX — entrega
+    a planilha tratada preservando a apresentacao do arquivo original.
+    """
+
+    def _validar(self, client: TestClient, fixture: str, **dados: str) -> dict[str, Any]:
+        inicio = _enviar(client, fixture)
+        token = inicio["token"]
+        client.post(f"/api/spreadsheets/{token}/schema", data={"source": "suggested"})
+        client.post(f"/api/spreadsheets/{token}/validate", data=dados)
+        return _concluir(client, token)
+
+    def test_sem_confirmacao_nao_ha_planilha_tratada(self, client: TestClient) -> None:
+        resultado = self._validar(client, "29_espacos_extras.csv")
+        nomes = [a["name"] for a in resultado["artifacts"]]
+        assert "planilha_tratada.xlsx" not in nomes
+
+    def test_sem_confirmacao_nada_e_normalizado(self, client: TestClient) -> None:
+        resultado = self._validar(client, "29_espacos_extras.csv")
+        relatorio = next(a for a in resultado["artifacts"] if a["name"] == "validacao_report.json")
+        dados = client.get(relatorio["download_url"]).json()
+        assert dados["mode"] == "auditoria"
+        assert dados["total_cleaned"] == 0
+
+    def test_confirmacao_normaliza_e_registra(self, client: TestClient) -> None:
+        resultado = self._validar(client, "29_espacos_extras.csv", apply_cleaning="true")
+        relatorio = next(a for a in resultado["artifacts"] if a["name"] == "validacao_report.json")
+        dados = client.get(relatorio["download_url"]).json()
+        assert dados["mode"] == "limpeza"
+        assert dados["total_cleaned"] > 0
+
+    def test_xlsx_confirmado_gera_planilha_tratada(self, client: TestClient) -> None:
+        resultado = self._validar(client, "02_xlsx_limpo.xlsx", apply_cleaning="true")
+        nomes = [a["name"] for a in resultado["artifacts"]]
+        assert "planilha_tratada.xlsx" in nomes
+        assert "preservacao_report.json" in nomes
+
+    def test_planilha_tratada_e_baixavel(self, client: TestClient) -> None:
+        inicio = _enviar(client, "02_xlsx_limpo.xlsx")
+        token = inicio["token"]
+        client.post(f"/api/spreadsheets/{token}/schema", data={"source": "suggested"})
+        client.post(f"/api/spreadsheets/{token}/validate", data={"apply_cleaning": "true"})
+        resultado = _concluir(client, token)
+
+        artefato = next(a for a in resultado["artifacts"] if a["name"] == "planilha_tratada.xlsx")
+        resposta = client.get(artefato["download_url"])
+        assert resposta.status_code == HTTP_OK
+        # XLSX real: um zip, que comeca com "PK".
+        assert resposta.content[:2] == b"PK"
+
+    def test_csv_confirmado_nao_inventa_planilha_tratada(self, client: TestClient) -> None:
+        """CSV nao tem apresentacao a preservar — e nao ganha arquivo fantasma."""
+        resultado = self._validar(client, "29_espacos_extras.csv", apply_cleaning="true")
+        nomes = [a["name"] for a in resultado["artifacts"]]
+        assert "planilha_tratada.xlsx" not in nomes
+
+    def test_original_intacto_mesmo_com_correcoes(self, client: TestClient) -> None:
+        import hashlib
+
+        alvo = FX / "02_xlsx_limpo.xlsx"
+        antes = hashlib.sha256(alvo.read_bytes()).hexdigest()
+        self._validar(client, "02_xlsx_limpo.xlsx", apply_cleaning="true")
+        assert hashlib.sha256(alvo.read_bytes()).hexdigest() == antes
+
+
+# ============================================================
 # Isolamento e seguranca
 # ============================================================
 

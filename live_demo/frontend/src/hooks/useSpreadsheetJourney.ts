@@ -80,6 +80,15 @@ export interface UseSpreadsheetJourney {
   token: string | null;
   execution: UseExecution;
   busy: boolean;
+  /**
+   * Correcoes seguras CONFIRMADAS pela pessoa (espacos, caixa, formato).
+   *
+   * Comeca desligado de proposito: sem confirmacao, o AutoTarefas so aponta
+   * o que encontrou. Ligado, ele normaliza o que e seguro normalizar e
+   * mostra o antes/depois de cada valor alterado.
+   */
+  applyCleaning: boolean;
+  setApplyCleaning: (value: boolean) => void;
 
   chooseFile: (file: File | null) => void;
   analyzeFile: () => Promise<void>;
@@ -109,6 +118,7 @@ export function useSpreadsheetJourney(): UseSpreadsheetJourney {
   const [rejection, setRejection] = useState<string | null>(null);
   const [token, setToken] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [applyCleaning, setApplyCleaning] = useState(false);
 
   const execution = useExecution();
 
@@ -147,6 +157,7 @@ export function useSpreadsheetJourney(): UseSpreadsheetJourney {
     setRejection(null);
     setToken(null);
     setBusy(false);
+    setApplyCleaning(false);
   }, [execution, limparEscolhas]);
 
   /**
@@ -392,7 +403,9 @@ export function useSpreadsheetJourney(): UseSpreadsheetJourney {
     setError(null);
     setStep("validating");
     try {
-      const started = await startValidation(token);
+      const started = await startValidation(token, {
+        applyCleaning: applyCleaning,
+      });
       execution.attach(started.token, started.stream_url);
     } catch (e: unknown) {
       const assumido = handleFailure(e);
@@ -400,7 +413,7 @@ export function useSpreadsheetJourney(): UseSpreadsheetJourney {
     } finally {
       if (mounted.current) setBusy(false);
     }
-  }, [busy, execution, handleFailure, step, token]);
+  }, [applyCleaning, busy, execution, handleFailure, step, token]);
 
   // Enquanto valida, a etapa segue o resultado REAL da execucao — nunca o
   // texto do terminal. Exit 1 e "concluido com problemas nos dados", nao
@@ -435,6 +448,8 @@ export function useSpreadsheetJourney(): UseSpreadsheetJourney {
     mapping,
     columns,
     error,
+    applyCleaning,
+    setApplyCleaning,
     rejection,
     token,
     execution,

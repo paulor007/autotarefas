@@ -70,6 +70,8 @@ class Journey:
     """Schema confirmado, em `<workspace>/config/schema_confirmado.yaml`."""
     schema_origin: str | None = None
     """"suggested", "profile" ou "uploaded" — de onde o schema confirmado veio."""
+    apply_cleaning: bool = False
+    """Correcoes seguras CONFIRMADAS na revisao (modo limpeza na execucao)."""
     profile_id: str | None = None
     """Perfil que originou o schema, quando a origem foi um perfil."""
     profile_version: int | None = None

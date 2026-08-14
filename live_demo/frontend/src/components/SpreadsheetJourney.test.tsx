@@ -65,6 +65,88 @@ function mockFetch(
   return espia;
 }
 
+/**
+ * Mock que responde conforme a rota — a jornada faz chamadas diferentes em
+ * sequencia (analise, schema, validacao) e cada uma tem contrato proprio.
+ */
+function mockFetchPorRota(): ReturnType<typeof vi.fn> {
+  const espia = vi.fn(async (url: unknown) => {
+    const alvo = String(url);
+    let corpo: unknown = respostaAnalise();
+    if (alvo.includes("/schema")) {
+      corpo = {
+        token: "tok-1",
+        status: "schema_ready",
+        schema_origin: "suggested",
+        summary: {
+          columns: [
+            {
+              name: "Código Venda",
+              type: "str",
+              required: true,
+              format: null,
+              validator_br: null,
+              unique: false,
+            },
+          ],
+          detect_duplicate_rows: false,
+          group_keys: [],
+          group_checks: [],
+          derived_checks: [],
+        },
+      };
+    } else if (alvo.includes("/validate")) {
+      corpo = {
+        token: "tok-1",
+        status: "validating",
+        stream_url: "/api/stream/tok-1",
+        result_url: "/api/result/tok-1",
+      };
+    }
+    return {
+      ok: true,
+      status: 200,
+      json: async () => corpo,
+    } as Response;
+  });
+  vi.stubGlobal("fetch", espia);
+  // A jornada abre um SSE ao validar; no jsdom nao existe EventSource.
+  vi.stubGlobal(
+    "EventSource",
+    class {
+      close(): void {}
+      addEventListener(): void {}
+      removeEventListener(): void {}
+    },
+  );
+  return espia;
+}
+
+/** Leva a jornada ate a etapa de revisao (a ultima antes de executar). */
+async function irAteRevisao(): Promise<ReturnType<typeof vi.fn>> {
+  const espia = mockFetchPorRota();
+  montar();
+  await userEvent.click(
+    screen.getByRole("button", { name: /Testar com exemplo/i }),
+  );
+  await waitFor(() => {
+    expect(screen.getByText("Diagnóstico do arquivo")).toBeTruthy();
+  });
+  await userEvent.click(
+    screen.getByRole("button", { name: /Escolher como validar/i }),
+  );
+  await userEvent.click(
+    screen.getByRole("button", { name: /Confirmar schema sugerido/i }),
+  );
+  await userEvent.click(
+    screen.getByRole("button", { name: /Revisar configuração/i }),
+  );
+  await waitFor(() => {
+    expect(screen.getByText("Revise antes de executar")).toBeTruthy();
+  });
+  return espia;
+}
+
 /** Sobe a jornada dentro da barreira, como o app real faz. */
 function montar() {
   return render(
@@ -122,6 +204,54 @@ describe("SpreadsheetJourney", () => {
     // ...e a estrutura da página continua de pé.
     expect(screen.getByLabelText("principal")).toBeTruthy();
     expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("oferece as correções seguras na revisão, desligadas por padrão", async () => {
+    await irAteRevisao();
+
+    const caixa = screen.getByRole("checkbox", {
+      name: /Aplicar as correções seguras/i,
+    }) as HTMLInputElement;
+    expect(caixa.checked).toBe(false);
+  });
+
+  it("explica o que a confirmação faz com um XLSX antes de executar", async () => {
+    await irAteRevisao();
+    await userEvent.click(
+      screen.getByRole("checkbox", { name: /Aplicar as correções seguras/i }),
+    );
+
+    expect(screen.getByText(/planilha tratada/i)).toBeTruthy();
+  });
+
+  it("não envia apply_cleaning quando a pessoa não confirma", async () => {
+    const espia = await irAteRevisao();
+    await userEvent.click(
+      screen.getByRole("button", { name: /Executar validação/i }),
+    );
+
+    const chamada = espia.mock.calls.find((args) =>
+      String(args[0]).includes("/validate"),
+    );
+    expect(chamada).toBeTruthy();
+    const corpo = (chamada?.[1] as { body?: FormData })?.body;
+    expect(corpo?.get("apply_cleaning")).toBeNull();
+  });
+
+  it("envia apply_cleaning quando a pessoa confirma as correções", async () => {
+    const espia = await irAteRevisao();
+    await userEvent.click(
+      screen.getByRole("checkbox", { name: /Aplicar as correções seguras/i }),
+    );
+    await userEvent.click(
+      screen.getByRole("button", { name: /Executar validação/i }),
+    );
+
+    const chamada = espia.mock.calls.find((args) =>
+      String(args[0]).includes("/validate"),
+    );
+    const corpo = (chamada?.[1] as { body?: FormData })?.body;
+    expect(corpo?.get("apply_cleaning")).toBe("true");
   });
 
   it("usa o exemplo pelo backend real, sem resultado embutido", async () => {

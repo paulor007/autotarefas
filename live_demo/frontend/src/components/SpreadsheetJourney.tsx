@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 
 import { useSpreadsheetJourney } from "../hooks/useSpreadsheetJourney";
+import { useValidationReport } from "../hooks/useValidationReport";
 import FileDrop from "./FileDrop";
 import SpreadsheetAnalysis from "./SpreadsheetAnalysis";
 import SpreadsheetResult from "./SpreadsheetResult";
@@ -64,6 +65,9 @@ export default function SpreadsheetJourney() {
 
   const etapa = etapaAtual(step);
   const cabecalhoRef = useRef<HTMLHeadingElement>(null);
+  // O resumo sai do relatorio REAL da execucao (validacao_report.json), nunca
+  // do texto do terminal.
+  const relatorio = useValidationReport(execution.result);
 
   // Ao mudar de etapa, o foco vai para o titulo: quem navega por teclado ou
   // leitor de tela precisa saber que a tela mudou.
@@ -306,6 +310,8 @@ export default function SpreadsheetJourney() {
           origin={schema.schema_origin}
           origem={origem}
           busy={busy}
+          applyCleaning={jornada.applyCleaning}
+          onApplyCleaningChange={jornada.setApplyCleaning}
           onValidate={() => void jornada.validate()}
           onBack={jornada.goToSchemaChoice}
         />
@@ -318,7 +324,11 @@ export default function SpreadsheetJourney() {
         </p>
       ) : null}
 
-      <SpreadsheetResult step={step} result={execution.result} />
+      <SpreadsheetResult
+        step={step}
+        result={execution.result}
+        report={relatorio}
+      />
 
       {execution.lines.length > 0 ? (
         <details className="rounded-2xl border border-white/6 bg-ink">
