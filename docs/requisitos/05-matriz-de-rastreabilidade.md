@@ -11,7 +11,10 @@ snapshot de 05/08 · **[L]** Live backend 127 passed · **[F]** frontend — **5
 snapshot de 05/08 · **[A1]** evidência da Fase A1,
 concluída em 10/08/2026 — saídas locais do responsável (commit `f3f95de`) e
 inspeção dos workflows locais; o clone público serviu apenas de referência
-histórica · **[H]** evidência
+histórica · **[B1]** Fase B1 (RF-REC-001, 14/08/2026) — suíte local **2161 passed,
+cobertura 92,75 %**, `ruff check .`, `ruff format --check .` e `mypy src/`
+aprovados; comando `autotarefas comparar` homologado sobre as fixtures
+`tests/fixtures/comparacao/` com os 4 artefatos gerados · **[H]** evidência
 colhida manualmente na auditoria
 (saídas de `--help`, leitura de código com linha citada).
 
@@ -40,7 +43,7 @@ colhida manualmente na auditoria
 | RF-PLA-008 | CONCLUÍDO | OBRIG. V1 | `src/autotarefas/tasks/execution_package.py` | `tests/tasks/test_execution_package.py` | [N] | — | PLA-007 | manter |
 | RF-PLA-009 | NÃO INICIADO | **OBRIG. V1** (etapa 6 do resultado, 01 §9.1) | — | — | — | preservação de estilo | PLA-007 | Fase B4 |
 | RF-PLA-010 | NÃO INICIADO | **OBRIG. V1** (etapa 4 do resultado) | — | — | — | catálogo de correções confirmadas | PLA-006, REC-003 | Fase B5 |
-| RF-REC-001 | NÃO INICIADO | **OBRIG. V1** (DP-04 decidida 05/08) | — | — | [H] (grep "reconcil" vazio em src/) | tudo | PLA-001/006 | **Fase B1 — primeiro código após aprovação** |
+| RF-REC-001 | CONCLUÍDO | **OBRIG. V1** (DP-04 decidida 05/08) | `src/autotarefas/reconcile/` + `cli/commands/comparar.py` | `tests/reconcile/` (3 arquivos), `tests/cli/test_comparar_cli.py` | [B1] | tolerâncias → REC-002 | PLA-001/006 | manter |
 | RF-REC-002 | NÃO INICIADO | **OBRIG. V1** | — | — | — | tudo | REC-001 | Fase B2 |
 | RF-REC-003 | NÃO INICIADO | **OBRIG. V1** | — | — | — | tudo | REC-001 | Fase B3 |
 | RF-REC-004 | NÃO INICIADO | **OBRIG. V1** (etapa 11 do resultado) | — | — | — | tudo | REC-002, CORE-006 | Fase B6 |

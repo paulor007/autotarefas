@@ -347,9 +347,9 @@ módulo" para não repetir texto.
 ---
 
 ## Módulo REC — Reconciliação e transferência entre planilhas
-*Módulo inteiro NÃO INICIADO — nenhuma linha de código no snapshot (busca por
-"reconcil/checkpoint/merge de bases" sem resultados em `src/`). Fichas abaixo
-definem o requisito para a Fase B.*
+*Iniciado na Fase B1: o pacote `src/autotarefas/reconcile/` existe e entrega a
+comparação por chave (REC-001). REC-002 a REC-004 seguem pendentes e constroem
+sobre esse núcleo.*
 
 ### RF-REC-001 — Comparação (diff) entre planilhas por chave
 **Objetivo:** dizer com precisão o que difere entre duas versões/fontes de uma base.
@@ -366,8 +366,10 @@ definem o requisito para a Fase B.*
 **Tratamento de falhas:** por arquivo; ambiguidade estrutural segue PLA-001. **Recuperação:** reexecução.
 **Modo Live:** card futuro com dois uploads pequenos + exemplo pronto. **Modo real:** `autotarefas comparar A.xlsx B.xlsx --chave cpf`.
 **Testes necessários:** unidade das classificações; CLI; fixtures com acento/zeros à esquerda.
-**Prioridade:** OBRIGATÓRIO V1 (DP-04 decidida em 05/08/2026). **Fase:** B1. **Status:** NÃO INICIADO.
-**Evidências:** —. **Lacunas:** tudo. **Próxima ação:** primeira subetapa da Fase B (primeiro trabalho de código após a aprovação).
+**Prioridade:** OBRIGATÓRIO V1 (DP-04 decidida em 05/08/2026). **Fase:** B1. **Status:** CONCLUÍDO (14/08/2026).
+**Evidências:** `src/autotarefas/reconcile/{result,compare,artifacts,task}.py`, comando `autotarefas comparar` (`src/autotarefas/cli/commands/comparar.py`), fixtures plantadas em `tests/fixtures/comparacao/` (idêntico, alterado em 1 coluna, removido, novo, chave repetida, divergência só por espaço/caixa, zeros à esquerda, XLSX×CSV); testes em `tests/reconcile/` e `tests/cli/test_comparar_cli.py`.
+**Recorte desta entrega (limites declarados no próprio relatório, em `compare.LIMITATIONS`):** comparação textual sobre o dataframe FIEL do leitor — sem tolerância numérica ou de data (`10` ≠ `10,00`), que é da REC-002; normalização opcional e explícita (`--normalizar espacos|caixa|digitos`, com `digitos` valendo só para a chave) aplicada à comparação, nunca ao valor relatado; uma tabela por arquivo; chave duplicada ou vazia nunca é pareada (vai para conflitos com as linhas dos dois lados); coluna presente em apenas uma fonte fica fora, com aviso.
+**Lacunas:** tolerâncias e base conciliada (REC-002); card no Live (fora do recorte do Live nesta fase).
 
 ### RF-REC-002 — Reconciliação com tolerâncias e base conciliada
 **Objetivo:** das diferenças à decisão: qual valor vale, com que prioridade.

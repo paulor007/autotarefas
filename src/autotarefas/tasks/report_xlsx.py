@@ -19,34 +19,50 @@ Nao inventa dado — apenas organiza e apresenta o que a validacao produziu.
 
 from __future__ import annotations
 
-import math
 from pathlib import Path
 
 import pandas as pd
 from openpyxl import Workbook
-from openpyxl.styles import Alignment, Font, PatternFill
-from openpyxl.utils import get_column_letter
+from openpyxl.styles import Font
 from openpyxl.worksheet.worksheet import Worksheet
 
 from autotarefas.core.base import TaskResult
 from autotarefas.tasks.artifacts import REASON_COLUMN, split_valid_invalid
+from autotarefas.tasks.xlsx_style import (
+    ERROR_FILL as _ERROR_FILL,
+)
+from autotarefas.tasks.xlsx_style import (
+    FONT_NAME as _FONT,
+)
+from autotarefas.tasks.xlsx_style import (
+    HEADER_FILL as _HEADER_FILL,
+)
+from autotarefas.tasks.xlsx_style import (
+    HEADER_FONT as _HEADER_FONT,
+)
+from autotarefas.tasks.xlsx_style import (
+    LABEL_FONT as _LABEL_FONT,
+)
+from autotarefas.tasks.xlsx_style import (
+    NEUTRAL_FILL as _NEUTRAL_FILL,
+)
+from autotarefas.tasks.xlsx_style import (
+    OK_FILL as _OK_FILL,
+)
+from autotarefas.tasks.xlsx_style import (
+    TITLE_FONT as _TITLE_FONT,
+)
+from autotarefas.tasks.xlsx_style import (
+    write_dataframe_sheet as _write_dataframe,
+)
 
 #: Nome fixo do artefato XLSX.
 XLSX_NAME = "planilha_validada.xlsx"
 
 # ============================================================
-# Paleta e estilos (fonte profissional, cores por status)
+# Abas (a paleta e a formatacao vivem em `tasks/xlsx_style.py`, para que
+# este artefato e o `divergencias.xlsx` da comparacao tenham a mesma cara)
 # ============================================================
-
-_FONT = "Arial"
-_TITLE_FONT = Font(name=_FONT, bold=True, size=16, color="1F4E78")
-_LABEL_FONT = Font(name=_FONT, bold=True)
-_HEADER_FONT = Font(name=_FONT, bold=True, color="FFFFFF")
-_HEADER_FILL = PatternFill("solid", fgColor="1F4E78")  # azul escuro
-_OK_FILL = PatternFill("solid", fgColor="E2EFDA")  # verde claro
-_ERROR_FILL = PatternFill("solid", fgColor="FCE4E4")  # vermelho claro
-_NEUTRAL_FILL = PatternFill("solid", fgColor="FFF2CC")  # amarelo claro
-_CENTER = Alignment(horizontal="center", vertical="center")
 
 _SHEET_RESUMO = "Resumo"
 _SHEET_VALIDOS = "Registros validos"
@@ -73,55 +89,6 @@ _CATEGORY_LABELS = {
 # ============================================================
 # Helpers
 # ============================================================
-
-
-def _cell_value(value: object) -> object:
-    """Converte celula do DataFrame para um tipo que o openpyxl aceita."""
-    # None ou NaN viram string vazia.
-    if value is None or (isinstance(value, float) and math.isnan(value)):
-        return ""
-    if isinstance(value, (bool, int, float, str)):
-        return value
-    # numpy int64/float64 e afins: converte para nativo via item().
-    item = getattr(value, "item", None)
-    if callable(item):
-        native = item()
-        if isinstance(native, (bool, int, float, str)):
-            return native
-    return str(value)
-
-
-def _style_header_row(ws: Worksheet, n_cols: int) -> None:
-    """Aplica estilo ao cabecalho (linha 1), congela painel e liga o filtro."""
-    for col in range(1, n_cols + 1):
-        cell = ws.cell(row=1, column=col)
-        cell.font = _HEADER_FONT
-        cell.fill = _HEADER_FILL
-        cell.alignment = _CENTER
-    ws.freeze_panes = "A2"
-    last_col = get_column_letter(n_cols)
-    ws.auto_filter.ref = f"A1:{last_col}{ws.max_row}"
-
-
-def _autofit_columns(ws: Worksheet, max_width: int = 60) -> None:
-    """Ajusta a largura das colunas ao maior conteudo (com um teto)."""
-    for col_cells in ws.columns:
-        length = max((len(str(c.value)) for c in col_cells if c.value is not None), default=0)
-        letter = get_column_letter(col_cells[0].column)
-        ws.column_dimensions[letter].width = min(max(length + 2, 10), max_width)
-
-
-def _write_dataframe(ws: Worksheet, dataframe: pd.DataFrame) -> None:
-    """Escreve cabecalho + linhas do DataFrame e aplica formatacao padrao."""
-    ws.append(list(dataframe.columns))
-    for row in dataframe.itertuples(index=False, name=None):
-        ws.append([_cell_value(v) for v in row])
-    data_font = Font(name=_FONT)
-    for cell_row in ws.iter_rows(min_row=2, max_row=ws.max_row):
-        for cell in cell_row:
-            cell.font = data_font
-    _style_header_row(ws, len(dataframe.columns))
-    _autofit_columns(ws)
 
 
 def _lines_to_indices(lines: list[int]) -> list[int]:
