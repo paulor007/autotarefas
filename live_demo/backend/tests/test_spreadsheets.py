@@ -23,6 +23,7 @@ from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
+from openpyxl import load_workbook
 
 from live_demo.backend.app import engine, jobs, ratelimit
 from live_demo.backend.app.main import app
@@ -444,11 +445,25 @@ class TestValidacao:
         relatorio = client.get(relatorio_art["download_url"]).json()
         assert relatorio["selected_sheet"] == "Estoque"
 
-    def test_validar_sem_confirmar_schema(self, client: TestClient) -> None:
+    def test_validar_sem_schema_usa_o_sugerido(self, client: TestClient) -> None:
+        """
+        Contrato do Card 01: ninguém precisa entender schema.
+
+        Sem schema próprio, o servidor adota o SUGERIDO — que só descreve a
+        estrutura observada, sem inventar regra de negócio.
+        """
         d = _enviar(client, "32_servicos.csv")
         r = client.post(f"/api/spreadsheets/{d['token']}/validate")
-        assert r.status_code == HTTP_BAD_REQUEST
-        assert r.json()["code"] == "schema_pending"
+
+        assert r.status_code == HTTP_OK
+        assert r.json()["status"] == "validating"
+
+        res = _concluir(client, d["token"])
+        assert res["outcome"] in {"ok", "caught_issue"}
+        job = jobs.get(d["token"])
+        assert job is not None
+        assert job.journey is not None
+        assert job.journey.schema_origin == "suggested"
 
     def test_max_issues_invalido(self, client: TestClient) -> None:
         d = _enviar(client, "32_servicos.csv")
@@ -570,16 +585,21 @@ class TestLinhasRepetidas:
         d = _enviar(client, "01_csv_limpo.csv")
         assert d["duplicate_rows"] == 0
 
-    def test_sem_confirmacao_a_repetida_nao_vira_problema(self, client: TestClient) -> None:
+    def test_duplicidade_e_verificada_sempre(self, client: TestClient) -> None:
+        """
+        Contrato do Card 01: a verificação de linhas 100% repetidas **sempre**
+        acontece — não depende de schema, de perfil nem de opção escondida.
+        """
         d = self._enviar_homologacao(client, "A_vendas_com_anomalias.xlsx")
         token = d["token"]
-        client.post(f"/api/spreadsheets/{token}/schema", data={"source": "suggested"})
         client.post(f"/api/spreadsheets/{token}/validate")
         res = _concluir(client, token)
 
         relatorio = next(a for a in res["artifacts"] if a["name"] == "validacao_report.json")
         dados = client.get(relatorio["download_url"]).json()
-        assert not [i for i in dados["issues"] if "duplicad" in str(i["message"]).lower()]
+        duplicadas = [i for i in dados["issues"] if "duplicad" in str(i["message"]).lower()]
+        assert len(duplicadas) == 1
+        assert duplicadas[0]["severity"] == "warning"
 
     def test_confirmada_a_repetida_aparece_com_o_numero_da_linha(self, client: TestClient) -> None:
         d = self._enviar_homologacao(client, "A_vendas_com_anomalias.xlsx")
@@ -621,6 +641,190 @@ class TestLinhasRepetidas:
         relatorio = next(a for a in res["artifacts"] if a["name"] == "validacao_report.json")
         dados = client.get(relatorio["download_url"]).json()
         assert dados["rows"] == 17  # as 17 linhas de dados da fixture, inteiras
+
+
+# ============================================================
+# Card 01: analise geral, organizacao, ordenacao e indicadores
+# ============================================================
+
+
+DOMINIOS = Path(__file__).resolve().parents[3] / "tests" / "fixtures" / "dominios"
+
+
+class TestCardAnaliseEOrganizacao:
+    """
+    O contrato do Card 01 pelos endpoints reais.
+
+    Cada teste aqui responde a um critério de aceite: análise geral sem
+    schema, apresentação avaliada, organização opcional e confirmada,
+    ordenação nunca silenciosa e indicador nenhum sem confirmação.
+    """
+
+    def _enviar_dominio(self, client: TestClient, nome: str) -> dict[str, Any]:
+        caminho = DOMINIOS / nome
+        mime = XLSX_MIME if caminho.suffix == ".xlsx" else "text/csv"
+        with caminho.open("rb") as handle:
+            r = client.post("/api/spreadsheets/analyze", files={"files": (nome, handle, mime)})
+        assert r.status_code == HTTP_OK, r.text[:200]
+        return dict(r.json())
+
+    def _executar(self, client: TestClient, token: str, **opcoes: str) -> dict[str, Any]:
+        client.post(f"/api/spreadsheets/{token}/validate", data=opcoes)
+        return _concluir(client, token)
+
+    # --- diagnóstico -------------------------------------------------
+
+    def test_diagnostico_traz_abas_e_apresentacao(self, client: TestClient) -> None:
+        d = self._enviar_dominio(client, "vendas_simples.xlsx")
+
+        assert d["presentation"]["veredito"] == "melhoravel"
+        assert d["presentation"]["criterios"]
+        assert [a["nome"] for a in d["sheets"]] == ["Vendas"]
+        assert d["multiple_sheets"] is False
+
+    def test_planilha_profissional_nao_recebe_proposta(self, client: TestClient) -> None:
+        d = self._enviar_dominio(client, "financeiro_profissional.xlsx")
+        assert d["presentation"]["veredito"] == "organizada"
+        assert d["presentation"]["pendencias"] == []
+
+    def test_estrutura_ambigua_e_declarada(self, client: TestClient) -> None:
+        d = self._enviar_dominio(client, "pesquisa_ambigua.xlsx")
+        assert d["presentation"]["veredito"] == "ambigua"
+
+    def test_varias_abas_tabulares_pedem_escolha(self, client: TestClient) -> None:
+        d = self._enviar_dominio(client, "atendimentos_duas_abas.xlsx")
+        naturezas = {a["nome"]: a["natureza"] for a in d["sheets"]}
+
+        assert d["multiple_sheets"] is True
+        assert naturezas["Rascunho"] == "vazia"
+        assert naturezas["Leia-me"] == "apresentacao"
+
+    def test_csv_nao_inventa_apresentacao(self, client: TestClient) -> None:
+        d = self._enviar_dominio(client, "clientes.csv")
+        assert d["presentation"] is None
+        assert d["sheets"] == []
+
+    def test_papeis_sao_sugeridos_com_confianca(self, client: TestClient) -> None:
+        d = self._enviar_dominio(client, "vendas_simples.xlsx")
+        papeis = {p["coluna"]: p for p in d["column_roles"]["roles"]}
+
+        assert papeis["Data"]["papel"] == "data"
+        assert d["column_roles"]["offerable"] is True
+        assert all(p["motivo"] for p in papeis.values())
+
+    # --- organização --------------------------------------------------
+
+    def test_sem_confirmacao_nao_ha_planilha_organizada(self, client: TestClient) -> None:
+        d = self._enviar_dominio(client, "vendas_simples.xlsx")
+        res = self._executar(client, d["token"])
+        nomes = [a["name"] for a in res["artifacts"]]
+
+        assert "planilha_organizada.xlsx" not in nomes
+        assert "relatorio_analise.xlsx" in nomes  # o laudo sai sempre
+
+    def test_organizacao_confirmada_gera_o_arquivo(self, client: TestClient) -> None:
+        d = self._enviar_dominio(client, "vendas_simples.xlsx")
+        res = self._executar(client, d["token"], organize="true")
+        nomes = [a["name"] for a in res["artifacts"]]
+
+        assert "planilha_organizada.xlsx" in nomes
+
+    def test_planilha_organizada_e_baixavel_e_valida(self, client: TestClient) -> None:
+        d = self._enviar_dominio(client, "vendas_simples.xlsx")
+        res = self._executar(client, d["token"], organize="true")
+        artefato = next(a for a in res["artifacts"] if a["name"] == "planilha_organizada.xlsx")
+        conteudo = client.get(artefato["download_url"]).content
+
+        assert conteudo[:2] == b"PK"
+        ws = load_workbook(io.BytesIO(conteudo))["Vendas"]
+        assert ws.freeze_panes == "A2"
+        assert ws.auto_filter.ref is not None
+
+    def test_csv_nao_gera_planilha_organizada(self, client: TestClient) -> None:
+        d = self._enviar_dominio(client, "clientes.csv")
+        res = self._executar(client, d["token"], organize="true")
+        assert "planilha_organizada.xlsx" not in [a["name"] for a in res["artifacts"]]
+
+    # --- ordenação ----------------------------------------------------
+
+    def test_sem_ordenacao_a_ordem_original_e_mantida(self, client: TestClient) -> None:
+        d = self._enviar_dominio(client, "servico_publico.xlsx")
+        res = self._executar(client, d["token"], organize="true")
+        artefato = next(a for a in res["artifacts"] if a["name"] == "planilha_organizada.xlsx")
+        ws = load_workbook(io.BytesIO(client.get(artefato["download_url"]).content))["Protocolos"]
+
+        assert [ws.cell(row=linha, column=1).value for linha in (2, 3, 4)] == [
+            "000123",
+            "000124",
+            "000125",
+        ]
+
+    def test_ordenacao_confirmada_e_aplicada(self, client: TestClient) -> None:
+        d = self._enviar_dominio(client, "servico_publico.xlsx")
+        res = self._executar(
+            client, d["token"], organize="true", sort_column="Dias", sort_desc="true"
+        )
+        artefato = next(a for a in res["artifacts"] if a["name"] == "planilha_organizada.xlsx")
+        ws = load_workbook(io.BytesIO(client.get(artefato["download_url"]).content))["Protocolos"]
+        dias = [ws.cell(row=linha, column=6).value for linha in range(2, 6)]
+
+        assert dias == sorted(dias, reverse=True)
+
+    # --- indicadores ---------------------------------------------------
+
+    def test_sem_confirmacao_semantica_nao_ha_indicadores(self, client: TestClient) -> None:
+        d = self._enviar_dominio(client, "vendas_simples.xlsx")
+        res = self._executar(client, d["token"])
+        artefato = next(a for a in res["artifacts"] if a["name"] == "relatorio_analise.xlsx")
+        wb = load_workbook(io.BytesIO(client.get(artefato["download_url"]).content))
+
+        assert "Indicadores confirmados" not in wb.sheetnames
+
+    def test_indicadores_aparecem_com_papeis_confirmados(self, client: TestClient) -> None:
+        d = self._enviar_dominio(client, "vendas_simples.xlsx")
+        res = self._executar(
+            client,
+            d["token"],
+            indicator_value="Valor",
+            indicator_category="Vendedor",
+            indicator_date="Data",
+        )
+        artefato = next(a for a in res["artifacts"] if a["name"] == "relatorio_analise.xlsx")
+        wb = load_workbook(io.BytesIO(client.get(artefato["download_url"]).content))
+
+        assert "Indicadores confirmados" in wb.sheetnames
+
+    # --- downloads ------------------------------------------------------
+
+    def test_original_fica_disponivel_para_download(self, client: TestClient) -> None:
+        d = self._enviar_dominio(client, "vendas_simples.xlsx")
+        resposta = client.get(f"/api/spreadsheets/{d['token']}/original")
+
+        assert resposta.status_code == HTTP_OK
+        assert resposta.content[:2] == b"PK"
+
+    def test_original_de_outra_sessao_nao_e_alcancavel(self, client: TestClient) -> None:
+        assert client.get("/api/spreadsheets/inexistente/original").status_code == HTTP_NOT_FOUND
+
+    def test_relatorio_tem_as_abas_do_contrato(self, client: TestClient) -> None:
+        d = self._enviar_dominio(client, "servico_publico.xlsx")
+        res = self._executar(client, d["token"], organize="true", apply_cleaning="true")
+        artefato = next(a for a in res["artifacts"] if a["name"] == "relatorio_analise.xlsx")
+        wb = load_workbook(io.BytesIO(client.get(artefato["download_url"]).content))
+
+        assert "Resumo" in wb.sheetnames
+        assert "Abas do arquivo" in wb.sheetnames
+        assert "Linhas para revisao" in wb.sheetnames
+        assert "Alteracoes realizadas" in wb.sheetnames
+
+    def test_arquivo_do_usuario_fica_intocado(self, client: TestClient) -> None:
+        import hashlib
+
+        alvo = DOMINIOS / "vendas_simples.xlsx"
+        antes = hashlib.sha256(alvo.read_bytes()).hexdigest()
+        d = self._enviar_dominio(client, "vendas_simples.xlsx")
+        self._executar(client, d["token"], organize="true", sort_column="Pedido")
+        assert hashlib.sha256(alvo.read_bytes()).hexdigest() == antes
 
 
 # ============================================================
@@ -794,7 +998,14 @@ class TestInvalidacaoDeEstado:
     resultado que PARECE legitimo e nao e — o pior erro possivel aqui.
     """
 
-    def test_trocar_de_aba_exige_confirmar_o_schema_de_novo(self, client: TestClient) -> None:
+    def test_trocar_de_aba_descarta_o_schema_da_aba_anterior(self, client: TestClient) -> None:
+        """
+        O schema confirmado descrevia OUTRA aba: ele cai.
+
+        Desde o contrato do Card 01 a validação não exige confirmação de
+        schema — ela adota o sugerido. O que não pode acontecer, e é o que
+        este teste protege, é validar a aba nova com o contrato da antiga.
+        """
         inicio = _enviar(client, "07_tres_abas.xlsx")
         token = inicio["token"]
 
@@ -804,10 +1015,15 @@ class TestInvalidacaoDeEstado:
 
         # volta e escolhe outra aba
         client.post(f"/api/spreadsheets/{token}/selection", data={"sheet": "Vendas"})
+        job = jobs.get(token)
+        assert job is not None
+        assert job.journey is not None
+        assert job.journey.schema_path is None  # o contrato antigo foi descartado
 
-        r = client.post(f"/api/spreadsheets/{token}/validate")
-        assert r.status_code == HTTP_BAD_REQUEST
-        assert r.json()["code"] == "schema_pending"
+        client.post(f"/api/spreadsheets/{token}/validate")
+        res = _concluir(client, token)
+        relatorio = next(a for a in res["artifacts"] if a["name"] == "validacao_report.json")
+        assert client.get(relatorio["download_url"]).json()["selected_sheet"] == "Vendas"
 
     def test_arquivo_do_schema_antigo_e_removido(self, client: TestClient) -> None:
         inicio = _enviar(client, "07_tres_abas.xlsx")
@@ -824,13 +1040,16 @@ class TestInvalidacaoDeEstado:
         assert job.journey is not None
         assert job.journey.schema_origin is None
 
-    def test_trocar_cabecalho_tambem_invalida(self, client: TestClient) -> None:
+    def test_trocar_cabecalho_tambem_descarta_o_schema(self, client: TestClient) -> None:
         inicio = _enviar(client, "06_cabecalho_linha_4.xlsx")
         token = inicio["token"]
         client.post(f"/api/spreadsheets/{token}/schema", data={"source": "suggested"})
         client.post(f"/api/spreadsheets/{token}/selection", data={"header_row": "4"})
-        r = client.post(f"/api/spreadsheets/{token}/validate")
-        assert r.json()["code"] == "schema_pending"
+
+        job = jobs.get(token)
+        assert job is not None
+        assert job.journey is not None
+        assert job.journey.schema_path is None
 
 
 class TestQuantidadeDeArquivos:

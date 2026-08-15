@@ -175,7 +175,14 @@ def _clientes_csv() -> None:
 
 
 def _pesquisa_ambigua() -> None:
-    """Capa mesclada por cima da tabela: estrutura ambígua."""
+    """
+    Estrutura ambígua de verdade: capa mesclada E mesclagem DENTRO dos dados.
+
+    Só a capa não bastaria — depois que o leitor encontra o cabeçalho na
+    linha 3, a tabela abaixo é limpa. O que torna a estrutura realmente
+    ambígua é a mesclagem no meio dos registros: ali não dá para afirmar o
+    que é linha e o que é bloco de texto.
+    """
     wb = Workbook()
     ws = wb.active
     ws.title = "Pesquisa"
@@ -185,6 +192,8 @@ def _pesquisa_ambigua() -> None:
     ws.append(["Respondente", "Nota", "Comentario", "Data"])
     ws.append([1, 9, "Bom atendimento", datetime(2026, 1, 5)])
     ws.append([2, 7, "", datetime(2026, 1, 6)])
+    ws.append(["OBSERVACAO GERAL DO TRIMESTRE", None, None, None])
+    ws.merge_cells("A6:D6")  # bloco de texto no meio dos registros
     ws.append([3, 10, "Excelente", datetime(2026, 1, 7)])
     wb.save(AQUI / "pesquisa_ambigua.xlsx")
 

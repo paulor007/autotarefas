@@ -38,14 +38,33 @@ from __future__ import annotations
 import asyncio
 import json
 import shutil
+from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+import pandas as pd
 import yaml
 from fastapi import APIRouter, File, Form, Request, UploadFile
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
 
 from autotarefas.core.exceptions import AutoTarefasError
+from autotarefas.core.logger import logger
+from autotarefas.organize import (
+    ANALYSIS_REPORT_NAME,
+    ORGANIZED_XLSX_NAME,
+    IndicatorRequest,
+    ReportInput,
+    SortRequest,
+    audit_presentation,
+    build_indicators,
+    default_request,
+    needs_sheet_choice,
+    organize_workbook,
+    suggest_roles,
+    summary_is_offerable,
+    survey_sheets,
+    write_analysis_report,
+)
 from autotarefas.profiles import (
     MappingError,
     ProfileError,
@@ -54,6 +73,7 @@ from autotarefas.profiles import (
     load_profile,
 )
 from autotarefas.services import analyze_spreadsheet
+from autotarefas.tasks.execution_package import build_review_rows
 from autotarefas.tasks.validate import load_schema
 
 from . import engine, jobs, ratelimit, recipes, samples, uploads
@@ -162,6 +182,93 @@ def _ativar_deteccao_de_duplicadas(schema_path: Path) -> None:
     )
 
 
+def _e_xlsx(caminho: Path) -> bool:
+    return caminho.suffix.lower() in {".xlsx", ".xlsm"}
+
+
+def _ler_frame(journey: jobs.Journey) -> pd.DataFrame | None:
+    """
+    Le a tabela FIEL do arquivo, sob demanda.
+
+    A jornada nao guarda o DataFrame de proposito (seria uma copia grande
+    presa ate o TTL). Reler custa pouco no teto de 10 MB do Live e mantem
+    uma fonte de verdade so: o arquivo no workspace.
+    """
+    from autotarefas.reader import read_workbook
+
+    try:
+        leitura = read_workbook(
+            journey.source_path, sheet=journey.sheet, header_row=journey.header_row
+        )
+    except Exception:  # noqa: BLE001 - arquivo ruim ja foi tratado na analise
+        return None
+    return leitura.original_dataframe if leitura.ok else None
+
+
+def _diagnostico_estendido(journey: jobs.Journey) -> dict[str, Any]:
+    """
+    O que a analise geral acrescenta ao diagnostico estrutural.
+
+    Tres coisas que a pessoa precisa ANTES de decidir: como estao as abas,
+    como esta a apresentacao e se da para propor um resumo com seguranca.
+    Nada aqui altera o arquivo, e nada e aplicado — e diagnostico.
+
+    Em CSV nao ha apresentacao nem abas para avaliar: o payload sai vazio,
+    e a interface simplesmente nao oferece a organizacao visual.
+    """
+    origem = journey.source_path
+    if not _e_xlsx(origem):
+        return {"sheets": [], "presentation": None, "multiple_sheets": False}
+
+    try:
+        abas = survey_sheets(origem)
+        auditoria = audit_presentation(
+            origem, sheet=journey.sheet, header_row=journey.header_row or 1
+        )
+    except (OSError, ValueError, KeyError):  # pragma: no cover - arquivo ilegivel
+        return {"sheets": [], "presentation": None, "multiple_sheets": False}
+
+    journey.presentation_verdict = auditoria.verdict
+    return {
+        "sheets": [info.as_dict() for info in abas],
+        "presentation": auditoria.as_dict(),
+        "multiple_sheets": needs_sheet_choice(abas),
+    }
+
+
+def _papeis_payload(journey: jobs.Journey) -> dict[str, Any]:
+    """
+    Sugestao de papeis das colunas — para a pessoa CONFIRMAR, nunca aplicar.
+
+    Se nao houver dimensao e medida confiaveis, `offerable` sai False e a
+    interface nem oferece o resumo: melhor nenhum indicador do que um
+    numero com cara de verdade.
+    """
+    frame = _ler_frame(journey)
+    if frame is None:
+        return {"roles": [], "offerable": False, "suggestion": {}}
+
+    sugestoes = suggest_roles(frame, journey.analysis.get("columns") or [])
+    proposta = default_request(sugestoes)
+    return {
+        "roles": [
+            {
+                "coluna": s.column,
+                "papel": s.role,
+                "confianca": round(s.confidence, 2),
+                "motivo": s.reason,
+            }
+            for s in sugestoes
+        ],
+        "offerable": summary_is_offerable(sugestoes),
+        "suggestion": {
+            "valor": proposta.value_column,
+            "categoria": proposta.category_column,
+            "data": proposta.date_column,
+        },
+    }
+
+
 def _analysis_payload(token: str, journey: jobs.Journey) -> dict[str, Any]:
     """
     Resposta das etapas de analise.
@@ -182,10 +289,12 @@ def _analysis_payload(token: str, journey: jobs.Journey) -> dict[str, Any]:
         "schema_suggestion_available": (
             journey.status in {"analysis_ready", "schema_ready", "validating"}
         ),
-        # Linhas 100% identicas encontradas na leitura. A interface usa este
-        # numero para OFERECER a sinalizacao — sem ele, a pessoa so descobriria
-        # as repetidas depois de executar, ou nem isso.
+        # Linhas 100% identicas encontradas na leitura. A verificacao e
+        # SEMPRE feita (nao depende de schema nem de opcao): este numero so
+        # antecipa na tela o que a execucao vai detalhar.
         "duplicate_rows": _duplicate_rows_found(journey),
+        **_diagnostico_estendido(journey),
+        "column_roles": _papeis_payload(journey),
     }
 
 
@@ -653,6 +762,129 @@ async def choose_schema(  # noqa: PLR0911, PLR0912 - cada recusa tem mensagem pr
 # ==========================================================================
 
 
+def _confirmar_schema_sugerido(job: jobs.Job, journey: jobs.Journey) -> JSONResponse | None:
+    """
+    Adota o schema sugerido pela analise, sem pedir nada a pessoa.
+
+    O sugerido descreve apenas a ESTRUTURA OBSERVADA (nomes e tipos): nao
+    inventa regra de negocio, entao adota-lo por padrao nao decide nada
+    pelo usuario. Quem tem regras proprias envia um YAML na opcao avancada.
+    """
+    sugerido = job.workspace / "out" / "schema_sugerido.yaml"
+    if not sugerido.is_file():
+        return _error(
+            _HTTP_BAD_REQUEST,
+            "conclua a analise antes de executar",
+            code="analysis_pending",
+        )
+    destino = job.workspace / "config" / "schema_confirmado.yaml"
+    destino.parent.mkdir(parents=True, exist_ok=True)
+    destino.write_text(sugerido.read_text(encoding="utf-8"), encoding="utf-8")
+    journey.schema_path = destino
+    journey.schema_origin = "suggested"
+    journey.status = "schema_ready"
+    return None
+
+
+def _pos_processar(job: jobs.Job, journey: jobs.Journey) -> None:
+    """
+    Gera os artefatos PRINCIPAIS depois que a validacao termina.
+
+    A validacao roda em subprocesso isolado e produz as evidencias tecnicas.
+    Aqui, em processo (so openpyxl sobre arquivos do proprio workspace),
+    montamos o que o usuario final realmente quer:
+
+        planilha_organizada.xlsx   so quando algo foi confirmado E aplicado
+        relatorio_analise.xlsx     sempre — e o laudo da execucao
+
+    Falha aqui NAO derruba a execucao: as evidencias tecnicas ja existem, e
+    a jornada continua util. O motivo vai para o relatorio como observacao.
+    """
+    saida = job.workspace / "out"
+    relatorio_json = saida / "validacao_report.json"
+    dados: dict[str, Any] = {}
+    if relatorio_json.is_file():
+        try:
+            dados = json.loads(relatorio_json.read_text(encoding="utf-8"))
+        except (OSError, ValueError):  # pragma: no cover - arquivo do proprio processo
+            dados = {}
+
+    observacoes: list[str] = []
+    organizacao = None
+    if journey.organize and _e_xlsx(journey.source_path):
+        pedido = (
+            SortRequest(journey.sort_column, ascending=not journey.sort_desc)
+            if journey.sort_column
+            else None
+        )
+        try:
+            organizacao = organize_workbook(
+                journey.source_path,
+                saida / ORGANIZED_XLSX_NAME,
+                sheet=journey.sheet,
+                header_row=journey.header_row or 1,
+                sort=pedido,
+                value_changes=dados.get("cleaning_changes", []),
+            )
+        except (OSError, ValueError) as exc:  # pragma: no cover - defesa
+            observacoes.append(f"a versão organizada não pôde ser gerada: {exc}")
+    elif journey.organize:
+        observacoes.append(
+            "arquivos CSV não têm apresentação para organizar; os dados tratados "
+            "seguem no pacote técnico"
+        )
+
+    indicadores = _calcular_indicadores(journey)
+    auditoria = None
+    if _e_xlsx(journey.source_path):
+        try:
+            auditoria = audit_presentation(
+                journey.source_path, sheet=journey.sheet, header_row=journey.header_row or 1
+            )
+        except (OSError, ValueError):  # pragma: no cover
+            auditoria = None
+
+    entrada = ReportInput(
+        source_name=journey.source_path.name,
+        sheet=journey.sheet or "",
+        rows=int(dados.get("rows", 0)),
+        columns=len(dados.get("columns", []) or []),
+        audit=auditoria,
+        sheets=survey_sheets(journey.source_path) if _e_xlsx(journey.source_path) else (),
+        issues=dados.get("issues", []),
+        cleaning_changes=dados.get("cleaning_changes", []),
+        review_rows=build_review_rows(_ResultadoLido(dados)),
+        organize=organizacao,
+        indicators=indicadores,
+        notes=observacoes,
+    )
+    try:
+        write_analysis_report(saida / ANALYSIS_REPORT_NAME, entrada)
+    except (OSError, ValueError) as exc:  # pragma: no cover - defesa
+        logger.warning(f"relatorio de analise nao gerado: {exc}")
+
+
+@dataclass(frozen=True, slots=True)
+class _ResultadoLido:
+    """Adaptador: o `build_review_rows` do nucleo só precisa de `.data`."""
+
+    data: dict[str, Any]
+
+
+def _calcular_indicadores(journey: jobs.Journey) -> tuple[Any, ...]:
+    """Indicadores SO com os papeis confirmados pela pessoa."""
+    valor, categoria, data = journey.indicator_request
+    if not valor:
+        return ()
+    frame = _ler_frame(journey)
+    if frame is None:  # pragma: no cover - arquivo ja validado antes
+        return ()
+    return build_indicators(
+        frame,
+        IndicatorRequest(value_column=valor, category_column=categoria, date_column=data),
+    )
+
+
 async def _safe_journey_run(
     job: jobs.Job, journey: jobs.Journey, options: recipes.JourneyOptions
 ) -> None:
@@ -678,6 +910,15 @@ async def _safe_journey_run(
         journey.status = "technical_failure"
         return
     journey.status = _journey_status_for(resultado.outcome, resultado.exit_code)
+
+    # Os artefatos principais sao montados DEPOIS da execucao, sobre o que
+    # ela produziu. Uma falha aqui nao pode derrubar o que ja deu certo.
+    try:
+        _pos_processar(job, journey)
+    except Exception as exc:  # noqa: BLE001 - defesa do registry
+        logger.warning(f"pos-processamento da jornada falhou: {exc}")
+    else:
+        job.result = engine.refresh_artifacts(job)
 
 
 def _journey_status_for(outcome: str, exit_code: int) -> jobs.JourneyStatus:
@@ -771,12 +1012,17 @@ def _colunas_da_analise(journey: jobs.Journey) -> list[str]:
 
 
 @router.post("/{token}/validate")
-async def validate(
+async def validate(  # noqa: PLR0913 - um campo tipado por confirmacao da tela
     token: str,
     strict_warnings: bool = Form(default=False),
     max_issues: int | None = Form(default=None),
     apply_cleaning: bool = Form(default=False),
-    flag_duplicate_rows: bool = Form(default=False),
+    organize: bool = Form(default=False),
+    sort_column: str = Form(default=""),
+    sort_desc: bool = Form(default=False),
+    indicator_value: str = Form(default=""),
+    indicator_category: str = Form(default=""),
+    indicator_date: str = Form(default=""),
 ) -> JSONResponse:
     """
     Executa a validacao com as escolhas CONFIRMADAS e gera as evidencias.
@@ -787,11 +1033,20 @@ async def validate(
     vindo do navegador: `strict_warnings`, `max_issues` e `apply_cleaning`
     sao campos tipados que o servidor traduz em opcao.
 
-    `apply_cleaning` e a confirmacao das CORRECOES SEGURAS. Sem ela a jornada
-    apenas audita; com ela, o nucleo normaliza o que e seguro (espacos, caixa,
-    formato), registra cada mudanca no antes/depois e, para XLSX, entrega a
-    `planilha_tratada.xlsx` com a apresentacao original preservada. O arquivo
-    de entrada continua intocado nos dois casos.
+    Cada opcao e uma CONFIRMACAO explicita, e todas comecam desligadas:
+
+        apply_cleaning     normaliza o que e seguro (espacos, caixa, formato)
+        organize           gera a versao com apresentacao profissional
+        sort_column/desc   reordena as linhas (sem isto, a ordem e a original)
+        indicator_*        papeis confirmados para o resumo (sem isto, nenhum
+                           numero e somado e nenhum grafico e desenhado)
+
+    A verificacao de linhas 100% repetidas NAO e opcional: ela sempre roda.
+
+    Sem schema proprio, o servidor confirma sozinho o schema SUGERIDO pela
+    analise — que so descreve a estrutura observada. E o que permite a
+    jornada ir do diagnostico direto para a revisao, sem exigir que a pessoa
+    entenda schema.
 
     O acompanhamento continua nos endpoints existentes: `/api/stream/{token}`,
     `/api/result/{token}` e `/api/download/{token}/{nome}`.
@@ -809,12 +1064,12 @@ async def validate(
             "esta validacao ja esta em andamento",
             code="already_validating",
         )
-    if journey.schema_path is None or journey.status != "schema_ready":
-        return _error(
-            _HTTP_BAD_REQUEST,
-            "confirme o schema antes de validar",
-            code="schema_pending",
-        )
+    if journey.schema_path is None:
+        # Caminho PADRAO do card: sem schema proprio, vale o sugerido pela
+        # analise. Ninguem precisa entender schema para organizar a planilha.
+        erro = _confirmar_schema_sugerido(job, journey)
+        if erro is not None:
+            return erro
     if jobs.active_count() >= settings.max_concurrent_runs:
         return _error(_HTTP_BUSY, "servidor ocupado, tente em instantes", code="busy")
     if max_issues is not None and max_issues < 1:
@@ -822,11 +1077,20 @@ async def validate(
             _HTTP_BAD_REQUEST, "o limite de problemas comeca em 1", code="invalid_max_issues"
         )
 
-    # Linhas repetidas so viram problema quando a pessoa confirma. Elas NUNCA
-    # sao removidas: viram aviso com o numero da linha, para alguem olhar.
-    if flag_duplicate_rows:
+    # Linhas 100% repetidas sao SEMPRE verificadas — nao dependem de schema,
+    # perfil nem opcao escondida. Nenhuma e removida: viram aviso com o
+    # numero da linha e o par, para uma pessoa decidir.
+    if journey.schema_path is not None:
         _ativar_deteccao_de_duplicadas(journey.schema_path)
-    journey.flag_duplicate_rows = flag_duplicate_rows
+
+    journey.organize = organize
+    journey.sort_column = sort_column.strip()
+    journey.sort_desc = sort_desc
+    journey.indicator_request = (
+        indicator_value.strip(),
+        indicator_category.strip(),
+        indicator_date.strip(),
+    )
 
     options = recipes.JourneyOptions(
         schema_path=journey.schema_path,
@@ -852,6 +1116,30 @@ async def validate(
             "result_url": f"/api/result/{token}",
         }
     )
+
+
+@router.get("/{token}/original", response_model=None)
+async def original(token: str) -> FileResponse | JSONResponse:
+    """
+    Devolve o arquivo que a pessoa enviou, exatamente como enviou.
+
+    E o primeiro item da area de downloads: ter o original ao lado da
+    versao organizada e o que torna a comparacao possivel. O caminho e
+    montado pelo SERVIDOR a partir do token da sessao — o cliente nunca
+    informa caminho, entao nao ha superficie para path traversal, e uma
+    sessao nao alcanca o arquivo de outra.
+    """
+    achado = _journey_of(token)
+    if isinstance(achado, JSONResponse):
+        return achado
+    _, journey = achado
+
+    origem = journey.source_path
+    if not origem.is_file():  # pragma: no cover - expurgo entre a chamada e o disco
+        return _error(
+            _HTTP_NOT_FOUND, "arquivo desta sessao nao esta mais disponivel", code="expired"
+        )
+    return FileResponse(origem, filename=origem.name, media_type="application/octet-stream")
 
 
 def pending_tasks() -> set[asyncio.Task[None]]:

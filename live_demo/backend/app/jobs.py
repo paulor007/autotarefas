@@ -72,8 +72,16 @@ class Journey:
     """"suggested", "profile" ou "uploaded" — de onde o schema confirmado veio."""
     apply_cleaning: bool = False
     """Correcoes seguras CONFIRMADAS na revisao (modo limpeza na execucao)."""
-    flag_duplicate_rows: bool = False
-    """Sinalizacao de linhas 100% repetidas CONFIRMADA na revisao."""
+    flag_duplicate_rows: bool = True
+    """Linhas 100% repetidas sao SEMPRE verificadas (contrato do Card 01)."""
+    presentation_verdict: str = ""
+    """'organizada', 'melhoravel' ou 'ambigua' — o que a analise concluiu."""
+    organize: bool = False
+    """Organizacao visual CONFIRMADA na revisao."""
+    sort_column: str = ""
+    sort_desc: bool = False
+    indicator_request: tuple[str, str, str] = ("", "", "")
+    """(valor, categoria, data) CONFIRMADOS para o resumo. Vazio = sem resumo."""
     profile_id: str | None = None
     """Perfil que originou o schema, quando a origem foi um perfil."""
     profile_version: int | None = None

@@ -312,6 +312,30 @@ async def _reset_demo_state(url: str) -> None:
         pass  # nosec B110 - reset e melhor-esforco; o run reporta erros reais
 
 
+def refresh_artifacts(job: Job) -> RunResult | None:
+    """
+    Relista os artefatos de `out/` sobre o resultado já existente.
+
+    Existe para o pós-processamento da jornada de planilhas: os artefatos
+    principais (planilha organizada, relatório) são montados EM PROCESSO,
+    depois que o subprocesso terminou, e precisam entrar na mesma lista de
+    downloads — com hash e tamanho reais, como todos os outros.
+    """
+    anterior = job.result
+    if anterior is None:  # pragma: no cover - so apos uma execucao
+        return None
+    atualizado = RunResult(
+        token=anterior.token,
+        outcome=anterior.outcome,
+        exit_code=anterior.exit_code,
+        duration_ms=anterior.duration_ms,
+        stdout=anterior.stdout,
+        artifacts=_collect(job.workspace / "out"),
+    )
+    job.result = atualizado
+    return atualizado
+
+
 async def run_streaming(
     automation_id: str,
     inputs: list[Path],
