@@ -1,0 +1,6 @@
+Codigo,Nome,Cidade,Cadastro,Ativo
+C-001,Cliente Alfa,Recife,2026-01-10,sim
+C-002,Cliente Beta,Curitiba,2026-01-14,sim
+C-003,  Cliente   Gama  ,Sao Paulo,2026-02-01,nao
+C-004,Cliente Delta,Recife,2026-02-09,sim
+C-005,Cliente Epsilon,Belem,2026-03-05,sim
