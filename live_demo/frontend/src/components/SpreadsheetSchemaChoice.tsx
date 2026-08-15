@@ -12,28 +12,26 @@ interface Props {
   error: string | null;
   /** Resumo do ultimo schema VALIDO, quando ja houver um. */
   summary: SchemaSummary | null;
-  onUseSuggested: () => void;
-  onUseProfile: () => void;
   onUpload: (file: File) => void;
+  onBack: () => void;
 }
 
 const SCHEMA_ACCEPT = ".yaml,.yml";
 
 /**
- * Escolha de como validar: schema sugerido ou YAML proprio.
+ * Opção avançada: enviar as regras do próprio processo em YAML.
  *
- * O texto sobre o schema sugerido e obrigatorio e literal: ele descreve o que
- * foi OBSERVADO no arquivo e nao conhece as regras do negocio de ninguem.
- * Prometer mais que isso seria o tipo de exagero que o produto evita.
+ * Deixou de ser etapa obrigatória da jornada. A análise geral acontece sempre,
+ * sem schema; quem tem regras próprias (validações, chaves de grupo, contas
+ * entre colunas) chega aqui por escolha, não por exigência.
  */
 export default function SpreadsheetSchemaChoice({
   token,
   busy,
   error,
   summary,
-  onUseSuggested,
-  onUseProfile,
   onUpload,
+  onBack,
 }: Props) {
   const [schemaFile, setSchemaFile] = useState<File | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -46,58 +44,14 @@ export default function SpreadsheetSchemaChoice({
     <div className="space-y-5">
       <section className="rounded-2xl border border-white/6 bg-ink p-5">
         <h4 className="text-sm font-semibold text-fg">
-          Usar o schema sugerido
-        </h4>
-        <p className="mt-2 text-[0.85rem] leading-relaxed text-muted">
-          O schema sugerido descreve a estrutura observada no arquivo. Ele não
-          conhece automaticamente todas as regras específicas do seu negócio.
-        </p>
-        <div className="mt-4 flex flex-col gap-2 sm:flex-row">
-          <button
-            type="button"
-            onClick={onUseSuggested}
-            disabled={busy}
-            className="rounded-lg bg-signal px-5 py-2.5 text-sm font-semibold text-ink disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {busy ? "Confirmando…" : "Confirmar schema sugerido"}
-          </button>
-          <a
-            href={artifactUrl(token, SUGGESTED_SCHEMA_NAME)}
-            download
-            className="rounded-lg border border-white/12 px-5 py-2.5 text-center text-sm font-semibold text-fg hover:border-white/25"
-          >
-            Baixar schema sugerido
-          </a>
-        </div>
-      </section>
-
-      <section className="rounded-2xl border border-white/6 bg-ink p-5">
-        <h4 className="text-sm font-semibold text-fg">Usar um perfil pronto</h4>
-        <p className="mt-2 text-[0.85rem] leading-relaxed text-muted">
-          Um perfil traz regras já conhecidas para um tipo de dado — por
-          exemplo, validar CPF ou e-mail. Você indica qual coluna da sua
-          planilha corresponde a cada campo; o AutoTarefas{" "}
-          <strong>não adivinha</strong> essa correspondência.
-        </p>
-        <button
-          type="button"
-          onClick={onUseProfile}
-          disabled={busy}
-          className="mt-4 rounded-lg border border-white/12 px-5 py-2.5 text-sm font-semibold text-fg hover:border-white/25 disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          Escolher um perfil
-        </button>
-      </section>
-
-      <section className="rounded-2xl border border-white/6 bg-ink p-5">
-        <h4 className="text-sm font-semibold text-fg">
           Enviar meu schema YAML
         </h4>
         <p className="mt-2 text-[0.85rem] leading-relaxed text-muted">
-          Se você já tem um schema com as regras do seu processo — validações,
-          chaves de grupo, contas entre colunas — envie o arquivo{" "}
+          Etapa opcional. Se você já tem um schema com as regras do seu processo
+          — validações, chaves de grupo, contas entre colunas — envie o arquivo{" "}
           <code className="text-fg">.yaml</code> ou{" "}
-          <code className="text-fg">.yml</code>.
+          <code className="text-fg">.yml</code>. Sem ele, a análise geral e a
+          verificação de linhas repetidas acontecem do mesmo jeito.
         </p>
 
         <label
@@ -123,14 +77,37 @@ export default function SpreadsheetSchemaChoice({
           </p>
         ) : null}
 
-        <button
-          type="button"
-          onClick={enviar}
-          disabled={!schemaFile || busy}
-          className="mt-4 rounded-lg border border-white/12 px-5 py-2.5 text-sm font-semibold text-fg hover:border-white/25 disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          {busy ? "Enviando…" : "Enviar schema"}
-        </button>
+        <div className="mt-4 flex flex-col gap-2 sm:flex-row">
+          <button
+            type="button"
+            onClick={enviar}
+            disabled={!schemaFile || busy}
+            className="rounded-lg bg-signal px-5 py-2.5 text-sm font-semibold text-ink disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {busy ? "Enviando…" : "Enviar schema"}
+          </button>
+          <button
+            type="button"
+            onClick={onBack}
+            disabled={busy}
+            className="rounded-lg border border-white/12 px-5 py-2.5 text-sm font-semibold text-fg hover:border-white/25 disabled:opacity-50"
+          >
+            Voltar sem enviar
+          </button>
+        </div>
+
+        <p className="mt-4 text-[0.8rem] leading-relaxed text-muted">
+          Para começar do que foi observado no arquivo, você pode{" "}
+          <a
+            href={artifactUrl(token, SUGGESTED_SCHEMA_NAME)}
+            download
+            className="font-semibold text-signal underline-offset-2 hover:underline"
+          >
+            baixar o schema sugerido
+          </a>{" "}
+          e editar. Ele descreve a estrutura observada e não conhece as regras
+          específicas do seu negócio.
+        </p>
       </section>
 
       {error ? (

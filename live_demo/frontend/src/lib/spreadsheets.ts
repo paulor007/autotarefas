@@ -1,4 +1,4 @@
-// Cliente tipado da jornada de planilhas (backend: /api/spreadsheets/*).
+﻿// Cliente tipado da jornada de planilhas (backend: /api/spreadsheets/*).
 //
 // Os quatro endpoints da jornada conduzem: analisar -> escolher aba/cabecalho
 // -> confirmar schema -> validar. O acompanhamento (SSE, resultado, download)
@@ -46,7 +46,7 @@ export interface AnalysisColumn {
 /**
  * Achado da analise e aviso do leitor.
  *
- * ATENCAO — foi aqui que a tela preta nasceu: `reader_warnings` NAO e uma
+ * ATENCAO â€” foi aqui que a tela preta nasceu: `reader_warnings` NAO e uma
  * lista de textos, e um objeto `{code, message, column, row}`. O tipo
  * anterior dizia `string[]`, o componente renderizava o item direto, e o
  * React lancou "Objects are not valid as a React child", derrubando a
@@ -96,15 +96,57 @@ export interface AnalysisResponse {
    * Linhas COMPLETAMENTE identicas encontradas na leitura (ocorrencias
    * excedentes: a primeira de cada grupo e o original).
    *
-   * Nao confundir com chave repetida — numa planilha de vendas o mesmo
+   * Nao confundir com chave repetida â€” numa planilha de vendas o mesmo
    * codigo aparece uma vez por item, e isso e esperado.
    */
   duplicate_rows: number;
+  /** AvaliaÃ§Ã£o objetiva da apresentaÃ§Ã£o (null em CSV: nÃ£o hÃ¡ o que avaliar). */
+  presentation: PresentationAudit | null;
+  /** Todas as abas do arquivo, classificadas. Vazio em CSV. */
+  sheets: SheetInfo[];
+  /** Mais de uma aba tabular candidata: a escolha Ã© da pessoa. */
+  multiple_sheets: boolean;
+  /** PapÃ©is SUGERIDOS para as colunas â€” nada Ã© aplicado sem confirmaÃ§Ã£o. */
+  column_roles: ColumnRoles;
   /** Preenchido quando o arquivo foi recusado. */
   rejection: string | null;
 }
 
-/** A resposta da API nao cabe no contrato — defeito de integracao, nao do dado. */
+/** Veredito da apresentaÃ§Ã£o: o que o card faz depende dele. */
+export type PresentationVerdict = "organizada" | "melhoravel" | "ambigua";
+
+export interface PresentationCriterion {
+  chave: string;
+  titulo: string;
+  atendido: boolean;
+  detalhe: string;
+  aplicavel: boolean;
+}
+
+export interface PresentationAudit {
+  veredito: PresentationVerdict;
+  pontuacao: number;
+  criterios: PresentationCriterion[];
+  pendencias: string[];
+}
+
+export interface SheetInfo {
+  nome: string;
+  natureza: string;
+  linhas: number;
+  colunas: number;
+  motivo: string;
+  candidata: boolean;
+}
+
+export interface ColumnRoles {
+  roles: { coluna: string; papel: string; confianca: number; motivo: string }[];
+  /** DÃ¡ para oferecer um resumo com seguranÃ§a? */
+  offerable: boolean;
+  suggestion: { valor: string; categoria: string; data: string };
+}
+
+/** A resposta da API nao cabe no contrato â€” defeito de integracao, nao do dado. */
 export class ContractError extends Error {
   constructor(detalhe: string) {
     super(`resposta fora do contrato: ${detalhe}`);
@@ -168,7 +210,7 @@ export interface ProfileInfo {
 /**
  * Procedencia do schema gerado por perfil, CONFIRMADA pelo backend.
  *
- * `mapping` e `omitted` sao o que o nucleo efetivamente aplicou — nao o que a
+ * `mapping` e `omitted` sao o que o nucleo efetivamente aplicou â€” nao o que a
  * tela enviou. Exibir o estado local levaria de volta ao bug antigo: mostrar
  * uma associacao enquanto o schema usa outra.
  */
@@ -200,7 +242,7 @@ export interface ValidateStartResponse {
  *
  * O backend devolve `code` (para a interface decidir) e `detail` (para a
  * pessoa ler). Guardamos os dois: reagir pelo texto da mensagem seria
- * frágil e quebraria a cada ajuste de redacao.
+ * frÃ¡gil e quebraria a cada ajuste de redacao.
  */
 export class JourneyError extends Error {
   readonly code: string;
@@ -213,7 +255,7 @@ export class JourneyError extends Error {
     this.status = status;
   }
 
-  /** A sessao acabou (TTL) — o caminho e recomecar, nao insistir. */
+  /** A sessao acabou (TTL) â€” o caminho e recomecar, nao insistir. */
   get expired(): boolean {
     return this.code === "expired";
   }
@@ -225,8 +267,8 @@ export class JourneyError extends Error {
 //   JSON da API (nao confiavel)  ->  normalizacao  ->  modelo interno
 //
 // O TypeScript nao valida JSON em tempo de execucao: ele descreve o que
-// ESPERAMOS receber. Quando a expectativa e a realidade divergem — foi o que
-// aconteceu com `reader_windows` sendo objeto e nao texto — o erro so aparece
+// ESPERAMOS receber. Quando a expectativa e a realidade divergem â€” foi o que
+// aconteceu com `reader_windows` sendo objeto e nao texto â€” o erro so aparece
 // no render, e derruba a aplicacao. Estas funcoes existem para que a
 // divergencia apareca AQUI, como erro controlado, e nunca dentro de um
 // componente.
@@ -263,8 +305,8 @@ function lista(valor: unknown): unknown[] {
 /**
  * Normaliza um aviso ou achado.
  *
- * Aceita as duas formas que o backend produz — objeto com `message` e, por
- * seguranca, texto puro — e devolve SEMPRE a mesma estrutura. Um item que nao
+ * Aceita as duas formas que o backend produz â€” objeto com `message` e, por
+ * seguranca, texto puro â€” e devolve SEMPRE a mesma estrutura. Um item que nao
  * tenha mensagem alguma e descartado: melhor omitir do que mostrar vazio.
  */
 function nota(valor: unknown): AnalysisNote | null {
@@ -295,7 +337,7 @@ function notas(valor: unknown): AnalysisNote[] {
     .filter((n): n is AnalysisNote => n !== null);
 }
 
-/** Identidade estrutural de uma nota — nao o texto solto. */
+/** Identidade estrutural de uma nota â€” nao o texto solto. */
 function chaveDaNota(n: AnalysisNote): string {
   return [n.code ?? "", n.message, n.column ?? "", n.row ?? ""].join("|");
 }
@@ -305,13 +347,13 @@ function chaveDaNota(n: AnalysisNote): string {
  *
  * O backend descreve a MESMA ocorrencia nas duas colecoes: `findings` (com
  * severidade, do profiling) e `reader_warnings` (do leitor). Isso e correto
- * do lado dele — sao camadas diferentes —, mas exibir as duas mostrava o
+ * do lado dele â€” sao camadas diferentes â€”, mas exibir as duas mostrava o
  * mesmo aviso duas vezes na tela.
  *
  * A juncao e por IDENTIDADE ESTRUTURAL (codigo + mensagem + coluna + linha),
  * nunca por texto solto: duas ocorrencias reais em colunas diferentes tem a
  * mesma mensagem e PRECISAM aparecer as duas. Quando ha empate, fica a versao
- * do profiling, que e a unica que traz `severity` — nenhum metadado se perde.
+ * do profiling, que e a unica que traz `severity` â€” nenhum metadado se perde.
  */
 export function notasUnificadas(report: AnalysisReport): AnalysisNote[] {
   const porChave = new Map<string, AnalysisNote>();
@@ -458,7 +500,74 @@ export function parseAnalysis(bruto: unknown): AnalysisResponse {
     header_row: numeroOuNulo(bruto.header_row),
     schema_suggestion_available: bruto.schema_suggestion_available === true,
     duplicate_rows: Math.max(0, numeroOuNulo(bruto.duplicate_rows) ?? 0),
+    presentation: normalizarApresentacao(bruto.presentation),
+    sheets: normalizarAbas(bruto.sheets),
+    multiple_sheets: bruto.multiple_sheets === true,
+    column_roles: normalizarPapeis(bruto.column_roles),
     rejection: recusa,
+  };
+}
+
+const VEREDITOS: PresentationVerdict[] = ["organizada", "melhoravel", "ambigua"];
+
+/** O contrato exige um veredito conhecido; qualquer outro vira `null`. */
+function normalizarApresentacao(bruto: unknown): PresentationAudit | null {
+  if (!isRecord(bruto)) return null;
+  const veredito = texto(bruto.veredito) as PresentationVerdict;
+  if (!VEREDITOS.includes(veredito)) return null;
+
+  const criterios = Array.isArray(bruto.criterios) ? bruto.criterios : [];
+  return {
+    veredito,
+    pontuacao: numeroOuNulo(bruto.pontuacao) ?? 0,
+    criterios: criterios.filter(isRecord).map((c) => ({
+      chave: texto(c.chave),
+      titulo: texto(c.titulo),
+      atendido: c.atendido === true,
+      detalhe: texto(c.detalhe),
+      aplicavel: c.aplicavel !== false,
+    })),
+    pendencias: Array.isArray(bruto.pendencias)
+      ? bruto.pendencias.map((p) => texto(p)).filter(Boolean)
+      : [],
+  };
+}
+
+function normalizarAbas(bruto: unknown): SheetInfo[] {
+  if (!Array.isArray(bruto)) return [];
+  return bruto.filter(isRecord).map((a) => ({
+    nome: texto(a.nome),
+    natureza: texto(a.natureza),
+    linhas: numeroOuNulo(a.linhas) ?? 0,
+    colunas: numeroOuNulo(a.colunas) ?? 0,
+    motivo: texto(a.motivo),
+    candidata: a.candidata === true,
+  }));
+}
+
+function normalizarPapeis(bruto: unknown): ColumnRoles {
+  const vazio: ColumnRoles = {
+    roles: [],
+    offerable: false,
+    suggestion: { valor: "", categoria: "", data: "" },
+  };
+  if (!isRecord(bruto)) return vazio;
+
+  const roles = Array.isArray(bruto.roles) ? bruto.roles : [];
+  const sugestao = isRecord(bruto.suggestion) ? bruto.suggestion : {};
+  return {
+    roles: roles.filter(isRecord).map((r) => ({
+      coluna: texto(r.coluna),
+      papel: texto(r.papel),
+      confianca: numeroOuNulo(r.confianca) ?? 0,
+      motivo: texto(r.motivo),
+    })),
+    offerable: bruto.offerable === true,
+    suggestion: {
+      valor: texto(sugestao.valor),
+      categoria: texto(sugestao.categoria),
+      data: texto(sugestao.data),
+    },
   };
 }
 
@@ -468,13 +577,13 @@ async function getJourney<T>(path: string): Promise<T> {
     response = await fetch(path);
   } catch {
     throw new JourneyError(
-      "Não foi possível falar com o servidor. Verifique a conexão.",
+      "NÃ£o foi possÃ­vel falar com o servidor. Verifique a conexÃ£o.",
       "network",
       0,
     );
   }
   if (!response.ok) {
-    let detail = `Falha na requisição (HTTP ${response.status}).`;
+    let detail = `Falha na requisiÃ§Ã£o (HTTP ${response.status}).`;
     let code = "http_error";
     try {
       const data = (await response.json()) as {
@@ -497,13 +606,13 @@ async function postJourney<T>(path: string, body?: FormData): Promise<T> {
     response = await fetch(path, { method: "POST", body });
   } catch {
     throw new JourneyError(
-      "Não foi possível falar com o servidor. Verifique a conexão.",
+      "NÃ£o foi possÃ­vel falar com o servidor. Verifique a conexÃ£o.",
       "network",
       0,
     );
   }
   if (!response.ok) {
-    let detail = `Falha na requisição (HTTP ${response.status}).`;
+    let detail = `Falha na requisiÃ§Ã£o (HTTP ${response.status}).`;
     let code = "http_error";
     try {
       const data = (await response.json()) as {
@@ -653,7 +762,7 @@ export async function getProfile(profileId: string): Promise<ProfileInfo> {
  *
  * O mapeamento vai como JSON num campo de formulario, no formato que o
  * endpoint ja existente espera. Quem valida campo, coluna e obrigatoriedade e
- * o nucleo — a tela nao repete essas regras.
+ * o nucleo â€” a tela nao repete essas regras.
  */
 export async function confirmProfileSchema(
   token: string,
@@ -715,7 +824,10 @@ export function startValidation(
     strictWarnings?: boolean;
     maxIssues?: number;
     applyCleaning?: boolean;
-    flagDuplicateRows?: boolean;
+    organize?: boolean;
+    sortColumn?: string;
+    sortDesc?: boolean;
+    indicators?: { valor: string; categoria: string; data: string };
   } = {},
 ): Promise<ValidateStartResponse> {
   const form = new FormData();
@@ -724,7 +836,16 @@ export function startValidation(
     form.append("max_issues", String(opts.maxIssues));
   }
   if (opts.applyCleaning) form.append("apply_cleaning", "true");
-  if (opts.flagDuplicateRows) form.append("flag_duplicate_rows", "true");
+  if (opts.organize) form.append("organize", "true");
+  if (opts.sortColumn) {
+    form.append("sort_column", opts.sortColumn);
+    if (opts.sortDesc) form.append("sort_desc", "true");
+  }
+  if (opts.indicators?.valor) {
+    form.append("indicator_value", opts.indicators.valor);
+    form.append("indicator_category", opts.indicators.categoria);
+    form.append("indicator_date", opts.indicators.data);
+  }
   return postJourney<ValidateStartResponse>(
     `/api/spreadsheets/${encodeURIComponent(token)}/validate`,
     form,
@@ -736,8 +857,25 @@ export function artifactUrl(token: string, name: string): string {
   return `/api/download/${encodeURIComponent(token)}/${encodeURIComponent(name)}`;
 }
 
+/**
+ * URL do arquivo ORIGINAL desta execucao.
+ *
+ * Fica ao lado do resultado de proposito: quem compara o antes e o depois
+ * precisa dos dois lados a mao, e ter o original ali reforca que ele nao foi
+ * tocado.
+ */
+export function originalUrl(token: string): string {
+  return `/api/spreadsheets/${encodeURIComponent(token)}/original`;
+}
+
 /** Nome do schema sugerido dentro do workspace (baixavel). */
 export const SUGGESTED_SCHEMA_NAME = "schema_sugerido.yaml";
 
 /** Nome do pacote de evidencias (baixavel). */
 export const EVIDENCE_PACKAGE_NAME = "pacote_execucao.zip";
+
+/** Planilha do usuario com a formatacao profissional CONFIRMADA. */
+export const ORGANIZED_SHEET_NAME = "planilha_organizada.xlsx";
+
+/** Relatorio de analise em planilha, sempre gerado. */
+export const ANALYSIS_REPORT_NAME = "relatorio_analise.xlsx";

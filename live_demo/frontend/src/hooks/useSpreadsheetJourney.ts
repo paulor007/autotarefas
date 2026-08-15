@@ -89,15 +89,16 @@ export interface UseSpreadsheetJourney {
    */
   applyCleaning: boolean;
   setApplyCleaning: (value: boolean) => void;
-  /**
-   * Sinalizar linhas 100% repetidas para revisao.
-   *
-   * Vem LIGADO quando a analise encontrou repetidas — nao para decidir por
-   * ninguem, mas porque esconder o achado seria pior: as linhas continuam na
-   * planilha, e nenhuma e removida em hipotese alguma.
-   */
-  flagDuplicateRows: boolean;
-  setFlagDuplicateRows: (value: boolean) => void;
+  /** Organizacao visual — desligada por padrao, como toda confirmacao. */
+  organize: boolean;
+  setOrganize: (value: boolean) => void;
+  /** Ordenacao: sem coluna escolhida, a ordem original e preservada. */
+  sortColumn: string;
+  sortDesc: boolean;
+  setSort: (column: string, desc: boolean) => void;
+  /** Papeis CONFIRMADOS para o resumo. Vazio = nenhum indicador. */
+  indicators: { valor: string; categoria: string; data: string };
+  setIndicators: (value: { valor: string; categoria: string; data: string }) => void;
 
   chooseFile: (file: File | null) => void;
   analyzeFile: () => Promise<void>;
@@ -128,7 +129,19 @@ export function useSpreadsheetJourney(): UseSpreadsheetJourney {
   const [token, setToken] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [applyCleaning, setApplyCleaning] = useState(false);
-  const [flagDuplicateRows, setFlagDuplicateRows] = useState(false);
+  const [organize, setOrganize] = useState(false);
+  const [sortColumn, setSortColumn] = useState("");
+  const [sortDesc, setSortDesc] = useState(false);
+  const [indicators, setIndicators] = useState({
+    valor: "",
+    categoria: "",
+    data: "",
+  });
+
+  const setSort = useCallback((column: string, desc: boolean) => {
+    setSortColumn(column);
+    setSortDesc(desc);
+  }, []);
 
   const execution = useExecution();
 
@@ -168,8 +181,10 @@ export function useSpreadsheetJourney(): UseSpreadsheetJourney {
     setToken(null);
     setBusy(false);
     setApplyCleaning(false);
-    setFlagDuplicateRows(false);
-  }, [execution, limparEscolhas]);
+    setOrganize(false);
+    setSort("", false);
+    setIndicators({ valor: "", categoria: "", data: "" });
+  }, [execution, limparEscolhas, setSort]);
 
   /**
    * Traduz uma falha de chamada em estado de tela.
@@ -213,9 +228,11 @@ export function useSpreadsheetJourney(): UseSpreadsheetJourney {
     // nao pode continuar mostrando o resumo antigo — nem o mapeamento, que
     // aponta para colunas que talvez nao existam mais.
     limparEscolhas();
-    // Achou linha repetida? A sinalizacao ja vem marcada — a pessoa pode
-    // desmarcar, mas nao vai descobrir a repeticao por acaso depois.
-    setFlagDuplicateRows(data.duplicate_rows > 0);
+    // Toda confirmacao volta ao zero quando a leitura muda: o que foi
+    // escolhido para OUTRA leitura nao vale para esta.
+    setOrganize(false);
+    setSort("", false);
+    setIndicators({ valor: "", categoria: "", data: "" });
 
     if (data.status === "rejected_file") {
       setRejection(data.rejection ?? "Não foi possível ler este arquivo.");
@@ -419,7 +436,10 @@ export function useSpreadsheetJourney(): UseSpreadsheetJourney {
     try {
       const started = await startValidation(token, {
         applyCleaning,
-        flagDuplicateRows,
+        organize,
+        sortColumn,
+        sortDesc,
+        indicators,
       });
       execution.attach(started.token, started.stream_url);
     } catch (e: unknown) {
@@ -432,8 +452,11 @@ export function useSpreadsheetJourney(): UseSpreadsheetJourney {
     applyCleaning,
     busy,
     execution,
-    flagDuplicateRows,
     handleFailure,
+    indicators,
+    organize,
+    sortColumn,
+    sortDesc,
     step,
     token,
   ]);
@@ -473,8 +496,13 @@ export function useSpreadsheetJourney(): UseSpreadsheetJourney {
     error,
     applyCleaning,
     setApplyCleaning,
-    flagDuplicateRows,
-    setFlagDuplicateRows,
+    organize,
+    setOrganize,
+    sortColumn,
+    sortDesc,
+    setSort,
+    indicators,
+    setIndicators,
     rejection,
     token,
     execution,

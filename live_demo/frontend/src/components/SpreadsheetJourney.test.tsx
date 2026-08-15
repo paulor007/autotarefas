@@ -124,7 +124,25 @@ function mockFetchPorRota(
   return espia;
 }
 
-/** Leva a jornada ate a etapa de revisao (a ultima antes de executar). */
+/** Avaliacao objetiva da apresentacao, como o backend a envia. */
+function apresentacao(
+  veredito: "organizada" | "melhoravel" | "ambigua",
+  pendencias: string[] = [],
+): Record<string, unknown> {
+  return {
+    veredito,
+    pontuacao: veredito === "organizada" ? 1 : 0.5,
+    criterios: [],
+    pendencias,
+  };
+}
+
+/**
+ * Leva a jornada ate a revisao — que agora vem DIRETO do diagnostico.
+ *
+ * Nao ha mais parada de schema no caminho: confirmar schema sugerido, baixar
+ * schema e escolher perfil sairam do fluxo principal.
+ */
 async function irAteRevisao(
   analise: Record<string, unknown> = {},
 ): Promise<ReturnType<typeof vi.fn>> {
@@ -137,18 +155,27 @@ async function irAteRevisao(
     expect(screen.getByText("Diagnóstico do arquivo")).toBeTruthy();
   });
   await userEvent.click(
-    screen.getByRole("button", { name: /Escolher como validar/i }),
-  );
-  await userEvent.click(
-    screen.getByRole("button", { name: /Confirmar schema sugerido/i }),
-  );
-  await userEvent.click(
-    screen.getByRole("button", { name: /Revisar configuração/i }),
+    screen.getByRole("button", { name: /Revisar análise e opções/i }),
   );
   await waitFor(() => {
-    expect(screen.getByText("Revise antes de executar")).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: /Analisar e organizar/i }),
+    ).toBeTruthy();
   });
   return espia;
+}
+
+/** Executa e devolve o corpo enviado ao /validate. */
+async function executar(
+  espia: ReturnType<typeof vi.fn>,
+): Promise<FormData | undefined> {
+  await userEvent.click(
+    screen.getByRole("button", { name: /Analisar e organizar/i }),
+  );
+  const chamada = espia.mock.calls.find((args) =>
+    String(args[0]).includes("/validate"),
+  );
+  return (chamada?.[1] as { body?: FormData })?.body;
 }
 
 /** Sobe a jornada dentro da barreira, como o app real faz. */
@@ -210,35 +237,41 @@ describe("SpreadsheetJourney", () => {
     expect(screen.queryByRole("alert")).toBeNull();
   });
 
-  it("oferece sinalizar as linhas repetidas quando a análise encontra", async () => {
+  it("vai do diagnóstico direto para a revisão, sem etapa de schema", async () => {
+    mockFetchPorRota();
+    montar();
+    await userEvent.click(
+      screen.getByRole("button", { name: /Testar com exemplo/i }),
+    );
+    await waitFor(() => {
+      expect(screen.getByText("Diagnóstico do arquivo")).toBeTruthy();
+    });
+    // As portas antigas sumiram do caminho principal.
+    expect(
+      screen.queryByRole("button", { name: /Confirmar schema sugerido/i }),
+    ).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: /Escolher um perfil/i }),
+    ).toBeNull();
+    // A trilha tem quatro etapas, e "Regras" nao e uma delas.
+    expect(screen.queryByText("3. Regras")).toBeNull();
+    expect(screen.getByText("3. Revisão e opções")).toBeTruthy();
+  });
+
+  it("relata as linhas repetidas sem oferecer opção de esconder", async () => {
     await irAteRevisao({ duplicate_rows: 16 });
 
-    const caixa = screen.getByRole("checkbox", {
-      name: /Sinalizar as 16 linha\(s\) repetida\(s\)/i,
-    }) as HTMLInputElement;
-    // Vem marcada: esconder um achado seria pior do que oferecer a escolha.
-    expect(caixa.checked).toBe(true);
+    // A verificacao acontece SEMPRE: nao ha caixa para ligar ou desligar.
+    expect(screen.queryByRole("checkbox", { name: /repetida/i })).toBeNull();
+    expect(screen.getByText(/16 linha\(s\) 100% repetida\(s\)/)).toBeTruthy();
+    expect(screen.getByText(/32 linha\(s\) envolvida\(s\)/)).toBeTruthy();
     // E explica a diferença que gera falso positivo em planilha de vendas.
     expect(screen.getByText(/chave repetida/i)).toBeTruthy();
-    expect(screen.getByText(/32 linha\(s\) no total/i)).toBeTruthy();
   });
 
-  it("não oferece a sinalização quando não há linha repetida", async () => {
+  it("não fala de repetidas quando não há nenhuma", async () => {
     await irAteRevisao();
-    expect(screen.queryByRole("checkbox", { name: /repetida/i })).toBeNull();
-  });
-
-  it("envia flag_duplicate_rows quando há repetidas confirmadas", async () => {
-    const espia = await irAteRevisao({ duplicate_rows: 16 });
-    await userEvent.click(
-      screen.getByRole("button", { name: /Executar validação/i }),
-    );
-
-    const chamada = espia.mock.calls.find((args) =>
-      String(args[0]).includes("/validate"),
-    );
-    const corpo = (chamada?.[1] as { body?: FormData })?.body;
-    expect(corpo?.get("flag_duplicate_rows")).toBe("true");
+    expect(screen.queryByText(/100% repetida/)).toBeNull();
   });
 
   it("oferece as correções seguras na revisão, desligadas por padrão", async () => {
@@ -248,28 +281,12 @@ describe("SpreadsheetJourney", () => {
       name: /Aplicar as correções seguras/i,
     }) as HTMLInputElement;
     expect(caixa.checked).toBe(false);
-  });
-
-  it("explica o que a confirmação faz com um XLSX antes de executar", async () => {
-    await irAteRevisao();
-    await userEvent.click(
-      screen.getByRole("checkbox", { name: /Aplicar as correções seguras/i }),
-    );
-
-    expect(screen.getByText(/planilha tratada/i)).toBeTruthy();
+    expect(screen.getByText(/antes\/depois/i)).toBeTruthy();
   });
 
   it("não envia apply_cleaning quando a pessoa não confirma", async () => {
     const espia = await irAteRevisao();
-    await userEvent.click(
-      screen.getByRole("button", { name: /Executar validação/i }),
-    );
-
-    const chamada = espia.mock.calls.find((args) =>
-      String(args[0]).includes("/validate"),
-    );
-    expect(chamada).toBeTruthy();
-    const corpo = (chamada?.[1] as { body?: FormData })?.body;
+    const corpo = await executar(espia);
     expect(corpo?.get("apply_cleaning")).toBeNull();
   });
 
@@ -278,15 +295,125 @@ describe("SpreadsheetJourney", () => {
     await userEvent.click(
       screen.getByRole("checkbox", { name: /Aplicar as correções seguras/i }),
     );
-    await userEvent.click(
-      screen.getByRole("button", { name: /Executar validação/i }),
-    );
-
-    const chamada = espia.mock.calls.find((args) =>
-      String(args[0]).includes("/validate"),
-    );
-    const corpo = (chamada?.[1] as { body?: FormData })?.body;
+    const corpo = await executar(espia);
     expect(corpo?.get("apply_cleaning")).toBe("true");
+  });
+
+  it("oferece organizar só quando a apresentação pode melhorar", async () => {
+    await irAteRevisao({
+      presentation: apresentacao("melhoravel", ["cabeçalho sem destaque"]),
+    });
+
+    expect(
+      screen.getByText(/A apresentação desta planilha pode ser melhorada/i),
+    ).toBeTruthy();
+    expect(screen.getByText(/cabeçalho sem destaque/)).toBeTruthy();
+    const caixa = screen.getByRole("checkbox", {
+      name: /Gerar uma versão organizada e profissional/i,
+    }) as HTMLInputElement;
+    // Como toda confirmacao, comeca desligada.
+    expect(caixa.checked).toBe(false);
+  });
+
+  it("não oferece organizar quando a planilha já está organizada", async () => {
+    await irAteRevisao({ presentation: apresentacao("organizada") });
+
+    expect(
+      screen.getByText(/já está estruturada e legível/i),
+    ).toBeTruthy();
+    expect(
+      screen.queryByRole("checkbox", { name: /versão organizada/i }),
+    ).toBeNull();
+  });
+
+  it("não oferece organizar quando a estrutura é ambígua", async () => {
+    await irAteRevisao({
+      presentation: apresentacao("ambigua", ["células mescladas nos dados"]),
+    });
+
+    expect(screen.getByText(/Estrutura ambígua/i)).toBeTruthy();
+    expect(
+      screen.queryByRole("checkbox", { name: /versão organizada/i }),
+    ).toBeNull();
+  });
+
+  it("envia organize apenas quando a pessoa confirma", async () => {
+    const espia = await irAteRevisao({
+      presentation: apresentacao("melhoravel"),
+    });
+    await userEvent.click(
+      screen.getByRole("checkbox", {
+        name: /Gerar uma versão organizada e profissional/i,
+      }),
+    );
+    const corpo = await executar(espia);
+    expect(corpo?.get("organize")).toBe("true");
+  });
+
+  it("não ordena sem coluna e direção escolhidas", async () => {
+    const espia = await irAteRevisao();
+
+    expect(
+      screen.getByText(/Ordenar altera a posição das linhas/i),
+    ).toBeTruthy();
+    const seletor = screen.getByLabelText(
+      /Coluna para ordenar/i,
+    ) as HTMLSelectElement;
+    expect(seletor.value).toBe("");
+    const corpo = await executar(espia);
+    expect(corpo?.get("sort_column")).toBeNull();
+  });
+
+  it("envia a ordenação depois da confirmação da coluna", async () => {
+    const espia = await irAteRevisao();
+    await userEvent.selectOptions(
+      screen.getByLabelText(/Coluna para ordenar/i),
+      "Valor Final",
+    );
+    await userEvent.selectOptions(
+      screen.getByLabelText(/Direção da ordenação/i),
+      "desc",
+    );
+    const corpo = await executar(espia);
+    expect(corpo?.get("sort_column")).toBe("Valor Final");
+    expect(corpo?.get("sort_desc")).toBe("true");
+  });
+
+  it("não cria indicadores sem o significado confirmado das colunas", async () => {
+    const espia = await irAteRevisao({
+      column_roles: {
+        roles: [],
+        offerable: false,
+        suggestion: { valor: "", categoria: "", data: "" },
+      },
+    });
+
+    expect(screen.getByText(/nenhum indicador será criado/i)).toBeTruthy();
+    const corpo = await executar(espia);
+    expect(corpo?.get("indicator_value")).toBeNull();
+  });
+
+  it("envia os papéis das colunas quando a pessoa os confirma", async () => {
+    const espia = await irAteRevisao({
+      column_roles: {
+        roles: [
+          {
+            coluna: "Valor Final",
+            papel: "valor",
+            confianca: 0.9,
+            motivo: "valores monetários",
+          },
+        ],
+        offerable: true,
+        suggestion: { valor: "Valor Final", categoria: "", data: "" },
+      },
+    });
+    await userEvent.selectOptions(
+      screen.getByLabelText(/Coluna de valor/i),
+      "Valor Final",
+    );
+    const corpo = await executar(espia);
+    expect(corpo?.get("indicator_value")).toBe("Valor Final");
   });
 
   it("usa o exemplo pelo backend real, sem resultado embutido", async () => {

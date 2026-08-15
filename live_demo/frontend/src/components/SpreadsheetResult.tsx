@@ -1,11 +1,18 @@
 import type { RunResult, ValidationReport } from "../lib/api";
-import { EVIDENCE_PACKAGE_NAME } from "../lib/spreadsheets";
+import {
+  ANALYSIS_REPORT_NAME,
+  EVIDENCE_PACKAGE_NAME,
+  ORGANIZED_SHEET_NAME,
+  originalUrl,
+} from "../lib/spreadsheets";
 import type { JourneyStep } from "../hooks/useSpreadsheetJourney";
 import ValidationSummary from "./ValidationSummary";
 
 interface Props {
   step: JourneyStep;
   result: RunResult | null;
+  /** Token da execucao — sem ele nao ha como oferecer o arquivo original. */
+  token?: string | null;
   /**
    * Resumo lido do `validacao_report.json` desta execucao.
    *
@@ -16,6 +23,8 @@ interface Props {
   report?: ValidationReport | null;
   /** True quando a pessoa confirmou as correções seguras nesta execução. */
   appliedCleaning?: boolean;
+  /** True quando a pessoa confirmou a versão organizada nesta execução. */
+  appliedOrganize?: boolean;
 }
 
 interface Aparencia {
@@ -25,58 +34,66 @@ interface Aparencia {
 }
 
 /**
- * Como cada desfecho e apresentado.
+ * Os quatro desfechos possiveis, ditos na lingua de quem enviou a planilha.
  *
- * A distincao que mais importa: exit 1 significa "a validacao terminou e
- * encontrou registros para revisar" — um resultado util, nao uma falha da
- * aplicacao. Chamar isso de erro faria a pessoa achar que o sistema quebrou
- * quando, na verdade, ele fez o trabalho.
+ * 1. Estava organizada e nada exigiu decisao.
+ * 2. Foi organizada — a versao profissional saiu.
+ * 3. Ha pontos que dependem de uma decisao humana.
+ * 4. Nao foi possivel concluir com seguranca.
+ *
+ * A distincao que mais importa continua sendo a terceira: exit 1 significa "a
+ * analise terminou e encontrou o que precisa da sua decisao" — um resultado
+ * util, nao uma falha da aplicacao.
  */
-function aparencia(step: JourneyStep): Aparencia | null {
+function aparencia(
+  step: JourneyStep,
+  organizou: boolean,
+  motivo: string,
+): Aparencia | null {
   switch (step) {
     case "completed":
-      return {
-        titulo: "Concluído sem registros para revisão",
-        // Sem esta segunda frase a tela parecia se contradizer: a analise
-        // aponta observacoes estruturais (linhas repetidas, por exemplo) e o
-        // resultado diz "sem problemas". Sao coisas distintas — as regras
-        // confirmadas e que definem o que e problema, e o schema sugerido nao
-        // inclui regra de duplicidade.
-        texto:
-          "A validação foi concluída e nenhum registro precisou de revisão. Observações estruturais vistas na análise não viram problema a menos que uma regra confirmada trate delas.",
-        classe: "border-ok/40 bg-ok/5 text-ok",
-      };
+      return organizou
+        ? {
+            titulo: "Concluído — versão organizada gerada",
+            texto:
+              "A formatação profissional foi aplicada sobre uma cópia. Valores, fórmulas, identificadores e a ordem das linhas continuam como estavam; nada exigiu a sua decisão.",
+            classe: "border-ok/40 bg-ok/5 text-ok",
+          }
+        : {
+            titulo: "Concluído — nada exigiu a sua decisão",
+            texto:
+              "A análise geral foi feita, incluindo a verificação de linhas 100% repetidas, e não encontrou nada que dependesse de você.",
+            classe: "border-ok/40 bg-ok/5 text-ok",
+          };
     case "completed_with_issues":
       return {
-        titulo: "Concluído com registros para revisão",
+        titulo: "Concluído — há pontos que dependem da sua decisão",
         texto:
-          "A validação foi concluída e encontrou registros que precisam de revisão. Os arquivos abaixo separam o que segue do que volta.",
+          "A análise terminou e encontrou pontos que precisam de uma decisão humana. Nada foi removido ou alterado por conta própria: o relatório mostra cada linha e o motivo.",
         classe: "border-warn/40 bg-warn/5 text-warn",
       };
     case "invalid_configuration":
-      return {
-        titulo: "Configuração inválida",
-        texto:
-          "A configuração escolhida não pôde ser utilizada. Revise o schema ou a seleção de aba e cabeçalho e tente de novo.",
-        classe: "border-danger/40 bg-danger/5 text-danger",
-      };
     case "timed_out":
-      return {
-        titulo: "Execução interrompida",
-        texto:
-          "A execução passou do tempo limite e foi interrompida. O arquivo original continua intacto.",
-        classe: "border-warn/40 bg-warn/5 text-warn",
-      };
     case "technical_failure":
       return {
-        titulo: "Não foi possível concluir",
-        texto:
-          "Houve uma falha ao executar a validação. Tente novamente; se persistir, use um arquivo menor para verificar.",
+        titulo: "Não foi possível concluir com segurança",
+        texto: `${motivo} O arquivo original continua intacto e nenhuma alteração foi aplicada.`,
         classe: "border-danger/40 bg-danger/5 text-danger",
       };
     default:
       return null;
   }
+}
+
+/** O detalhe do que impediu a conclusão — sem jargão e sem culpar a pessoa. */
+function motivoDaFalha(step: JourneyStep): string {
+  if (step === "invalid_configuration") {
+    return "A configuração escolhida não pôde ser utilizada — revise a aba, o cabeçalho ou o schema enviado.";
+  }
+  if (step === "timed_out") {
+    return "A execução passou do tempo limite e foi interrompida.";
+  }
+  return "Houve uma falha técnica durante a execução.";
 }
 
 /** Rotulos legiveis para os artefatos — nada de nome tecnico cru. */
@@ -96,31 +113,26 @@ const ROTULOS: Record<string, string> = {
   "preservacao_report.json": "O que foi preservado da planilha original",
   "registros_validos.csv": "Registros válidos",
   "registros_invalidos.csv": "Registros para revisão",
+  "registros_para_revisao.csv": "Registros que precisam de decisão humana",
   "schema_sugerido.yaml": "Schema sugerido (estrutura observada)",
   "schema_efetivo.yaml": "Schema aplicado na validação",
   [EVIDENCE_PACKAGE_NAME]: "Pacote completo de evidências",
 };
 
 /**
- * Ordem de exibicao: o que a pessoa mais quer baixar primeiro.
+ * Os arquivos que a area principal pode mostrar — no maximo tres.
  *
- * A planilha tratada e o resultado do trabalho — ela abre a lista. O pacote
- * de evidencias e o schema interessam a quem vai auditar, e ficam no fim.
+ * A lista antiga despejava sete arquivos com nome tecnico e deixava a pessoa
+ * decidindo qual era "o resultado". Aqui ficam so os dois que respondem "e a
+ * minha planilha?" e "o que voces acharam?"; o resto desce para os downloads
+ * avancados, que continuam completos para quem audita.
  */
-const PRIORIDADE = [
-  "planilha_tratada.xlsx",
-  "registros_validos.csv",
-  "registros_invalidos.csv",
-  "planilha_validada.xlsx",
-  "validacao_report.json",
-  "preservacao_report.json",
-  EVIDENCE_PACKAGE_NAME,
+const PRINCIPAIS: ReadonlyArray<[string, string]> = [
+  [ORGANIZED_SHEET_NAME, "Planilha organizada (a sua, formatada)"],
+  [ANALYSIS_REPORT_NAME, "Relatório da análise"],
 ];
 
-function ordemDoArtefato(nome: string): number {
-  const posicao = PRIORIDADE.indexOf(nome);
-  return posicao === -1 ? PRIORIDADE.length : posicao;
-}
+const PRINCIPAL = new Set<string>(PRINCIPAIS.map(([nome]) => nome));
 
 function tamanho(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -131,10 +143,15 @@ function tamanho(bytes: number): string {
 export default function SpreadsheetResult({
   step,
   result,
+  token = null,
   report,
   appliedCleaning = false,
+  appliedOrganize = false,
 }: Props) {
-  const visual = aparencia(step);
+  const artefatos = result?.artifacts ?? [];
+  const organizou =
+    appliedOrganize && artefatos.some((a) => a.name === ORGANIZED_SHEET_NAME);
+  const visual = aparencia(step, organizou, motivoDaFalha(step));
   if (!visual) return null;
 
   // Zero correções pode significar duas coisas MUITO diferentes: "não pedi
@@ -192,39 +209,96 @@ export default function SpreadsheetResult({
             original não foi alterado.
           </p>
 
-          {result.artifacts.length > 0 ? (
-            <div>
-              <h4 className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted">
-                Arquivos desta execução
-              </h4>
-              <ul className="space-y-2">
-                {[...result.artifacts]
-                  .sort(
-                    (a, b) => ordemDoArtefato(a.name) - ordemDoArtefato(b.name),
-                  )
-                  .map((artefato) => (
-                    <li key={artefato.name}>
-                      <a
-                        href={artefato.download_url}
-                        download
-                        className="flex items-center justify-between gap-3 rounded-lg border border-white/6 bg-ink px-4 py-3 text-sm hover:border-white/20"
-                      >
-                        <span className="min-w-0">
-                          <span className="font-semibold text-fg">
-                            {ROTULOS[artefato.name] ?? artefato.name}
-                          </span>
-                          <span className="ml-2 text-[0.8rem] text-muted">
-                            {tamanho(artefato.bytes)}
-                          </span>
+          <div>
+            <h4 className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted">
+              Downloads
+            </h4>
+            <ul className="space-y-2">
+              {token ? (
+                <li>
+                  <a
+                    href={originalUrl(token)}
+                    download
+                    className="flex items-center justify-between gap-3 rounded-lg border border-white/6 bg-ink px-4 py-3 text-sm hover:border-white/20"
+                  >
+                    <span className="min-w-0">
+                      <span className="font-semibold text-fg">
+                        Arquivo original
+                      </span>
+                      <span className="ml-2 text-[0.8rem] text-muted">
+                        como você enviou
+                      </span>
+                    </span>
+                    <span className="whitespace-nowrap text-[0.8rem] text-signal">
+                      Baixar
+                    </span>
+                  </a>
+                </li>
+              ) : null}
+              {PRINCIPAIS.map(([nome, rotulo]) => {
+                const artefato = artefatos.find((a) => a.name === nome);
+                if (!artefato) return null;
+                return (
+                  <li key={nome}>
+                    <a
+                      href={artefato.download_url}
+                      download
+                      className="flex items-center justify-between gap-3 rounded-lg border border-white/6 bg-ink px-4 py-3 text-sm hover:border-white/20"
+                    >
+                      <span className="min-w-0">
+                        <span className="font-semibold text-fg">{rotulo}</span>
+                        <span className="ml-2 text-[0.8rem] text-muted">
+                          {tamanho(artefato.bytes)}
                         </span>
-                        <span className="whitespace-nowrap text-[0.8rem] text-signal">
-                          Baixar
-                        </span>
-                      </a>
-                    </li>
-                  ))}
-              </ul>
-            </div>
+                      </span>
+                      <span className="whitespace-nowrap text-[0.8rem] text-signal">
+                        Baixar
+                      </span>
+                    </a>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+
+          {artefatos.some((a) => !PRINCIPAL.has(a.name)) ? (
+            <details className="rounded-lg border border-white/6 bg-ink">
+              <summary className="cursor-pointer px-4 py-3 text-sm font-semibold text-fg">
+                Downloads avançados
+              </summary>
+              <div className="px-4 pb-4">
+                <p className="mb-3 text-[0.8rem] text-muted">
+                  Arquivos técnicos desta execução: registros separados, schema
+                  aplicado, relatórios em JSON e o pacote completo com as somas
+                  de verificação.
+                </p>
+                <ul className="space-y-2">
+                  {artefatos
+                    .filter((a) => !PRINCIPAL.has(a.name))
+                    .map((artefato) => (
+                      <li key={artefato.name}>
+                        <a
+                          href={artefato.download_url}
+                          download
+                          className="flex items-center justify-between gap-3 rounded-lg border border-white/6 px-4 py-2.5 text-sm hover:border-white/20"
+                        >
+                          <span className="min-w-0">
+                            <span className="text-fg">
+                              {ROTULOS[artefato.name] ?? artefato.name}
+                            </span>
+                            <span className="ml-2 text-[0.8rem] text-muted">
+                              {tamanho(artefato.bytes)}
+                            </span>
+                          </span>
+                          <span className="whitespace-nowrap text-[0.8rem] text-signal">
+                            Baixar
+                          </span>
+                        </a>
+                      </li>
+                    ))}
+                </ul>
+              </div>
+            </details>
           ) : null}
         </>
       ) : null}

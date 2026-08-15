@@ -7,18 +7,22 @@ import SpreadsheetAnalysis from "./SpreadsheetAnalysis";
 import SpreadsheetResult from "./SpreadsheetResult";
 import SpreadsheetReview from "./SpreadsheetReview";
 import SpreadsheetSchemaChoice from "./SpreadsheetSchemaChoice";
-import SpreadsheetProfileMapping from "./SpreadsheetProfileMapping";
 import SpreadsheetSelection from "./SpreadsheetSelection";
 import TerminalView from "./TerminalView";
 
 const SPREADSHEET_ACCEPT = ".csv,.xlsx";
 
-/** As etapas visiveis na trilha, na ordem em que acontecem. */
+/**
+ * As etapas visiveis na trilha, na ordem em que acontecem.
+ *
+ * A etapa "Regras" saiu: schema deixou de ser exigencia da jornada. Quem
+ * analisa uma planilha vai do diagnostico direto para revisar a analise e as
+ * opcoes; o YAML virou um desvio avancado dentro dessa mesma etapa.
+ */
 const TRILHA = [
   { chave: "arquivo", titulo: "Arquivo" },
   { chave: "analise", titulo: "Análise" },
-  { chave: "schema", titulo: "Regras" },
-  { chave: "revisao", titulo: "Revisão" },
+  { chave: "revisao", titulo: "Revisão e opções" },
   { chave: "resultado", titulo: "Resultado" },
 ] as const;
 
@@ -38,15 +42,15 @@ function etapaAtual(step: string): EtapaTrilha {
   }
   if (
     [
+      "reviewing",
       "choosing_schema",
       "schema_uploading",
       "schema_invalid",
       "schema_ready",
     ].includes(step)
   ) {
-    return "schema";
+    return "revisao";
   }
-  if (step === "reviewing") return "revisao";
   return "resultado";
 }
 
@@ -110,8 +114,7 @@ export default function SpreadsheetJourney() {
       >
         {etapa === "arquivo" && "Escolha o arquivo"}
         {etapa === "analise" && "Diagnóstico do arquivo"}
-        {etapa === "schema" && "Como validar"}
-        {etapa === "revisao" && "Revise antes de executar"}
+        {etapa === "revisao" && "Revisar análise e opções"}
         {etapa === "resultado" && "Resultado"}
       </h3>
 
@@ -208,13 +211,35 @@ export default function SpreadsheetJourney() {
             report={analysis.analysis}
             preview={analysis.preview}
           />
+
+          {/* Abas classificadas: com mais de uma aba de dados, a escolha ja
+              aconteceu na etapa de ambiguidade — aqui so mostramos o que foi
+              encontrado, para ninguem descobrir depois que havia outra aba. */}
+          {analysis.sheets.length > 1 ? (
+            <div className="rounded-lg border border-white/6 bg-ink px-4 py-3 text-[0.85rem]">
+              <p className="font-semibold text-fg">
+                O arquivo tem {analysis.sheets.length} abas
+              </p>
+              <ul className="mt-2 space-y-1 text-muted">
+                {analysis.sheets.map((aba) => (
+                  <li key={aba.nome}>
+                    <span className="text-fg">{aba.nome}</span> — {aba.natureza}
+                    {aba.nome === analysis.analysis?.selected_sheet
+                      ? " (em análise)"
+                      : ""}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+
           <div className="flex flex-col gap-3 sm:flex-row">
             <button
               type="button"
-              onClick={jornada.goToSchemaChoice}
+              onClick={jornada.goToReview}
               className="rounded-lg bg-signal px-5 py-2.5 text-sm font-semibold text-ink"
             >
-              Escolher como validar
+              Revisar análise e opções
             </button>
             {/* Saida disponivel JA na analise: antes so havia como recomecar
                 depois de validar, o que obrigava a executar algo so para
@@ -230,7 +255,38 @@ export default function SpreadsheetJourney() {
         </div>
       ) : null}
 
-      {/* ---------- Etapa: schema ---------- */}
+      {/* ---------- Etapa: revisão e opções ---------- */}
+      {step === "reviewing" && analysis?.analysis ? (
+        <SpreadsheetReview
+          report={analysis.analysis}
+          origem={origem}
+          busy={busy}
+          presentation={analysis.presentation}
+          columns={jornada.columns}
+          duplicateRows={analysis.duplicate_rows}
+          applyCleaning={jornada.applyCleaning}
+          onApplyCleaningChange={jornada.setApplyCleaning}
+          organize={jornada.organize}
+          onOrganizeChange={jornada.setOrganize}
+          sortColumn={jornada.sortColumn}
+          sortDesc={jornada.sortDesc}
+          onSortChange={jornada.setSort}
+          canSummarize={analysis.column_roles?.offerable ?? false}
+          suggestion={
+            analysis.column_roles?.suggestion ?? {
+              valor: "",
+              categoria: "",
+              data: "",
+            }
+          }
+          indicators={jornada.indicators}
+          onIndicatorsChange={jornada.setIndicators}
+          onValidate={() => void jornada.validate()}
+          onAdvanced={jornada.goToSchemaChoice}
+        />
+      ) : null}
+
+      {/* Desvio avançado: regras próprias em YAML. */}
       {["choosing_schema", "schema_uploading", "schema_invalid"].includes(
         step,
       ) && token ? (
@@ -239,85 +295,25 @@ export default function SpreadsheetJourney() {
           busy={busy}
           error={error}
           summary={schema?.summary ?? null}
-          onUseSuggested={() => void jornada.useSuggested()}
-          onUseProfile={() => void jornada.goToProfileChoice()}
           onUpload={(arquivo) => void jornada.sendSchema(arquivo)}
-        />
-      ) : null}
-
-      {step === "choosing_profile" ? (
-        <SpreadsheetProfileMapping
-          profiles={jornada.profiles}
-          profile={jornada.profile}
-          columns={jornada.columns}
-          mapping={jornada.mapping}
-          busy={busy}
-          error={error}
-          onPick={(id) => void jornada.pickProfile(id)}
-          onChange={jornada.setMappingField}
-          onSubmit={() => void jornada.submitProfileMapping()}
-          onBack={jornada.goToSchemaChoice}
+          onBack={jornada.goToReview}
         />
       ) : null}
 
       {step === "schema_ready" && schema ? (
         <div className="space-y-5">
           <p className="rounded-lg border border-ok/40 bg-ok/5 px-4 py-3 text-sm text-ok">
-            Schema confirmado. Revise a configuração antes de executar.
+            Schema aceito. As regras do seu processo serão aplicadas junto com a
+            análise geral.
           </p>
-          {schema.profile ? (
-            <div className="rounded-lg border border-white/6 bg-ink px-4 py-3 text-[0.85rem]">
-              <p className="font-semibold text-fg">
-                Gerado a partir do perfil {schema.profile.id}
-                {schema.profile.version !== null
-                  ? ` (versão ${schema.profile.version})`
-                  : ""}
-              </p>
-              {/* Exibimos o mapeamento CONFIRMADO pelo backend, não o estado
-                  local: mostrar o que foi enviado poderia divergir do que o
-                  núcleo realmente aplicou. */}
-              <ul className="mt-2 space-y-1 text-muted">
-                {Object.entries(schema.profile.mapping).map(
-                  ([campo, coluna]) => (
-                    <li key={campo}>
-                      {campo} → <span className="text-fg">{coluna}</span>
-                    </li>
-                  ),
-                )}
-              </ul>
-              {schema.profile.omitted.length > 0 ? (
-                <p className="mt-2 text-muted">
-                  Campos não usados: {schema.profile.omitted.join(", ")}.
-                </p>
-              ) : null}
-            </div>
-          ) : null}
           <button
             type="button"
             onClick={jornada.goToReview}
             className="rounded-lg bg-signal px-5 py-2.5 text-sm font-semibold text-ink"
           >
-            Revisar configuração
+            Voltar para a revisão
           </button>
         </div>
-      ) : null}
-
-      {/* ---------- Etapa: revisão ---------- */}
-      {step === "reviewing" && analysis?.analysis && schema ? (
-        <SpreadsheetReview
-          report={analysis.analysis}
-          summary={schema.summary}
-          origin={schema.schema_origin}
-          origem={origem}
-          busy={busy}
-          applyCleaning={jornada.applyCleaning}
-          onApplyCleaningChange={jornada.setApplyCleaning}
-          duplicateRows={analysis.duplicate_rows}
-          flagDuplicateRows={jornada.flagDuplicateRows}
-          onFlagDuplicateRowsChange={jornada.setFlagDuplicateRows}
-          onValidate={() => void jornada.validate()}
-          onBack={jornada.goToSchemaChoice}
-        />
       ) : null}
 
       {/* ---------- Etapa: execução e resultado ---------- */}
@@ -330,8 +326,10 @@ export default function SpreadsheetJourney() {
       <SpreadsheetResult
         step={step}
         result={execution.result}
+        token={token}
         report={relatorio}
         appliedCleaning={jornada.applyCleaning}
+        appliedOrganize={jornada.organize}
       />
 
       {execution.lines.length > 0 ? (
