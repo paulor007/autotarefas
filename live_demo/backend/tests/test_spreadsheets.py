@@ -825,6 +825,25 @@ class TestCardAnaliseEOrganizacao:
         res = self._executar(client, d["token"], dashboard="true", indicator_value="Valor")
         assert "planilha_organizada.xlsx" not in [a["name"] for a in res["artifacts"]]
 
+    def test_dashboard_diz_o_motivo_certo_quando_falta_a_dimensao(self, client: TestClient) -> None:
+        """
+        Valor sozinho nao agrupa nada. Culpar "falta a coluna de valor" quando
+        ela FOI escolhida seria mentir sobre o proprio comportamento.
+        """
+        d = self._enviar_dominio(client, "vendas_simples.xlsx")
+        res = self._executar(
+            client, d["token"], organize="true", dashboard="true", indicator_value="Valor"
+        )
+        artefato = next(a for a in res["artifacts"] if a["name"] == "relatorio_analise.xlsx")
+        wb = load_workbook(io.BytesIO(client.get(artefato["download_url"]).content))
+        texto = " ".join(
+            str(c) for linha in wb["Resumo"].iter_rows(values_only=True) for c in linha if c
+        )
+
+        assert "Dashboard não foi criada" in texto
+        assert "falta dizer POR QUE agrupar" in texto
+        assert "nenhuma coluna de valor foi confirmada" not in texto
+
     # --- ordenação ----------------------------------------------------
 
     def test_sem_ordenacao_a_ordem_original_e_mantida(self, client: TestClient) -> None:

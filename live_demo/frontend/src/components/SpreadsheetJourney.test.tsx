@@ -466,6 +466,42 @@ describe("SpreadsheetJourney", () => {
     expect(corpo?.get("indicator_value")).toBe("Valor Final");
   });
 
+  it("explica o que cada papel faz e marca a coluna sugerida", async () => {
+    await irAteRevisao({
+      column_roles: {
+        roles: [],
+        offerable: true,
+        suggestion: { valor: "Valor Final", categoria: "", data: "" },
+      },
+    });
+
+    expect(screen.getByText("o número que será somado")).toBeTruthy();
+    expect(screen.getByText(/por quem agrupar/)).toBeTruthy();
+    expect(screen.getByText(/agrupa por mês/)).toBeTruthy();
+    // A coluna que o sistema sugeriu vem marcada, para ninguem ter de adivinhar.
+    const seletor = screen.getByLabelText(/Coluna de valor/i) as HTMLSelectElement;
+    const sugerida = Array.from(seletor.options).find((o) =>
+      o.textContent?.includes("(sugerida)"),
+    );
+    expect(sugerida?.value).toBe("Valor Final");
+  });
+
+  it("avisa que valor sozinho não gera resumo nenhum", async () => {
+    await irAteRevisao({
+      column_roles: {
+        roles: [],
+        offerable: true,
+        suggestion: { valor: "Valor Final", categoria: "", data: "" },
+      },
+    });
+    await userEvent.selectOptions(
+      screen.getByLabelText(/Coluna de valor/i),
+      "Valor Final",
+    );
+
+    expect(screen.getByText(/só com o valor não há como agrupar/i)).toBeTruthy();
+  });
+
   it("envia os papéis das colunas quando a pessoa os confirma", async () => {
     const espia = await irAteRevisao({
       column_roles: {

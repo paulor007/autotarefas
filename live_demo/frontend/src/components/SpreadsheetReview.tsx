@@ -56,6 +56,25 @@ const VEREDITO = {
   },
 } as const;
 
+/** Os tres papeis do resumo, e o que cada um faz com o numero. */
+const PAPEIS = [
+  {
+    campo: "valor",
+    rotulo: "Valor",
+    dica: "o número que será somado",
+  },
+  {
+    campo: "categoria",
+    rotulo: "Categoria",
+    dica: "por quem agrupar — vira as barras",
+  },
+  {
+    campo: "data",
+    rotulo: "Data",
+    dica: "agrupa por mês — vira a linha do tempo",
+  },
+] as const;
+
 function Caixa({
   checked,
   disabled,
@@ -266,41 +285,51 @@ export default function SpreadsheetReview({
               Resumo visual (opcional)
             </p>
             <p className="mt-1 text-[0.85rem] text-muted">
-              Identificamos uma possível coluna de valor
-              {suggestion.categoria ? ", uma categoria" : ""}
-              {suggestion.data ? " e uma data" : ""}. Confirme quais colunas
-              usar — sem confirmação, nenhum número é somado.
+              Diga o que cada coluna significa e o sistema soma o valor por
+              categoria e por mês. Sem essa confirmação, nenhum número é somado
+              — e nada disso altera a aba dos seus dados.
             </p>
-            <div className="mt-2 flex flex-wrap gap-2">
-              {(
-                [
-                  ["valor", "Valor"],
-                  ["categoria", "Categoria"],
-                  ["data", "Data"],
-                ] as const
-              ).map(([campo, rotulo]) => (
-                <select
-                  key={campo}
-                  value={indicators[campo]}
-                  disabled={busy}
-                  onChange={(e) =>
-                    onIndicatorsChange({
-                      ...indicators,
-                      [campo]: e.target.value,
-                    })
-                  }
-                  className="rounded-lg border border-white/12 bg-surface px-3 py-2 text-sm text-fg"
-                  aria-label={`Coluna de ${rotulo.toLowerCase()}`}
-                >
-                  <option value="">{rotulo}: nenhuma</option>
-                  {columns.map((coluna) => (
-                    <option key={coluna} value={coluna}>
-                      {rotulo}: {coluna}
-                    </option>
-                  ))}
-                </select>
+            <div className="mt-3 grid gap-3 sm:grid-cols-3">
+              {PAPEIS.map(({ campo, rotulo, dica }) => (
+                <label key={campo} className="block">
+                  <span className="block text-[0.8rem] font-semibold text-fg">
+                    {rotulo}
+                  </span>
+                  <span className="mt-0.5 block text-[0.78rem] text-muted">
+                    {dica}
+                  </span>
+                  <select
+                    value={indicators[campo]}
+                    disabled={busy}
+                    onChange={(e) =>
+                      onIndicatorsChange({
+                        ...indicators,
+                        [campo]: e.target.value,
+                      })
+                    }
+                    className="mt-1.5 w-full rounded-lg border border-white/12 bg-surface px-3 py-2 text-sm text-fg"
+                    aria-label={`Coluna de ${rotulo.toLowerCase()}`}
+                  >
+                    <option value="">nenhuma</option>
+                    {columns.map((coluna) => (
+                      <option key={coluna} value={coluna}>
+                        {coluna}
+                        {suggestion[campo] === coluna ? " (sugerida)" : ""}
+                      </option>
+                    ))}
+                  </select>
+                </label>
               ))}
             </div>
+
+            {/* Valor sozinho nao produz nada: sem uma dimensao nao ha como
+                agrupar. Dizer isso aqui evita um painel vazio depois. */}
+            {indicators.valor && !indicators.categoria && !indicators.data ? (
+              <p className="mt-2 text-[0.82rem] text-warn">
+                Escolha também uma categoria ou uma data — só com o valor não há
+                como agrupar, e nenhum resumo seria gerado.
+              </p>
+            ) : null}
 
             {/* O painel so existe se houver o que somar E uma planilha para
                 receber a aba: sem coluna de valor confirmada, nao ha numero. */}

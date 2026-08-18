@@ -864,9 +864,22 @@ def _pos_processar(job: jobs.Job, journey: jobs.Journey) -> None:
         )
 
     if journey.dashboard and not indicadores:
-        observacoes.append(
-            "a aba de Dashboard não foi criada: nenhuma coluna de valor foi confirmada"
-        )
+        # Dizer "faltou a coluna de valor" quando ela FOI escolhida e a coluna
+        # que faltava era outra seria mentir sobre o proprio comportamento.
+        valor, categoria, data = journey.indicator_request
+        if not valor:
+            motivo = "nenhuma coluna de valor foi confirmada"
+        elif not categoria and not data:
+            motivo = (
+                f"a coluna de valor ('{valor}') foi confirmada, mas falta dizer POR QUE "
+                "agrupar: escolha uma categoria ou uma data"
+            )
+        else:
+            motivo = (
+                f"nenhum valor da coluna '{valor}' pôde ser lido como número — "
+                "confira se ela é mesmo a coluna dos valores"
+            )
+        observacoes.append(f"a aba de Dashboard não foi criada: {motivo}")
 
     auditoria = None
     if _e_xlsx(journey.source_path):
