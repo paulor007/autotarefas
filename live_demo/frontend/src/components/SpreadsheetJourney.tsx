@@ -10,7 +10,9 @@ import SpreadsheetSchemaChoice from "./SpreadsheetSchemaChoice";
 import SpreadsheetSelection from "./SpreadsheetSelection";
 import TerminalView from "./TerminalView";
 
-const SPREADSHEET_ACCEPT = ".csv,.xlsx";
+// .xls e .ods entram para LEITURA: a analise geral funciona, mas eles nao tem
+// apresentacao que o openpyxl consiga regravar — nao ha versao organizada.
+const SPREADSHEET_ACCEPT = ".csv,.xlsx,.xls,.ods";
 
 /**
  * As etapas visiveis na trilha, na ordem em que acontecem.
@@ -133,7 +135,9 @@ export default function SpreadsheetJourney() {
           <p className="text-[0.9rem] leading-relaxed text-muted">
             Envie um CSV ou XLSX. O AutoTarefas analisa a estrutura, mostra o
             que encontrou e só valida depois que você confirmar as regras. O
-            arquivo original nunca é alterado.
+            arquivo original nunca é alterado. Planilhas antigas (.xls) e do
+            LibreOffice (.ods) também são lidas, mas para elas não há versão
+            organizada — só a análise.
           </p>
 
           <FileDrop
@@ -264,6 +268,12 @@ export default function SpreadsheetJourney() {
           presentation={analysis.presentation}
           columns={jornada.columns}
           notes={analysis.notes}
+          columnTypes={Object.fromEntries(
+            (analysis.analysis?.columns ?? []).map((c) => [
+              c.name,
+              c.inferred_type ?? "",
+            ]),
+          )}
           duplicateRows={analysis.duplicate_rows}
           applyCleaning={jornada.applyCleaning}
           onApplyCleaningChange={jornada.setApplyCleaning}
@@ -284,6 +294,7 @@ export default function SpreadsheetJourney() {
           onIndicatorsChange={jornada.setIndicators}
           dashboard={jornada.dashboard}
           onDashboardChange={jornada.setDashboard}
+          token={token}
           onValidate={() => void jornada.validate()}
           onAdvanced={jornada.goToSchemaChoice}
         />

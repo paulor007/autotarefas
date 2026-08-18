@@ -21,6 +21,7 @@ from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
+import pandas as pd
 import pytest
 from fastapi.testclient import TestClient
 from openpyxl import load_workbook
@@ -38,6 +39,7 @@ HTTP_TOO_LARGE = 413
 HTTP_UNSUPPORTED_MEDIA = 415
 
 XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+ODS_MIME = "application/vnd.oasis.opendocument.spreadsheet"
 
 DATA_PREFIX = "data: "
 
@@ -843,6 +845,111 @@ class TestCardAnaliseEOrganizacao:
         assert "Dashboard não foi criada" in texto
         assert "falta dizer POR QUE agrupar" in texto
         assert "nenhuma coluna de valor foi confirmada" not in texto
+
+    # --- prévia do resumo ---------------------------------------------
+
+    def _previa(self, client: TestClient, token: str, **campos: str) -> dict[str, Any]:
+        resposta = client.post(f"/api/spreadsheets/{token}/summary-preview", data=campos)
+        assert resposta.status_code == HTTP_OK, resposta.text[:200]
+        return dict(resposta.json())
+
+    def test_previa_soma_igual_ao_relatorio(self, client: TestClient) -> None:
+        """
+        A previa nao pode ser "aproximada": conferir a escolha com um numero
+        e depois receber outro no arquivo seria pior do que nao ter previa.
+        """
+        d = self._enviar_dominio(client, "vendas_simples.xlsx")
+        previa = self._previa(
+            client, d["token"], indicator_value="Valor", indicator_category="Vendedor"
+        )
+        indicador = previa["indicators"][0]
+
+        res = self._executar(
+            client,
+            d["token"],
+            organize="true",
+            dashboard="true",
+            indicator_value="Valor",
+            indicator_category="Vendedor",
+        )
+        artefato = next(a for a in res["artifacts"] if a["name"] == "relatorio_analise.xlsx")
+        ws = load_workbook(io.BytesIO(client.get(artefato["download_url"]).content))[
+            "Indicadores confirmados"
+        ]
+        totais = [
+            linha[1] for linha in ws.iter_rows(values_only=True) if linha and linha[0] == "Total"
+        ]
+
+        assert indicador["total"] == pytest.approx(totais[0])
+
+    def test_previa_nao_escreve_arquivo_nenhum(self, client: TestClient) -> None:
+        d = self._enviar_dominio(client, "vendas_simples.xlsx")
+        self._previa(client, d["token"], indicator_value="Valor", indicator_category="Vendedor")
+        # Nada foi executado: nao ha resultado para buscar.
+        assert client.get(f"/api/result/{d['token']}").status_code != HTTP_OK
+
+    def test_previa_sem_coluna_de_valor_nao_calcula(self, client: TestClient) -> None:
+        d = self._enviar_dominio(client, "vendas_simples.xlsx")
+        previa = self._previa(client, d["token"], indicator_category="Vendedor")
+        assert previa["indicators"] == []
+
+    def test_previa_de_coluna_de_texto_conta_as_ignoradas(self, client: TestClient) -> None:
+        """Escolher a coluna errada aparece na hora, nao depois de executar."""
+        d = self._enviar_dominio(client, "vendas_simples.xlsx")
+        previa = self._previa(
+            client, d["token"], indicator_value="Vendedor", indicator_category="Produto"
+        )
+        indicador = previa["indicators"][0]
+
+        assert indicador["total"] == 0
+        assert indicador["ignoradas"] > 0
+
+    # --- formatos legados (.xls, .ods) --------------------------------
+
+    def _ods(self, destino: Path) -> Path:
+        """Planilha de protocolos em .ods, como sai do LibreOffice."""
+        pd.DataFrame(
+            {
+                "Protocolo": ["000123", "000124", "000125", "000125"],
+                "Setor": ["Obras", "Saude", "Educacao", "Educacao"],
+                "Dias": [12, 5, 30, 30],
+            }
+        ).to_excel(destino, index=False, engine="odf")
+        return destino
+
+    def test_ods_e_analisado_normalmente(self, client: TestClient, tmp_path: Path) -> None:
+        caminho = self._ods(tmp_path / "protocolos.ods")
+        with caminho.open("rb") as handle:
+            resposta = client.post(
+                "/api/spreadsheets/analyze",
+                files={"files": (caminho.name, handle, ODS_MIME)},
+            )
+        d = dict(resposta.json())
+
+        assert resposta.status_code == HTTP_OK, resposta.text[:200]
+        assert d["status"] == "analysis_ready"
+        assert d["analysis"]["estrutura"]["row_count"] == 4
+        # A verificacao de repetidas nao depende do formato.
+        assert d["duplicate_rows"] == 1
+
+    def test_ods_nao_promete_organizacao(self, client: TestClient, tmp_path: Path) -> None:
+        """
+        Sem apresentacao para avaliar, a tela nao pode oferecer a versao
+        organizada — e o mesmo tratamento que o CSV ja recebia.
+        """
+        caminho = self._ods(tmp_path / "protocolos.ods")
+        with caminho.open("rb") as handle:
+            d = dict(
+                client.post(
+                    "/api/spreadsheets/analyze",
+                    files={"files": (caminho.name, handle, ODS_MIME)},
+                ).json()
+            )
+
+        assert d["presentation"] is None
+        assert d["sheets"] == []
+        res = self._executar(client, d["token"], organize="true")
+        assert "planilha_organizada.xlsx" not in [a["name"] for a in res["artifacts"]]
 
     # --- ordenação ----------------------------------------------------
 

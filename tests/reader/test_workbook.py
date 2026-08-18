@@ -271,12 +271,18 @@ class TestPreservacao:
         assert not r.ok
         assert "extensao nao suportada" in motivo(r)
 
-    def test_xls_antigo_recusado_com_orientacao(self, tmp_path: Path) -> None:
+    def test_xls_truncado_e_recusado_com_o_motivo(self, tmp_path: Path) -> None:
+        """
+        `.xls` deixou de ser recusado pela extensao: agora e lido de verdade
+        (ver `tests/reader/test_formatos_legados.py`). O que continua sendo
+        recusa e o arquivo que nao da para abrir — com o motivo, nunca com um
+        erro tecnico vazando.
+        """
         alvo = tmp_path / "antigo.xls"
-        alvo.write_bytes(b"\xd0\xcf\x11\xe0")
+        alvo.write_bytes(b"\xd0\xcf\x11\xe0")  # so a assinatura, sem conteudo
         r = read_workbook(alvo)
         assert not r.ok
-        assert "converta para .xlsx" in motivo(r)
+        assert "nao foi possivel ler o arquivo .xls" in motivo(r)
 
     def test_header_row_explicito_sobrescreve(self) -> None:
         r = ler("06_cabecalho_linha_4.xlsx", header_row=4)

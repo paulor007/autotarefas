@@ -76,6 +76,8 @@ dependencies = [
     # === Manipulação de dados ===
     "pandas>=3.0.3,<4.0.0",         # CSV/Excel padrão
     "openpyxl>=3.1.5,<4.0.0",       # Engine pro pandas ler/escrever .xlsx
+    "xlrd>=2.0.1,<3.0.0",           # Le .xls antigo (so leitura)
+    "odfpy>=1.4.1,<2.0.0",          # Le .ods do LibreOffice (so leitura)
 
     # === Configurações em YAML (RPA) ===
     "PyYAML>=6.0.3,<7.0.0",         # Configs de cada sistema-alvo

@@ -864,6 +864,49 @@ export function startValidation(
   );
 }
 
+/** Uma linha do resumo, ja somada pelo backend. */
+export interface SummaryIndicator {
+  titulo: string;
+  dimensao: string;
+  medida: string;
+  linhas: [string, number][];
+  total: number;
+  ignoradas: number;
+}
+
+/**
+ * Calcula o resumo SEM executar a jornada.
+ *
+ * A conta e a mesma que o relatorio usa — nao existe "previa aproximada"
+ * que depois diverge do arquivo entregue.
+ */
+export async function previewSummary(
+  token: string,
+  papeis: { valor: string; categoria: string; data: string },
+): Promise<SummaryIndicator[]> {
+  const form = new FormData();
+  form.append("indicator_value", papeis.valor);
+  form.append("indicator_category", papeis.categoria);
+  form.append("indicator_date", papeis.data);
+  const bruto = await postJourney<{ indicators?: unknown }>(
+    `/api/spreadsheets/${encodeURIComponent(token)}/summary-preview`,
+    form,
+  );
+  if (!Array.isArray(bruto.indicators)) return [];
+  return bruto.indicators.filter(isRecord).map((item) => ({
+    titulo: texto(item.titulo),
+    dimensao: texto(item.dimensao),
+    medida: texto(item.medida),
+    linhas: Array.isArray(item.linhas)
+      ? item.linhas
+          .filter((l): l is [string, number] => Array.isArray(l) && l.length === 2)
+          .map(([chave, valor]) => [String(chave), Number(valor)] as [string, number])
+      : [],
+    total: Number(item.total ?? 0),
+    ignoradas: Number(item.ignoradas ?? 0),
+  }));
+}
+
 /** URL de download de um artefato desta execucao (servida pelo backend). */
 export function artifactUrl(token: string, name: string): string {
   return `/api/download/${encodeURIComponent(token)}/${encodeURIComponent(name)}`;

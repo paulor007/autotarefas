@@ -16,7 +16,7 @@ from __future__ import annotations
 import csv
 import zipfile
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
 import pandas as pd
 from openpyxl import load_workbook
@@ -58,6 +58,43 @@ class ReaderError(Exception):
 
 
 # --- Leitura bruta -----------------------------------------------------------
+
+
+#: Motor do pandas para cada formato antigo. O tipo e estreito de proposito:
+#: `read_excel` so aceita esta lista fechada, e um `str` solto faria a
+#: verificacao de tipos passar por cima de um erro de digitacao aqui.
+_MotorLegado = Literal["xlrd", "odf"]
+
+#: Formatos antigos que ainda circulam em orgao publico -> motor do pandas.
+_FORMATOS_LEGADOS: dict[str, _MotorLegado] = {".xls": "xlrd", ".ods": "odf"}
+
+
+def _read_legacy_grids(path: Path, engine: _MotorLegado) -> dict[str, Grid]:
+    """
+    Le .xls e .ods como TEXTO, aba por aba.
+
+    Sao formatos so de leitura para este card: o openpyxl nao os abre, entao
+    nao ha como avaliar apresentacao nem gerar a versao organizada. A analise
+    geral — duplicidade, tipos, vazios — funciona igual, e e o que a maioria
+    dessas planilhas precisa. Prometer organizacao aqui seria mentira.
+
+    Args:
+        path: arquivo .xls ou .ods.
+        engine: motor do pandas ("xlrd" ou "odf").
+
+    Returns:
+        Uma grade por aba, com os valores como texto (sem inferencia).
+    """
+    planilhas = pd.read_excel(path, sheet_name=None, header=None, dtype=str, engine=engine)
+    grades: dict[str, Grid] = {}
+    for nome, frame in planilhas.items():
+        linhas: Grid = []
+        for _, linha in frame.iterrows():
+            linhas.append(
+                [RawCell(value=None if pd.isna(v) else str(v)) for v in linha.to_numpy().tolist()]
+            )
+        grades[str(nome)] = linhas
+    return grades
 
 
 def _read_csv_grid(path: Path) -> Grid:
@@ -276,10 +313,22 @@ def read_workbook(
     elif sufixo in (".xlsx", ".xlsm"):
         file_type = "xlsx"
         grids, formulas = _read_xlsx_grids(path)
-    elif sufixo == ".xls":
-        return _rejected(path, "xlsx", "formato .xls antigo nao suportado: converta para .xlsx")
+    elif sufixo in _FORMATOS_LEGADOS:
+        file_type = "legado"
+        try:
+            grids = _read_legacy_grids(path, _FORMATOS_LEGADOS[sufixo])
+        except Exception as exc:  # noqa: BLE001 - motor de terceiro, excecao arbitraria
+            # `xlrd` e `odfpy` levantam excecoes proprias (XLRDError e afins) que
+            # nao herdam de ValueError. Deixar escapar viraria erro 500 para quem
+            # so mandou um arquivo estragado — e isso e recusa, nao falha nossa.
+            return _rejected(path, "legado", f"nao foi possivel ler o arquivo {sufixo}: {exc}")
+        formulas = set()
     else:
-        return _rejected(path, "csv", f"extensao nao suportada: {sufixo} (use .csv ou .xlsx)")
+        return _rejected(
+            path,
+            "csv",
+            f"extensao nao suportada: {sufixo} (use .csv, .xlsx, .xls ou .ods)",
+        )
 
     candidatos = _rank_sheets(grids)
     nome_aba, conf_aba, recusa = _select_sheet(candidatos, sheet)

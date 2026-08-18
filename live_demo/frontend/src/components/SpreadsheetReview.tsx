@@ -1,4 +1,11 @@
-import type { AnalysisReport, PresentationAudit } from "../lib/spreadsheets";
+import { useState } from "react";
+
+import {
+  previewSummary,
+  type AnalysisReport,
+  type PresentationAudit,
+  type SummaryIndicator,
+} from "../lib/spreadsheets";
 
 interface Props {
   report: AnalysisReport;
@@ -10,6 +17,8 @@ interface Props {
   columns: string[];
   /** O que chama atenção nos dados — observado, nunca alterado. */
   notes: string[];
+  /** Tipo observado de cada coluna, para avisar antes de somar texto. */
+  columnTypes: Record<string, string>;
   duplicateRows: number;
 
   applyCleaning: boolean;
@@ -31,6 +40,8 @@ interface Props {
   /** Aba de painel dentro da planilha organizada. */
   dashboard: boolean;
   onDashboardChange: (value: boolean) => void;
+  /** Token da sessão — necessário para calcular a prévia. */
+  token: string | null;
 
   onValidate: () => void;
   onAdvanced: () => void;
@@ -55,6 +66,15 @@ const VEREDITO = {
     classe: "border-warn/40 bg-warn/[0.06]",
   },
 } as const;
+
+/**
+ * Tipos que se comportam como numero na hora de somar.
+ *
+ * Somar uma coluna de texto nao quebra nada — o resultado sai zero, com as
+ * linhas contadas como ignoradas. Mas descobrir isso depois de executar e
+ * tempo perdido: da para avisar no momento da escolha.
+ */
+const TIPOS_SOMAVEIS = new Set(["inteiro", "decimal", "moeda", "percentual"]);
 
 /** Os tres papeis do resumo, e o que cada um faz com o numero. */
 const PAPEIS = [
@@ -121,6 +141,7 @@ export default function SpreadsheetReview({
   presentation,
   columns,
   notes,
+  columnTypes,
   duplicateRows,
   applyCleaning,
   onApplyCleaningChange,
@@ -135,9 +156,34 @@ export default function SpreadsheetReview({
   onIndicatorsChange,
   dashboard,
   onDashboardChange,
+  token,
   onValidate,
   onAdvanced,
 }: Props) {
+  const [previa, setPrevia] = useState<SummaryIndicator[] | null>(null);
+  const [calculando, setCalculando] = useState(false);
+  const [erroPrevia, setErroPrevia] = useState<string | null>(null);
+
+  const podeResumir = Boolean(
+    indicators.valor && (indicators.categoria || indicators.data),
+  );
+
+  const verPrevia = async () => {
+    if (!token || calculando) return;
+    setCalculando(true);
+    setErroPrevia(null);
+    try {
+      setPrevia(await previewSummary(token, indicators));
+    } catch (e: unknown) {
+      setPrevia(null);
+      setErroPrevia(
+        e instanceof Error ? e.message : "não foi possível calcular a prévia",
+      );
+    } finally {
+      setCalculando(false);
+    }
+  };
+
   const veredito = presentation ? VEREDITO[presentation.veredito] : null;
   const podeOrganizar = presentation?.veredito === "melhoravel";
 
@@ -324,11 +370,97 @@ export default function SpreadsheetReview({
 
             {/* Valor sozinho nao produz nada: sem uma dimensao nao ha como
                 agrupar. Dizer isso aqui evita um painel vazio depois. */}
+            {indicators.valor &&
+            columnTypes[indicators.valor] &&
+            !TIPOS_SOMAVEIS.has(columnTypes[indicators.valor]) ? (
+              <p className="mt-2 text-[0.82rem] text-warn">
+                A coluna <strong>{indicators.valor}</strong> foi observada como{" "}
+                <strong>{columnTypes[indicators.valor]}</strong>, não como
+                número. O resumo sairia zerado, com todas as linhas ignoradas —
+                confira se é mesmo a coluna dos valores.
+              </p>
+            ) : null}
+
             {indicators.valor && !indicators.categoria && !indicators.data ? (
               <p className="mt-2 text-[0.82rem] text-warn">
                 Escolha também uma categoria ou uma data — só com o valor não há
                 como agrupar, e nenhum resumo seria gerado.
               </p>
+            ) : null}
+
+            {/* Conferir a escolha das colunas nao devia custar uma execucao
+                inteira. A conta aqui e a MESMA que vai para o relatorio. */}
+            {podeResumir ? (
+              <div className="mt-3">
+                <button
+                  type="button"
+                  onClick={() => void verPrevia()}
+                  disabled={busy || calculando}
+                  className="rounded-lg border border-white/12 px-4 py-2 text-[0.85rem] font-semibold text-fg hover:border-white/25 disabled:opacity-50"
+                >
+                  {calculando ? "Calculando…" : "Ver prévia do resumo"}
+                </button>
+
+                {erroPrevia ? (
+                  <p className="mt-2 text-[0.82rem] text-danger">{erroPrevia}</p>
+                ) : null}
+
+                {previa !== null && previa.length === 0 ? (
+                  <p className="mt-2 text-[0.82rem] text-warn">
+                    Com estas colunas, nenhum número seria somado.
+                  </p>
+                ) : null}
+
+                {previa?.map((indicador) => (
+                  <div
+                    key={indicador.titulo}
+                    className="mt-3 rounded-lg border border-white/6 bg-surface p-3"
+                  >
+                    <p className="text-[0.85rem] font-semibold text-fg">
+                      {indicador.titulo}
+                    </p>
+                    <table className="mt-1.5 w-full text-[0.82rem] text-muted">
+                      <tbody>
+                        {indicador.linhas.map(([chave, valor]) => (
+                          <tr key={chave}>
+                            <td className="py-0.5 pr-3">{chave}</td>
+                            <td className="py-0.5 text-right text-fg">
+                              {valor.toLocaleString("pt-BR", {
+                                minimumFractionDigits: 2,
+                                maximumFractionDigits: 2,
+                              })}
+                            </td>
+                          </tr>
+                        ))}
+                        <tr className="border-t border-white/10">
+                          <td className="py-0.5 pr-3 font-semibold text-fg">
+                            Total
+                          </td>
+                          <td className="py-0.5 text-right font-semibold text-fg">
+                            {indicador.total.toLocaleString("pt-BR", {
+                              minimumFractionDigits: 2,
+                              maximumFractionDigits: 2,
+                            })}
+                          </td>
+                        </tr>
+                      </tbody>
+                    </table>
+                    {indicador.ignoradas > 0 ? (
+                      <p className="mt-1.5 text-[0.8rem] text-warn">
+                        {indicador.ignoradas} linha(s) ignorada(s): o valor não
+                        pôde ser lido como número.
+                      </p>
+                    ) : null}
+                  </div>
+                ))}
+
+                {previa && previa.length > 0 ? (
+                  <p className="mt-2 text-[0.8rem] text-muted">
+                    Mostrando as primeiras linhas de cada resumo. Nada foi
+                    gravado — isto é só um cálculo para você conferir.
+                  </p>
+                ) : null}
+              </div>
             ) : null}
 
             {/* O painel so existe se houver o que somar E uma planilha para

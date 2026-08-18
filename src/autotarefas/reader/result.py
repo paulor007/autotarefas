@@ -44,7 +44,8 @@ CellType = Literal[
 ]
 
 #: Formatos de arquivo aceitos.
-FileType = Literal["csv", "xlsx"]
+#: "legado" cobre .xls e .ods: lidos como dados, sem apresentacao.
+FileType = Literal["csv", "xlsx", "legado"]
 
 
 @dataclass(frozen=True, slots=True)

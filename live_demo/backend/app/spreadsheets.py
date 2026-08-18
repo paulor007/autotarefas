@@ -88,7 +88,11 @@ router = APIRouter(prefix="/api/spreadsheets", tags=["spreadsheets"])
 
 #: Formatos que o leitor trata com seguranca. Nao basta a extensao: o proprio
 #: leitor recusa conteudo que nao forme uma tabela.
-_ALLOWED_EXTS = (".csv", ".xlsx")
+#:
+#: .xls e .ods entram so para LEITURA — a analise geral funciona, mas eles nao
+#: tem apresentacao que o openpyxl consiga regravar, entao nao ha versao
+#: organizada. E o mesmo tratamento que o CSV ja recebia.
+_ALLOWED_EXTS = (".csv", ".xlsx", ".xls", ".ods")
 
 #: Um schema YAML de validacao e um arquivo pequeno. Este teto existe para
 #: que um envio grande nao ocupe o servidor nem o parser.
@@ -859,8 +863,9 @@ def _pos_processar(job: jobs.Job, journey: jobs.Journey) -> None:
             observacoes.append(f"a versão organizada não pôde ser gerada: {exc}")
     elif journey.organize:
         observacoes.append(
-            "arquivos CSV não têm apresentação para organizar; os dados tratados "
-            "seguem no pacote técnico"
+            f"{journey.source_path.suffix} não tem apresentação para organizar "
+            "(ou não pode ser regravado com formatação); os dados tratados seguem "
+            "no pacote técnico"
         )
 
     if journey.dashboard and not indicadores:
@@ -1167,6 +1172,60 @@ async def validate(  # noqa: PLR0913 - um campo tipado por confirmacao da tela
             "status": journey.status,
             "stream_url": f"/api/stream/{token}",
             "result_url": f"/api/result/{token}",
+        }
+    )
+
+
+@router.post("/{token}/summary-preview")
+async def summary_preview(
+    token: str,
+    indicator_value: str = Form(default=""),
+    indicator_category: str = Form(default=""),
+    indicator_date: str = Form(default=""),
+) -> JSONResponse:
+    """
+    Calcula o resumo SEM executar nada e sem escrever arquivo nenhum.
+
+    Antes disto, descobrir que a coluna escolhida era a errada custava uma
+    execucao inteira. A conta e a MESMA de `build_indicators` — nao ha uma
+    "previa aproximada" que depois diverge do resultado.
+    """
+    achado = _journey_of(token)
+    if isinstance(achado, JSONResponse):
+        return achado
+    _, journey = achado
+
+    valor = indicator_value.strip()
+    if not valor:
+        return JSONResponse({"indicators": [], "detail": "escolha a coluna de valor"})
+
+    frame = _ler_frame(journey)
+    if frame is None:
+        return _error(_HTTP_BAD_REQUEST, "nao foi possivel reler o arquivo", code="unreadable")
+
+    indicadores = build_indicators(
+        frame,
+        IndicatorRequest(
+            value_column=valor,
+            category_column=indicator_category.strip(),
+            date_column=indicator_date.strip(),
+        ),
+    )
+    return JSONResponse(
+        {
+            "indicators": [
+                {
+                    "titulo": ind.title,
+                    "dimensao": ind.dimension,
+                    "medida": ind.measure,
+                    # So o topo: a previa e para conferir a escolha, nao para
+                    # substituir o relatorio.
+                    "linhas": [[chave, valor_somado] for chave, valor_somado in ind.rows[:5]],
+                    "total": ind.total,
+                    "ignoradas": ind.ignored_rows,
+                }
+                for ind in indicadores
+            ]
         }
     )
 
