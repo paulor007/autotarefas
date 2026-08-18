@@ -213,6 +213,40 @@ class TestVariasTabelasNaMesmaAba:
         assert criterio.passed is True, criterio.detail
 
 
+class TestDesempenhoDaAvaliacao:
+    """
+    Regressao de LENTIDAO, que e um defeito como outro qualquer.
+
+    A primeira versao do criterio "uma tabela por aba" pedia a linha inteira ao
+    openpyxl uma por vez. Numa planilha de 7 mil linhas isso custava 16
+    segundos, e a jornada inteira parecia travada — duas vezes, porque a
+    avaliacao roda na analise e de novo no pos-processamento.
+    """
+
+    def test_planilha_grande_e_avaliada_em_segundos(self, tmp_path: Path) -> None:
+        import time
+
+        from openpyxl import Workbook
+
+        wb = Workbook()
+        ws = wb.active
+        assert ws is not None
+        ws.append(["Codigo", "Setor", "Valor"])
+        for i in range(5000):
+            ws.append([f"P{i}", f"Setor {i % 20}", i * 3])
+        destino = tmp_path / "grande.xlsx"
+        wb.save(destino)
+
+        inicio = time.perf_counter()
+        audit = audit_presentation(destino)
+        decorrido = time.perf_counter() - inicio
+
+        assert audit.verdict in {"organizada", "melhoravel", "ambigua"}
+        # A implementacao correta leva menos de 1 s; o teto largo e para nao
+        # falhar em maquina lenta, e ainda assim pega a regressao de 16 s.
+        assert decorrido < 5, f"avaliacao levou {decorrido:.1f}s"
+
+
 class TestNumeroComoTexto:
     """O leitor entende o valor; dentro do Excel a coluna continua quebrada."""
 

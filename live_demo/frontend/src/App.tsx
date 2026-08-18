@@ -102,7 +102,11 @@ export default function App() {
     () => new Set(health?.active_automations ?? []),
     [health],
   );
-  const online = !!health && (health.demo_servers[0]?.alive ?? false);
+  // "Sistema operacional" e sobre O SISTEMA responder, nao sobre os servidores
+  // de demonstracao. Antes isto olhava `demo_servers[0].alive`: com os mocks
+  // desligados (eles so servem aos cards de integracao) a barra ficava em
+  // "Conectando..." para sempre, com o Live inteiro no ar.
+  const online = health?.status === "ok";
   // O card de planilhas abre a jornada guiada, que nao usa o fluxo classico.
   const emJornada = selectedId === "validate";
 

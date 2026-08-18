@@ -368,25 +368,32 @@ def _criterio_estrutura(ws: Worksheet, header_row: int, colunas: int) -> Criteri
     )
 
 
-def _blocos_de_dados(ws: Worksheet, header_row: int) -> list[list[int]]:
-    """Agrupa as linhas de dados em blocos separados por linhas vazias."""
-    blocos: list[list[int]] = []
-    atual: list[int] = []
-    for linha in range(header_row + 1, int(ws.max_row or header_row) + 1):
-        vazia = all(c.value is None or str(c.value).strip() == "" for c in ws[linha])
-        if vazia:
+#: Linha de dados: o numero fisico e os valores preenchidos dela.
+_LinhaDeDados = tuple[int, list[Any]]
+
+
+def _blocos_de_dados(ws: Worksheet, header_row: int) -> list[list[_LinhaDeDados]]:
+    """
+    Agrupa as linhas de dados em blocos separados por linhas vazias.
+
+    Uma passada so, com `values_only`. A versao anterior pedia a linha inteira
+    ao openpyxl uma por vez (`ws[n]`), o que construia objetos de celula a cada
+    volta: numa planilha de 7 mil linhas isso custava 16 segundos e fazia a
+    analise inteira parecer travada.
+    """
+    blocos: list[list[_LinhaDeDados]] = []
+    atual: list[_LinhaDeDados] = []
+    for deslocamento, valores in enumerate(ws.iter_rows(min_row=header_row + 1, values_only=True)):
+        preenchidas = [v for v in valores if v is not None and str(v).strip() != ""]
+        if not preenchidas:
             if atual:
                 blocos.append(atual)
                 atual = []
             continue
-        atual.append(linha)
+        atual.append((header_row + 1 + deslocamento, preenchidas))
     if atual:
         blocos.append(atual)
     return blocos
-
-
-def _preenchidas(ws: Worksheet, linha: int) -> list[Any]:
-    return [c.value for c in ws[linha] if c.value is not None and str(c.value).strip() != ""]
 
 
 def _criterio_tabela_unica(ws: Worksheet, header_row: int) -> Criterion:
@@ -405,18 +412,18 @@ def _criterio_tabela_unica(ws: Worksheet, header_row: int) -> Criterion:
     blocos = _blocos_de_dados(ws, header_row)
     suspeitos: list[int] = []
     if len(blocos) > 1:
-        largura_inicial = len(_preenchidas(ws, blocos[0][0])) if blocos[0] else 0
-        tipos_iniciais = {type(v) for linha in blocos[0][:AMOSTRA] for v in _preenchidas(ws, linha)}
+        largura_inicial = len(blocos[0][0][1])
+        tipos_iniciais = {type(v) for _, valores in blocos[0][:AMOSTRA] for v in valores}
         for bloco in blocos[1:]:
             if len(bloco) < MIN_LINHAS_DE_OUTRA_TABELA:  # nota solta, nao tabela
                 continue
-            valores = _preenchidas(ws, bloco[0])
+            linha, valores = bloco[0]
             if len(valores) < MIN_TITULOS or not all(isinstance(v, str) for v in valores):
                 continue
             # Mesma forma e mesmo feitio dos dados: e continuacao, nao tabela nova.
             if len(valores) == largura_inicial and tipos_iniciais <= {str}:
                 continue
-            suspeitos.append(bloco[0])
+            suspeitos.append(linha)
 
     return Criterion(
         "tabela_unica",
