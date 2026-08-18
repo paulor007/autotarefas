@@ -215,7 +215,7 @@ export default function SpreadsheetReview({
                 value={sortColumn}
                 disabled={busy}
                 onChange={(e) => onSortChange(e.target.value, sortDesc)}
-                className="rounded-lg border border-white/12 bg-panel px-3 py-2 text-sm text-fg"
+                className="rounded-lg border border-white/12 bg-surface px-3 py-2 text-sm text-fg"
                 aria-label="Coluna para ordenar"
               >
                 <option value="">Não ordenar</option>
@@ -231,7 +231,7 @@ export default function SpreadsheetReview({
                 onChange={(e) =>
                   onSortChange(sortColumn, e.target.value === "desc")
                 }
-                className="rounded-lg border border-white/12 bg-panel px-3 py-2 text-sm text-fg"
+                className="rounded-lg border border-white/12 bg-surface px-3 py-2 text-sm text-fg"
                 aria-label="Direção da ordenação"
               >
                 <option value="asc">Crescente</option>
@@ -270,7 +270,7 @@ export default function SpreadsheetReview({
                       [campo]: e.target.value,
                     })
                   }
-                  className="rounded-lg border border-white/12 bg-panel px-3 py-2 text-sm text-fg"
+                  className="rounded-lg border border-white/12 bg-surface px-3 py-2 text-sm text-fg"
                   aria-label={`Coluna de ${rotulo.toLowerCase()}`}
                 >
                   <option value="">{rotulo}: nenhuma</option>

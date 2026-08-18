@@ -67,6 +67,15 @@
     background-attachment: fixed;
   }
 
+  /* A lista aberta de um <select> e desenhada pelo sistema, e nem todo
+     sistema herda a cor do elemento. Sem isto, o texto claro cai sobre o
+     fundo branco do Windows e so aparece ao passar o mouse. */
+  select,
+  option {
+    background-color: var(--color-surface);
+    color: var(--color-fg);
+  }
+
   :focus-visible {
     outline: 2px solid var(--color-signal);
     outline-offset: 2px;

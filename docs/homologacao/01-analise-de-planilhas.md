@@ -27,6 +27,43 @@ O arquivo original nunca é alterado. Tudo acontece sobre uma cópia.
 
 ---
 
+## A.1 Para que tipo de planilha (o escopo de entrada)
+
+**O Card 01 não é uma ferramenta de vendas.** `Vendas - Dez.xlsx` foi apenas o
+arquivo real usado na homologação.
+
+A entrada é: **CSV ou XLSX com dados tabulares** — registros em linhas, campos
+em colunas. Nenhuma verificação depende do nome das colunas nem presume o
+assunto do arquivo. Vale igualmente para financeiro, estoque, clientes,
+serviços e agendamentos, protocolos e atendimentos públicos, assistência
+social, compras e contratos, recursos humanos, logística, educação, saúde
+administrativa, pesquisas e bases públicas, projetos e patrimônio.
+
+O que é verificado automaticamente, em qualquer área, quando aplicável:
+
+| Verificação | Como aparece |
+| --- | --- |
+| Existência e localização do cabeçalho | campo "Cabeçalho" + pergunta quando ambíguo |
+| Abas, linhas e colunas | diagnóstico e aba "Abas do arquivo" |
+| Tipos observados nas colunas | inferidos do conteúdo, nunca do nome |
+| Células vazias | contador por coluna + `coluna_vazia` |
+| Linhas 100% duplicadas | sempre, como aviso, sem remover |
+| Títulos de coluna repetidos | critério estrutural → veredicto ambíguo |
+| Mistura de tipos | `coluna_mista` e `tipos_misturados`, sem converter à força |
+| Espaços desnecessários | `espacos_extras` |
+| Fórmulas existentes | `formulas` (usa o valor salvo) e recusa de ordenação |
+| Rodapé de totais | `rodape_suspeito`, sem remover |
+| Data em formato americano | observação no relatório, sem alterar |
+| Apresentação, cabeçalho, larguras, filtro, painel | 9 critérios objetivos |
+
+**O que o sistema não faz sem confirmação, em nenhuma área:** concluir que
+código repetido é erro, excluir duplicidade, calcular faturamento, interpretar
+regra contábil ou legal, ordenar, criar gráfico ou indicador, e alterar
+fórmula, identificador, zero à esquerda ou valor. Regra de negócio só entra
+por confirmação de papéis de coluna ou por schema YAML.
+
+---
+
 ## B. A jornada, tela a tela
 
 | Etapa | O que aparece |
@@ -254,6 +291,27 @@ fixtures têm de 13 a 21 linhas, então a suíte inteira passava.
 
 Corrigido, com regressão em planilhas de 20, 112, 500 e 3.000 linhas, mais um
 caso de duas abas grandes que continua exigindo a escolha da pessoa.
+
+### I.3.2 Estruturas que exigem cautela — o que está coberto
+
+Verificado com sondas em 18/08/2026:
+
+| Estrutura | Comportamento hoje |
+| --- | --- |
+| Cabeçalho não identificável | pergunta qual linha usar |
+| Mesclagens na área de dados | veredicto **ambíguo**; não organiza |
+| Títulos de coluna repetidos | veredicto **ambíguo**; não organiza |
+| Formulário/relatório sem estrutura tabular | aba classificada como "apresentação" |
+| Planilha protegida ou ilegível | recusa: "pode estar corrompido, protegido ou não ser uma planilha válida" |
+| Macros (`.xlsm`) | recusado no envio: só `.csv` e `.xlsx` são aceitos |
+| Gráficos e imagens não preserváveis | declarados em "Observações e limites" |
+| Estrutura ambígua | veredicto próprio, sem organizar |
+| **Várias tabelas na mesma aba** | **não detectado** — lê como tabela única |
+| **Números guardados como texto** | valor é entendido, mas **não há aviso** |
+| **Tabelas dinâmicas** | **não detectadas nem declaradas** |
+
+As três últimas linhas são limitações conhecidas, não comportamentos
+desejados.
 
 ### I.4 Não testado
 
