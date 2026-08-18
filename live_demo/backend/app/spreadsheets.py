@@ -57,6 +57,7 @@ from autotarefas.organize import (
     SortRequest,
     audit_presentation,
     build_indicators,
+    date_format_notes,
     default_request,
     needs_sheet_choice,
     organize_workbook,
@@ -810,6 +811,9 @@ def _pos_processar(job: jobs.Job, journey: jobs.Journey) -> None:
             dados = {}
 
     observacoes: list[str] = []
+    # Os indicadores vem primeiro: a aba de Dashboard da planilha organizada e
+    # desenhada a partir deles.
+    indicadores = _calcular_indicadores(journey)
     organizacao = None
     if journey.organize and _e_xlsx(journey.source_path):
         pedido = (
@@ -825,6 +829,12 @@ def _pos_processar(job: jobs.Job, journey: jobs.Journey) -> None:
                 header_row=journey.header_row or 1,
                 sort=pedido,
                 value_changes=dados.get("cleaning_changes", []),
+                dashboard=indicadores if journey.dashboard else (),
+                dashboard_request=IndicatorRequest(
+                    value_column=journey.indicator_request[0],
+                    category_column=journey.indicator_request[1],
+                    date_column=journey.indicator_request[2],
+                ),
             )
         except (OSError, ValueError) as exc:  # pragma: no cover - defesa
             observacoes.append(f"a versão organizada não pôde ser gerada: {exc}")
@@ -834,12 +844,25 @@ def _pos_processar(job: jobs.Job, journey: jobs.Journey) -> None:
             "seguem no pacote técnico"
         )
 
-    indicadores = _calcular_indicadores(journey)
+    if journey.dashboard and not indicadores:
+        observacoes.append(
+            "a aba de Dashboard não foi criada: nenhuma coluna de valor foi confirmada"
+        )
+
     auditoria = None
     if _e_xlsx(journey.source_path):
         try:
             auditoria = audit_presentation(
                 journey.source_path, sheet=journey.sheet, header_row=journey.header_row or 1
+            )
+            # Observar sem alterar: uma planilha brasileira com data no formato
+            # americano e um deslize que a pessoa tem o direito de saber.
+            observacoes.extend(
+                date_format_notes(
+                    journey.source_path,
+                    sheet=journey.sheet,
+                    header_row=journey.header_row or 1,
+                )
             )
         except (OSError, ValueError):  # pragma: no cover
             auditoria = None
@@ -1023,6 +1046,7 @@ async def validate(  # noqa: PLR0913 - um campo tipado por confirmacao da tela
     indicator_value: str = Form(default=""),
     indicator_category: str = Form(default=""),
     indicator_date: str = Form(default=""),
+    dashboard: bool = Form(default=False),
 ) -> JSONResponse:
     """
     Executa a validacao com as escolhas CONFIRMADAS e gera as evidencias.
@@ -1038,6 +1062,8 @@ async def validate(  # noqa: PLR0913 - um campo tipado por confirmacao da tela
         apply_cleaning     normaliza o que e seguro (espacos, caixa, formato)
         organize           gera a versao com apresentacao profissional
         sort_column/desc   reordena as linhas (sem isto, a ordem e a original)
+        dashboard          aba de painel na planilha organizada (exige
+                           indicator_value)
         indicator_*        papeis confirmados para o resumo (sem isto, nenhum
                            numero e somado e nenhum grafico e desenhado)
 
@@ -1086,6 +1112,7 @@ async def validate(  # noqa: PLR0913 - um campo tipado por confirmacao da tela
     journey.organize = organize
     journey.sort_column = sort_column.strip()
     journey.sort_desc = sort_desc
+    journey.dashboard = dashboard
     journey.indicator_request = (
         indicator_value.strip(),
         indicator_category.strip(),

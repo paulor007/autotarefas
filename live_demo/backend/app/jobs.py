@@ -81,6 +81,7 @@ class Journey:
     sort_column: str = ""
     sort_desc: bool = False
     indicator_request: tuple[str, str, str] = ("", "", "")
+    dashboard: bool = False
     """(valor, categoria, data) CONFIRMADOS para o resumo. Vazio = sem resumo."""
     profile_id: str | None = None
     """Perfil que originou o schema, quando a origem foi um perfil."""

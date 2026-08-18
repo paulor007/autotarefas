@@ -40,9 +40,13 @@ MIN_LINHAS_TABULAR = 1
 #: Acima disto a aba deixa de ser "auxiliar" e vira base de dados.
 MAX_LINHAS_AUXILIAR = 10
 
-#: Densidade minima (celulas preenchidas / celulas da area) para uma aba
+#: Densidade minima (celulas preenchidas / celulas da AMOSTRA) para uma aba
 #: parecer tabela. Uma capa tem densidade baixissima.
 DENSIDADE_TABULAR = 0.45
+
+#: Quantas linhas do topo bastam para classificar a aba. Ler 200 mil linhas
+#: so para dizer "isto e uma tabela" seria caro e inutil.
+LINHAS_AMOSTRADAS = 50
 
 
 @dataclass(frozen=True, slots=True)
@@ -75,25 +79,33 @@ class SheetInfo:
         }
 
 
-def _fatos(ws: Worksheet) -> tuple[int, int, int, int | None]:
-    """(linhas, colunas, celulas preenchidas, linha provavel do cabecalho)."""
+def _fatos(ws: Worksheet) -> tuple[int, int, int, int | None, int]:
+    """
+    (linhas, colunas, celulas preenchidas, cabecalho, linhas amostradas).
+
+    As celulas sao contadas so nas primeiras `LINHAS_AMOSTRADAS` linhas. Quem
+    usar esse numero PRECISA dividir pela area da amostra, nunca pela area da
+    planilha inteira — foi exatamente esse descompasso que fazia toda tabela
+    com mais de ~111 linhas ser classificada como "ambigua".
+    """
     linhas = int(ws.max_row or 0)
     colunas = int(ws.max_column or 0)
+    amostradas = min(linhas, LINHAS_AMOSTRADAS)
 
     preenchidas = 0
     cabecalho: int | None = None
-    for indice, linha in enumerate(ws.iter_rows(max_row=min(linhas, 50)), start=1):
+    for indice, linha in enumerate(ws.iter_rows(max_row=amostradas), start=1):
         valores = [c.value for c in linha if c.value is not None]
         preenchidas += len(valores)
         # A primeira linha com >= 2 celulas preenchidas e a candidata natural
         # a cabecalho — a mesma heuristica que o leitor usa.
         if cabecalho is None and len(valores) >= MIN_COLUNAS_TABULAR:
             cabecalho = indice
-    return linhas, colunas, preenchidas, cabecalho
+    return linhas, colunas, preenchidas, cabecalho, amostradas
 
 
 def _classificar(
-    linhas: int, colunas: int, preenchidas: int, cabecalho: int | None
+    linhas: int, colunas: int, preenchidas: int, cabecalho: int | None, amostradas: int
 ) -> tuple[SheetKind, str]:
     if preenchidas == 0:
         return "vazia", "nenhuma célula preenchida"
@@ -105,7 +117,8 @@ def _classificar(
     if linhas_de_dados < MIN_LINHAS_TABULAR:
         return "apresentacao", "há um cabeçalho, mas nenhuma linha de dados abaixo"
 
-    area = max(linhas * colunas, 1)
+    # A area e a DA AMOSTRA, porque `preenchidas` so contou a amostra.
+    area = max(amostradas * colunas, 1)
     densidade = preenchidas / area
     if densidade < DENSIDADE_TABULAR:
         return (
@@ -138,8 +151,8 @@ def survey_sheets(path: Path) -> tuple[SheetInfo, ...]:
         resultado: list[SheetInfo] = []
         for nome in workbook.sheetnames:
             ws = workbook[nome]
-            linhas, colunas, preenchidas, cabecalho = _fatos(ws)
-            natureza, motivo = _classificar(linhas, colunas, preenchidas, cabecalho)
+            linhas, colunas, preenchidas, cabecalho, amostradas = _fatos(ws)
+            natureza, motivo = _classificar(linhas, colunas, preenchidas, cabecalho, amostradas)
             resultado.append(
                 SheetInfo(
                     name=str(nome),
@@ -168,6 +181,7 @@ def needs_sheet_choice(sheets: tuple[SheetInfo, ...]) -> bool:
 
 __all__ = [
     "DENSIDADE_TABULAR",
+    "LINHAS_AMOSTRADAS",
     "MAX_LINHAS_AUXILIAR",
     "MIN_COLUNAS_TABULAR",
     "MIN_LINHAS_TABULAR",

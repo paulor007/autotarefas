@@ -7,7 +7,7 @@ conferência não dependa de acreditar na tela.
 
     Resumo                 o que entrou, o veredito da apresentação, contadores
     Abas do arquivo        cada aba e a natureza que o diagnóstico atribuiu
-    Problemas encontrados  uma linha por problema, com linha física e categoria
+    Ocorrencias encontradas  uma linha por ocorrencia, com linha fisica e categoria
     Linhas para revisão    o que exige decisão humana, com o contexto
     Alterações realizadas  cada mudança aplicada (valor e apresentação)
     Antes e depois         valor anterior x posterior, célula a célula
@@ -23,8 +23,8 @@ from typing import TYPE_CHECKING, Any
 
 import pandas as pd
 from openpyxl import Workbook
-from openpyxl.chart import BarChart, Reference
 
+from autotarefas.organize.dashboard import write_panel
 from autotarefas.tasks.xlsx_style import (
     DATA_FONT,
     ERROR_FILL,
@@ -52,14 +52,13 @@ ANALYSIS_REPORT_NAME = "relatorio_analise.xlsx"
 
 _ABA_RESUMO = "Resumo"
 _ABA_ABAS = "Abas do arquivo"
-_ABA_PROBLEMAS = "Problemas encontrados"
+# "Problema" contradizia o resto do produto: duplicidade e AVISO, nunca
+# problema. Quem lia "16 problemas" se assustava a toa.
+_ABA_PROBLEMAS = "Ocorrencias encontradas"
 _ABA_REVISAO = "Linhas para revisao"
 _ABA_ALTERACOES = "Alteracoes realizadas"
 _ABA_ANTES_DEPOIS = "Antes e depois"
 _ABA_INDICADORES = "Indicadores confirmados"
-
-#: Quantas linhas do indicador viram gráfico (além disso vira poluição).
-_MAX_BARRAS = 12
 
 _VEREDITOS = {
     "organizada": "já organizada — nada a melhorar com segurança",
@@ -107,7 +106,7 @@ def _resumo(ws: Worksheet, dados: ReportInput) -> None:
             "Apresentação",
             _VEREDITOS.get(audit.verdict, audit.verdict) if audit else "não avaliada",
         ),
-        ("Problemas encontrados", len(dados.issues)),
+        ("Ocorrências encontradas", len(dados.issues)),
         ("Linhas para revisão", len(dados.review_rows)),
         ("Valores corrigidos", len(dados.cleaning_changes)),
         (
@@ -117,7 +116,7 @@ def _resumo(ws: Worksheet, dados: ReportInput) -> None:
         ("Ordenação aplicada", (organizacao.sorted_by if organizacao else "") or "nenhuma"),
     ]
     destaques = {
-        "Problemas encontrados": ERROR_FILL,
+        "Ocorrências encontradas": NEUTRAL_FILL,
         "Linhas para revisão": ERROR_FILL,
         "Valores corrigidos": NEUTRAL_FILL,
         "Apresentação": OK_FILL,
@@ -281,50 +280,8 @@ def _antes_depois_frame(dados: ReportInput) -> pd.DataFrame:
 
 
 def _indicadores(ws: Worksheet, indicadores: Sequence[Indicator]) -> None:
-    """Uma tabela por indicador confirmado, com um gráfico de barras ao lado."""
-    linha = 1
-    for indicador in indicadores:
-        ws.cell(row=linha, column=1, value=indicador.title).font = LABEL_FONT
-        linha += 1
-        ws.cell(row=linha, column=1, value=indicador.dimension).font = DATA_FONT
-        ws.cell(row=linha, column=2, value=indicador.measure).font = DATA_FONT
-        primeira_dado = linha + 1
-
-        for chave, valor in indicador.rows:
-            linha += 1
-            ws.cell(row=linha, column=1, value=chave).font = DATA_FONT
-            ws.cell(row=linha, column=2, value=round(valor, 2)).font = DATA_FONT
-
-        if indicador.rows:
-            grafico = BarChart()
-            grafico.title = indicador.title
-            grafico.height = 7
-            grafico.width = 16
-            ultima = min(linha, primeira_dado + _MAX_BARRAS - 1)
-            grafico.add_data(
-                Reference(ws, min_col=2, min_row=primeira_dado - 1, max_row=ultima),
-                titles_from_data=True,
-            )
-            grafico.set_categories(Reference(ws, min_col=1, min_row=primeira_dado, max_row=ultima))
-            ws.add_chart(grafico, f"E{primeira_dado}")
-
-        linha += 1
-        ws.cell(row=linha, column=1, value="Total").font = LABEL_FONT
-        ws.cell(row=linha, column=2, value=round(indicador.total, 2)).font = LABEL_FONT
-        if indicador.ignored_rows:
-            linha += 1
-            ws.cell(
-                row=linha,
-                column=1,
-                value=(
-                    f"{indicador.ignored_rows} linha(s) ignorada(s): o valor não pôde "
-                    "ser lido como número"
-                ),
-            ).font = DATA_FONT
-        linha += 3
-
-    ws.column_dimensions["A"].width = 34
-    ws.column_dimensions["B"].width = 18
+    """Uma tabela por indicador confirmado, com o grafico ao lado."""
+    write_panel(ws, indicadores)
 
 
 # ============================================================

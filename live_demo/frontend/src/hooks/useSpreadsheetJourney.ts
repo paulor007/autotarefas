@@ -99,6 +99,9 @@ export interface UseSpreadsheetJourney {
   /** Papeis CONFIRMADOS para o resumo. Vazio = nenhum indicador. */
   indicators: { valor: string; categoria: string; data: string };
   setIndicators: (value: { valor: string; categoria: string; data: string }) => void;
+  /** Aba de painel na planilha organizada — depende dos papeis confirmados. */
+  dashboard: boolean;
+  setDashboard: (value: boolean) => void;
 
   chooseFile: (file: File | null) => void;
   analyzeFile: () => Promise<void>;
@@ -137,6 +140,7 @@ export function useSpreadsheetJourney(): UseSpreadsheetJourney {
     categoria: "",
     data: "",
   });
+  const [dashboard, setDashboard] = useState(false);
 
   const setSort = useCallback((column: string, desc: boolean) => {
     setSortColumn(column);
@@ -184,6 +188,7 @@ export function useSpreadsheetJourney(): UseSpreadsheetJourney {
     setOrganize(false);
     setSort("", false);
     setIndicators({ valor: "", categoria: "", data: "" });
+    setDashboard(false);
   }, [execution, limparEscolhas, setSort]);
 
   /**
@@ -233,6 +238,7 @@ export function useSpreadsheetJourney(): UseSpreadsheetJourney {
     setOrganize(false);
     setSort("", false);
     setIndicators({ valor: "", categoria: "", data: "" });
+    setDashboard(false);
 
     if (data.status === "rejected_file") {
       setRejection(data.rejection ?? "Não foi possível ler este arquivo.");
@@ -440,6 +446,7 @@ export function useSpreadsheetJourney(): UseSpreadsheetJourney {
         sortColumn,
         sortDesc,
         indicators,
+        dashboard,
       });
       execution.attach(started.token, started.stream_url);
     } catch (e: unknown) {
@@ -451,6 +458,7 @@ export function useSpreadsheetJourney(): UseSpreadsheetJourney {
   }, [
     applyCleaning,
     busy,
+    dashboard,
     execution,
     handleFailure,
     indicators,
@@ -503,6 +511,8 @@ export function useSpreadsheetJourney(): UseSpreadsheetJourney {
     setSort,
     indicators,
     setIndicators,
+    dashboard,
+    setDashboard,
     rejection,
     token,
     execution,

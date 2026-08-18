@@ -187,6 +187,21 @@ export default function SpreadsheetResult({
         </div>
       ) : null}
 
+      {/* Com pendencias, o aviso amarelo dominava a tela e a confirmacao da
+          versao organizada sumia — quem pediu a formatacao ficava sem saber se
+          ela saiu. Agora as duas noticias convivem. */}
+      {organizou && step === "completed_with_issues" ? (
+        <div className="rounded-lg border border-ok/30 bg-ok/[0.05] px-4 py-3">
+          <p className="text-sm font-semibold text-ok">
+            A versão organizada foi gerada
+          </p>
+          <p className="mt-1 text-[0.85rem] text-muted">
+            Os pontos acima dependem da sua decisão, mas a formatação
+            profissional que você confirmou está pronta para baixar abaixo.
+          </p>
+        </div>
+      ) : null}
+
       {nenhumaCorrecaoNecessaria ? (
         <div className="rounded-lg border border-ok/30 bg-ok/[0.05] px-4 py-3">
           <p className="text-sm font-semibold text-ok">

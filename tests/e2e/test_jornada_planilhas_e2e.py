@@ -6,13 +6,14 @@ backend. Nenhum dos dois prova o que o proprietario faz: abrir o
 navegador, escolher um arquivo e ver o resultado. Este teste faz isso —
 subindo o Live de verdade e clicando na tela.
 
-Cobre os cinco cenarios do card, um por teste:
+Cobre os seis cenarios do card, um por teste:
 
 1. planilha limpa e ja organizada;
 2. planilha sem formatacao, aceitando a organizacao;
 3. planilha com linhas 100% duplicadas;
 4. planilha que poderia ser organizada, mas a formatacao e RECUSADA;
-5. download real da planilha organizada e do relatorio de analise.
+5. download real da planilha organizada e do relatorio de analise;
+6. aba de Dashboard, so depois de confirmar o significado das colunas.
 
 Usa SOMENTE fixtures sinteticas (`tests/fixtures/dominios`): nenhum
 arquivo privado entra aqui.
@@ -244,6 +245,28 @@ def test_recusar_a_formatacao_nao_gera_planilha_organizada(pagina: Page) -> None
     assert "nada exigiu a sua decisão" in resultado
     # O relatorio da analise sai do mesmo jeito: analisar nao depende de aceitar.
     assert "Relatório da análise" in resultado
+
+
+def test_dashboard_so_nasce_com_os_papeis_confirmados(pagina: Page) -> None:
+    """Cenario 6: o painel e opcional e depende do significado das colunas."""
+    _ate_a_revisao(pagina, DOMINIOS / "vendas_simples.xlsx")
+    pagina.get_by_role("checkbox", name="Gerar uma versão organizada").check()
+
+    painel = pagina.get_by_role("checkbox", name="Adicionar uma aba de Dashboard")
+    assert painel.count() == 0, "sem coluna de valor confirmada nao ha o que somar"
+
+    pagina.get_by_label("Coluna de valor").select_option("Valor")
+    pagina.get_by_label("Coluna de categoria").select_option("Vendedor")
+    assert painel.is_checked() is False, "toda confirmacao comeca desligada"
+    painel.check()
+
+    _executar(pagina)
+    organizada = _baixar_por_rotulo(pagina, "Planilha organizada")
+    with zipfile.ZipFile(io.BytesIO(organizada)) as zf:
+        conteudo = zf.read("xl/workbook.xml").decode("utf-8", "replace")
+        assert "Dashboard" in conteudo, "a aba de painel precisa existir"
+        # Grafico no painel, nunca na aba dos dados.
+        assert any(nome.startswith("xl/charts/") for nome in zf.namelist())
 
 
 def test_downloads_reais_da_planilha_organizada_e_do_relatorio(pagina: Page) -> None:

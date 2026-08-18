@@ -393,6 +393,59 @@ describe("SpreadsheetJourney", () => {
     expect(corpo?.get("indicator_value")).toBeNull();
   });
 
+  it("só oferece o Dashboard depois de confirmar a coluna de valor", async () => {
+    await irAteRevisao({
+      presentation: apresentacao("melhoravel"),
+      column_roles: {
+        roles: [],
+        offerable: true,
+        suggestion: { valor: "Valor Final", categoria: "", data: "" },
+      },
+    });
+
+    // Sem papel confirmado nao ha o que somar: a caixa nem aparece.
+    expect(screen.queryByRole("checkbox", { name: /Dashboard/i })).toBeNull();
+
+    await userEvent.selectOptions(
+      screen.getByLabelText(/Coluna de valor/i),
+      "Valor Final",
+    );
+    const caixa = screen.getByRole("checkbox", {
+      name: /Adicionar uma aba de Dashboard/i,
+    }) as HTMLInputElement;
+    expect(caixa.checked).toBe(false);
+    // A aba mora na planilha organizada — sem ela, nao ha onde colocar.
+    expect(caixa.disabled).toBe(true);
+    expect(screen.getByText(/Requer a versão organizada/i)).toBeTruthy();
+  });
+
+  it("envia dashboard quando a versão organizada e o valor estão confirmados", async () => {
+    const espia = await irAteRevisao({
+      presentation: apresentacao("melhoravel"),
+      column_roles: {
+        roles: [],
+        offerable: true,
+        suggestion: { valor: "Valor Final", categoria: "", data: "" },
+      },
+    });
+    await userEvent.click(
+      screen.getByRole("checkbox", {
+        name: /Gerar uma versão organizada e profissional/i,
+      }),
+    );
+    await userEvent.selectOptions(
+      screen.getByLabelText(/Coluna de valor/i),
+      "Valor Final",
+    );
+    await userEvent.click(
+      screen.getByRole("checkbox", { name: /Adicionar uma aba de Dashboard/i }),
+    );
+
+    const corpo = await executar(espia);
+    expect(corpo?.get("dashboard")).toBe("true");
+    expect(corpo?.get("indicator_value")).toBe("Valor Final");
+  });
+
   it("envia os papéis das colunas quando a pessoa os confirma", async () => {
     const espia = await irAteRevisao({
       column_roles: {

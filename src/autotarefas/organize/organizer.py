@@ -33,6 +33,7 @@ from openpyxl import load_workbook
 from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
 
+from autotarefas.organize.dashboard import describe_source, write_panel
 from autotarefas.tasks.presentation import PRESERVABLE_SUFFIXES
 
 if TYPE_CHECKING:
@@ -41,8 +42,13 @@ if TYPE_CHECKING:
 
     from openpyxl.worksheet.worksheet import Worksheet
 
+    from autotarefas.organize.insights import Indicator, IndicatorRequest
+
 #: Nome do artefato principal desta jornada.
 ORGANIZED_XLSX_NAME = "planilha_organizada.xlsx"
+
+#: Aba do painel. Nasce SEPARADA: a aba dos dados nunca recebe grafico.
+DASHBOARD_SHEET = "Dashboard"
 
 #: Limites de largura: legivel sem empurrar a tabela para fora da tela.
 LARGURA_MINIMA = 10
@@ -348,6 +354,38 @@ def _ordenar(  # noqa: PLR0913 - a aba e as suas dimensoes vem juntas
     return True, ""
 
 
+def _adicionar_dashboard(
+    workbook: Any,
+    indicadores: Sequence[Indicator],
+    pedido: IndicatorRequest,
+) -> PresentationChange | None:
+    """
+    Cria a aba do painel a partir dos papeis que a pessoa confirmou.
+
+    Fica na frente das outras de proposito: quem abre a planilha ve primeiro o
+    resumo e depois os dados. A aba dos dados nao e tocada — nem grafico, nem
+    total, nem coluna nova.
+    """
+    if not indicadores:
+        return None
+    if DASHBOARD_SHEET in workbook.sheetnames:
+        del workbook[DASHBOARD_SHEET]
+    ws = workbook.create_sheet(DASHBOARD_SHEET, 0)
+    write_panel(
+        ws,
+        indicadores,
+        heading="Dashboard",
+        source_note=describe_source(
+            pedido.value_column, pedido.category_column, pedido.date_column
+        ),
+    )
+    return PresentationChange(
+        scope=DASHBOARD_SHEET,
+        kind="dashboard_adicionado",
+        detail=f"{len(indicadores)} indicador(es) confirmado(s), em aba separada",
+    )
+
+
 def _elementos_nao_preservados(ws: Worksheet) -> list[str]:
     perdidos: list[str] = []
     if getattr(ws, "_charts", None):
@@ -366,6 +404,8 @@ def organize_workbook(  # noqa: PLR0913 - opcionais keyword-only, uma etapa cada
     apply_format: bool = True,
     sort: SortRequest | None = None,
     value_changes: Sequence[Mapping[str, Any]] = (),
+    dashboard: Sequence[Indicator] = (),
+    dashboard_request: IndicatorRequest | None = None,
 ) -> OrganizeResult:
     """
     Gera a versao organizada a partir de uma COPIA do original.
@@ -378,6 +418,9 @@ def organize_workbook(  # noqa: PLR0913 - opcionais keyword-only, uma etapa cada
         apply_format: aplica as melhorias de apresentacao.
         sort: ordenacao confirmada (coluna + direcao). None = ordem original.
         value_changes: correcoes de valor ja confirmadas (line/column/after).
+        dashboard: indicadores CONFIRMADOS. Vazio = nenhuma aba de painel.
+        dashboard_request: os papeis que a pessoa confirmou, para declarar na
+            aba de onde os numeros vieram.
 
     Returns:
         OrganizeResult com cada mudanca, as recusas e o que nao pode ser
@@ -422,6 +465,11 @@ def organize_workbook(  # noqa: PLR0913 - opcionais keyword-only, uma etapa cada
         mudancas.extend(_aplicar_larguras(ws, header_row, colunas, ultima))
         mudancas.extend(_aplicar_filtro_e_painel(ws, header_row, colunas, ultima))
 
+    if dashboard and dashboard_request is not None:
+        painel = _adicionar_dashboard(workbook, dashboard, dashboard_request)
+        if painel is not None:
+            mudancas.append(painel)
+
     workbook.save(destination)
     workbook.close()
 
@@ -442,6 +490,7 @@ def organize_workbook(  # noqa: PLR0913 - opcionais keyword-only, uma etapa cada
 
 
 __all__ = [
+    "DASHBOARD_SHEET",
     "LARGURA_MAXIMA",
     "LARGURA_MINIMA",
     "ORGANIZED_XLSX_NAME",

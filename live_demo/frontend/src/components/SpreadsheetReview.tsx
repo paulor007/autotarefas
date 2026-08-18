@@ -26,6 +26,9 @@ interface Props {
     categoria: string;
     data: string;
   }) => void;
+  /** Aba de painel dentro da planilha organizada. */
+  dashboard: boolean;
+  onDashboardChange: (value: boolean) => void;
 
   onValidate: () => void;
   onAdvanced: () => void;
@@ -108,6 +111,8 @@ export default function SpreadsheetReview({
   suggestion,
   indicators,
   onIndicatorsChange,
+  dashboard,
+  onDashboardChange,
   onValidate,
   onAdvanced,
 }: Props) {
@@ -277,6 +282,26 @@ export default function SpreadsheetReview({
                 </select>
               ))}
             </div>
+
+            {/* O painel so existe se houver o que somar E uma planilha para
+                receber a aba: sem coluna de valor confirmada, nao ha numero. */}
+            {indicators.valor ? (
+              <div className="mt-3">
+                <Caixa
+                  checked={dashboard}
+                  disabled={busy || !organize}
+                  onChange={onDashboardChange}
+                  titulo="Adicionar uma aba de Dashboard na planilha organizada"
+                >
+                  Uma aba nova, com as tabelas e os gráficos desses números, na
+                  frente das outras. A aba dos seus dados não recebe gráfico,
+                  total nem coluna nova.
+                  {!organize
+                    ? " Requer a versão organizada — marque a opção acima."
+                    : ""}
+                </Caixa>
+              </div>
+            ) : null}
           </div>
         ) : (
           <p className="text-[0.85rem] text-muted">

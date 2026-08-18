@@ -281,6 +281,8 @@ export default function SpreadsheetJourney() {
           }
           indicators={jornada.indicators}
           onIndicatorsChange={jornada.setIndicators}
+          dashboard={jornada.dashboard}
+          onDashboardChange={jornada.setDashboard}
           onValidate={() => void jornada.validate()}
           onAdvanced={jornada.goToSchemaChoice}
         />

@@ -18,12 +18,14 @@ from openpyxl import load_workbook
 
 from autotarefas.organize import (
     ANALYSIS_REPORT_NAME,
+    DASHBOARD_SHEET,
     IndicatorRequest,
     ReportInput,
     SortRequest,
     audit_presentation,
     build_indicators,
     candidates,
+    date_format_notes,
     needs_sheet_choice,
     organize_workbook,
     suggest_roles,
@@ -77,13 +79,24 @@ class TestAvaliacaoDaApresentacao:
         assert {c.key for c in audit.criteria} >= {
             "cabecalho_presente",
             "estrutura_tabular",
-            "larguras_adequadas",
+            "larguras_legiveis",
             "formatos_consistentes",
             "alinhamento_coerente",
             "filtro",
             "painel_congelado",
             "cores_moderadas",
         }
+
+    def test_largura_e_titulo_cortado_num_criterio_so(self) -> None:
+        """
+        Eram dois criterios e o relatorio se contradizia: "Larguras legiveis:
+        OK" seguido de "Titulos visiveis por inteiro: melhorar". Para quem le,
+        e a mesma pergunta.
+        """
+        chaves = {c.key for c in audit_presentation(VENDAS).criteria}
+        assert "larguras_legiveis" in chaves
+        assert "larguras_adequadas" not in chaves
+        assert "texto_nao_cortado" not in chaves
 
     def test_veredito_e_serializavel(self) -> None:
         payload = audit_presentation(CONTRATOS).as_dict()
@@ -128,6 +141,140 @@ class TestAbas:
 # ============================================================
 # Organização (formatação opcional e confirmada)
 # ============================================================
+
+
+class TestAbaGrande:
+    """
+    Regressao: toda tabela de tamanho REAL era classificada como "ambigua".
+
+    A contagem de celulas olha so as primeiras 50 linhas (amostra), mas a
+    densidade era dividida pela area da planilha INTEIRA. Resultado: acima de
+    ~111 linhas, qualquer tabela cheia "parecia" 1% preenchida. As fixtures
+    tem 13 a 21 linhas, entao a suite inteira passava — foi preciso uma
+    planilha de verdade para o furo aparecer.
+    """
+
+    def _planilha(self, destino: Path, linhas: int) -> Path:
+        from openpyxl import Workbook
+
+        wb = Workbook()
+        ws = wb.active
+        assert ws is not None
+        ws.append(["Codigo", "Produto", "Valor"])
+        for i in range(1, linhas + 1):
+            ws.append([i, f"Item {i}", i * 10])
+        wb.save(destino)
+        return destino
+
+    @pytest.mark.parametrize("linhas", [20, 112, 500, 3000])
+    def test_tabela_cheia_e_dados_em_qualquer_tamanho(self, linhas: int, tmp_path: Path) -> None:
+        abas = survey_sheets(self._planilha(tmp_path / f"t{linhas}.xlsx", linhas))
+        assert abas[0].kind == "dados", abas[0].reason
+        assert abas[0].is_candidate is True
+
+    def test_duas_abas_grandes_ainda_pedem_escolha(self, tmp_path: Path) -> None:
+        from openpyxl import Workbook
+
+        wb = Workbook()
+        for nome in ("Janeiro", "Fevereiro"):
+            ws = wb.create_sheet(nome)
+            ws.append(["Codigo", "Produto", "Valor"])
+            for i in range(1, 400):
+                ws.append([i, f"Item {i}", i * 10])
+        del wb[wb.sheetnames[0]]
+        destino = tmp_path / "duas_grandes.xlsx"
+        wb.save(destino)
+
+        abas = survey_sheets(destino)
+        assert len(candidates(abas)) == 2
+        assert needs_sheet_choice(abas) is True
+
+
+class TestFormatoDeData:
+    """Observar sem alterar: data americana e um deslize que a pessoa tem o direito de saber."""
+
+    def _planilha(self, destino: Path, formato: str) -> Path:
+        import datetime as dt
+
+        from openpyxl import Workbook
+
+        wb = Workbook()
+        ws = wb.active
+        assert ws is not None
+        ws.append(["Emissao", "Valor"])
+        for dia in (1, 2, 3):
+            ws.cell(row=dia + 1, column=1, value=dt.date(2019, 12, dia)).number_format = formato
+            ws.cell(row=dia + 1, column=2, value=dia * 10)
+        wb.save(destino)
+        return destino
+
+    def test_data_americana_vira_observacao(self, tmp_path: Path) -> None:
+        notas = date_format_notes(self._planilha(tmp_path / "us.xlsx", "mm-dd-yy"))
+        assert len(notas) == 1
+        assert "Emissao" in notas[0]
+        assert "formato americano" in notas[0]
+        assert "não foram alterados" in notas[0]
+
+    @pytest.mark.parametrize("formato", ["dd/mm/yyyy", "yyyy-mm-dd", "General"])
+    def test_formato_sem_ambiguidade_nao_gera_ruido(self, formato: str, tmp_path: Path) -> None:
+        arquivo = self._planilha(tmp_path / f"{formato[:2]}.xlsx", formato)
+        assert date_format_notes(arquivo) == ()
+
+    def test_nao_altera_o_arquivo(self, tmp_path: Path) -> None:
+        arquivo = self._planilha(tmp_path / "us.xlsx", "mm-dd-yy")
+        antes = hashlib.sha256(arquivo.read_bytes()).hexdigest()
+        date_format_notes(arquivo)
+        assert hashlib.sha256(arquivo.read_bytes()).hexdigest() == antes
+
+
+class TestDashboard:
+    """A aba de painel: opcional, confirmada, e sempre SEPARADA dos dados."""
+
+    PEDIDO = IndicatorRequest(value_column="Valor", category_column="Vendedor")
+
+    def _indicadores(self) -> tuple:
+        frame, _ = _frame(VENDAS, "Vendas")
+        return build_indicators(frame, self.PEDIDO)
+
+    def test_sem_indicadores_nao_ha_aba(self, tmp_path: Path) -> None:
+        destino = tmp_path / "sem.xlsx"
+        organize_workbook(VENDAS, destino)
+        assert DASHBOARD_SHEET not in load_workbook(destino).sheetnames
+
+    def test_com_papeis_confirmados_a_aba_nasce_na_frente(self, tmp_path: Path) -> None:
+        indicadores = self._indicadores()
+        assert indicadores, "a fixture precisa render indicadores"
+        destino = tmp_path / "com.xlsx"
+        resultado = organize_workbook(
+            VENDAS,
+            destino,
+            dashboard=indicadores,
+            dashboard_request=self.PEDIDO,
+        )
+        wb = load_workbook(destino)
+        assert wb.sheetnames[0] == DASHBOARD_SHEET
+        painel = wb[DASHBOARD_SHEET]
+        assert painel.cell(row=1, column=1).value == "Dashboard"
+        # A aba declara de onde vieram os numeros — ninguem precisa adivinhar.
+        assert "Valor" in str(painel.cell(row=2, column=1).value)
+        assert painel._charts, "o painel confirmado tem grafico"
+        assert any(m.kind == "dashboard_adicionado" for m in resultado.changes)
+
+    def test_a_aba_de_dados_continua_intocada(self, tmp_path: Path) -> None:
+        destino = tmp_path / "com.xlsx"
+        organize_workbook(
+            VENDAS,
+            destino,
+            dashboard=self._indicadores(),
+            dashboard_request=self.PEDIDO,
+        )
+        original = load_workbook(VENDAS).active
+        dados = load_workbook(destino)["Vendas"]
+        assert original is not None
+        assert [[c.value for c in linha] for linha in original.iter_rows()] == [
+            [c.value for c in linha] for linha in dados.iter_rows()
+        ]
+        assert not dados._charts, "grafico nenhum entra na aba dos dados"
 
 
 class TestOrganizacao:

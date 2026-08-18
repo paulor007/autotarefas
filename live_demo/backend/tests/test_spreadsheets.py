@@ -745,6 +745,43 @@ class TestCardAnaliseEOrganizacao:
         res = self._executar(client, d["token"], organize="true")
         assert "planilha_organizada.xlsx" not in [a["name"] for a in res["artifacts"]]
 
+    # --- dashboard ----------------------------------------------------
+
+    def test_sem_papel_confirmado_nao_ha_dashboard(self, client: TestClient) -> None:
+        """Pedir o painel sem dizer o que somar nao inventa numero nenhum."""
+        d = self._enviar_dominio(client, "vendas_simples.xlsx")
+        res = self._executar(client, d["token"], organize="true", dashboard="true")
+        artefato = next(a for a in res["artifacts"] if a["name"] == "planilha_organizada.xlsx")
+        wb = load_workbook(io.BytesIO(client.get(artefato["download_url"]).content))
+
+        assert "Dashboard" not in wb.sheetnames
+
+    def test_dashboard_confirmado_vira_aba_separada(self, client: TestClient) -> None:
+        d = self._enviar_dominio(client, "vendas_simples.xlsx")
+        res = self._executar(
+            client,
+            d["token"],
+            organize="true",
+            dashboard="true",
+            indicator_value="Valor",
+            indicator_category="Vendedor",
+        )
+        artefato = next(a for a in res["artifacts"] if a["name"] == "planilha_organizada.xlsx")
+        wb = load_workbook(io.BytesIO(client.get(artefato["download_url"]).content))
+
+        assert wb.sheetnames[0] == "Dashboard"
+        painel = wb["Dashboard"]
+        assert painel.cell(row=1, column=1).value == "Dashboard"
+        assert "Valor" in str(painel.cell(row=2, column=1).value)
+        # E a aba dos dados continua sendo so dados.
+        assert not wb["Vendas"]._charts
+
+    def test_dashboard_sem_organizar_nao_cria_nada(self, client: TestClient) -> None:
+        """A aba mora na planilha organizada; sem ela, nao ha onde por."""
+        d = self._enviar_dominio(client, "vendas_simples.xlsx")
+        res = self._executar(client, d["token"], dashboard="true", indicator_value="Valor")
+        assert "planilha_organizada.xlsx" not in [a["name"] for a in res["artifacts"]]
+
     # --- ordenação ----------------------------------------------------
 
     def test_sem_ordenacao_a_ordem_original_e_mantida(self, client: TestClient) -> None:

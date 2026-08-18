@@ -62,8 +62,7 @@ Nada aqui é opinião de estilo. Cada critério é verificável em
 | `estrutura_tabular` | ausência de mesclagens na área de dados | **estrutural** |
 | `cabecalho_presente` | linha de cabeçalho identificável, sem vazios | **estrutural** |
 | `cabecalho_destacado` | negrito ou preenchimento na linha do cabeçalho | cosmético |
-| `larguras_adequadas` | largura ≠ padrão nas colunas com texto longo | cosmético |
-| `texto_nao_cortado` | conteúdo cabe na largura declarada | cosmético |
+| `larguras_legiveis` | largura em faixa legível **e** título não cortado | cosmético |
 | `formatos_consistentes` | mesmo `number_format` na coluna inteira | cosmético |
 | `alinhamento_coerente` | número à direita, texto à esquerda | cosmético |
 | `filtro` | `auto_filter` aplicado | cosmético |
@@ -133,13 +132,33 @@ sintéticas (`tests/fixtures/dominios/`):
 2. **Planilha organizada** — só existe se você confirmou a formatação;
 3. **Relatório da análise** (`relatorio_analise.xlsx`) — sempre.
 
-O relatório traz as abas Resumo, Abas do arquivo, Problemas encontrados,
+O relatório traz as abas Resumo, Abas do arquivo, Ocorrências encontradas,
 Linhas para revisão, Alterações realizadas, Antes e depois e Indicadores
 confirmados. Abas vazias são omitidas em vez de aparecerem em branco.
+
+A aba passou a se chamar **Ocorrências encontradas**: duplicidade é aviso,
+nunca problema, e "16 problemas" assustava sem motivo.
 
 Em **Downloads avançados** ficam os artefatos técnicos: registros válidos,
 registros para revisão, relatórios em JSON, schema aplicado e o pacote
 `pacote_execucao.zip` com as somas de verificação.
+
+---
+
+## F.1 Dashboard (opcional)
+
+Marcando **"Adicionar uma aba de Dashboard na planilha organizada"**, a
+`planilha_organizada.xlsx` ganha uma aba nova, na frente das outras, com as
+tabelas e os gráficos dos indicadores.
+
+Três condições, todas necessárias:
+
+1. a versão organizada precisa estar confirmada (é onde a aba mora);
+2. a coluna de **valor** precisa estar confirmada (sem ela não há o que somar);
+3. a caixa precisa ser marcada — ela começa desligada, como toda confirmação.
+
+O topo da aba declara de quais colunas os números vieram. A aba dos seus dados
+**não** recebe gráfico, total nem coluna nova.
 
 ---
 
@@ -201,7 +220,7 @@ O arquivo **não está versionado** e **não entra em fixture, commit ou ZIP**.
 
 ### I.3 Comprovado em navegador real (Chromium)
 
-`tests/e2e/test_jornada_planilhas_e2e.py` — 5 testes, **5 passaram em 30,6 s**.
+`tests/e2e/test_jornada_planilhas_e2e.py` — 6 testes, **6 passaram em 30,7 s**.
 O backend serve o `dist/` na própria origem, sem dev server no meio.
 
 | Teste | Cenário do contrato |
@@ -211,6 +230,7 @@ O backend serve o `dist/` na própria origem, sem dev server no meio.
 | `test_planilha_com_duplicidade_relata_sem_remover` | 3 |
 | `test_recusar_a_formatacao_nao_gera_planilha_organizada` | 4 |
 | `test_downloads_reais_da_planilha_organizada_e_do_relatorio` | 5 |
+| `test_dashboard_so_nasce_com_os_papeis_confirmados` | 6 (dashboard) |
 
 O cenário 5 baixa os arquivos pela mesma URL que o navegador usa e compara o
 **arquivo original byte a byte** com o que foi enviado.
@@ -223,6 +243,18 @@ Limitações honestas deste E2E: roda só em Chromium; usa fixtures pequenas
 (dezenas de linhas), não um arquivo de 7 mil registros; e não cobre rede
 instável, upload interrompido ou sessão expirando no meio.
 
+### I.3.1 Corrigido durante a homologação humana
+
+A homologação com a planilha real de 7.089 linhas revelou um defeito que
+2.448 testes automatizados e o teste de navegador não pegaram: a classificação
+de abas contava as células só nas 50 primeiras linhas, mas dividia pela área da
+planilha inteira. Resultado: **qualquer tabela com mais de 111 linhas** era
+rotulada "ambígua — área muito esparsa", e o relatório se contradizia. As
+fixtures têm de 13 a 21 linhas, então a suíte inteira passava.
+
+Corrigido, com regressão em planilhas de 20, 112, 500 e 3.000 linhas, mais um
+caso de duas abas grandes que continua exigindo a escolha da pessoa.
+
 ### I.4 Não testado
 
 - planilhas protegidas por senha e arquivos com macro (`.xlsm`);
@@ -231,6 +263,15 @@ instável, upload interrompido ou sessão expirando no meio.
 - leitores de tela reais (o teclado e os rótulos ARIA existem, mas ninguém
   navegou a jornada inteira com NVDA/JAWS);
 - planilhas com mais de 100 mil linhas.
+
+---
+
+## I.5 Observações que o sistema faz sem alterar nada
+
+Quando a coluna de data está em formato americano (`mm-dd-yy`, mês antes do
+dia), o relatório registra a observação em **Resumo → Observações e limites**.
+Os valores e o formato **não** são alterados: trocar o formato mudaria como a
+planilha é lida, e essa decisão é sua.
 
 ---
 
@@ -249,15 +290,15 @@ instável, upload interrompido ou sessão expirando no meio.
 
 | Verificação | Resultado |
 | --- | --- |
-| `pytest` (núcleo) | 2.448 passaram · cobertura 92,93% (mínimo 85%) |
-| `pytest live_demo/backend/tests` | 159 passaram |
-| `npm test` (vitest) | 66 passaram |
+| `pytest` (núcleo) | 2.463 passaram · cobertura 92,86% (mínimo 85%) |
+| `pytest live_demo/backend/tests` | 162 passaram |
+| `npm test` (vitest) | 68 passaram |
 | `npm run typecheck` | sem erros |
 | `npm run build` | build gerado |
 | `ruff check .` | limpo |
 | `ruff format --check .` | limpo |
 | `mypy src/` | 115 arquivos, sem problemas |
-| E2E Chromium | 5 passaram em 30,6 s |
+| E2E Chromium | 6 passaram em 30,7 s |
 
 ---
 

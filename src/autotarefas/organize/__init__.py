@@ -7,12 +7,14 @@ Quatro peças, cada uma com uma responsabilidade que não se mistura:
     presentation  avalia a apresentação por critérios verificáveis
     organizer     gera a versão organizada (apresentação + correções + ordem)
     insights      sugere papéis de coluna e calcula indicadores CONFIRMADOS
+    dashboard     desenha o painel (tabelas + graficos) dos indicadores
     report        escreve o `relatorio_analise.xlsx`
 
 A regra que atravessa o pacote: **nada muda sem confirmação**, e o arquivo
 original nunca é sobrescrito.
 """
 
+from autotarefas.organize.dashboard import describe_source, write_panel
 from autotarefas.organize.insights import (
     Indicator,
     IndicatorRequest,
@@ -23,6 +25,7 @@ from autotarefas.organize.insights import (
     summary_is_offerable,
 )
 from autotarefas.organize.organizer import (
+    DASHBOARD_SHEET,
     ORGANIZED_XLSX_NAME,
     OrganizeResult,
     PresentationChange,
@@ -34,6 +37,7 @@ from autotarefas.organize.presentation import (
     PresentationAudit,
     Verdict,
     audit_presentation,
+    date_format_notes,
 )
 from autotarefas.organize.report import (
     ANALYSIS_REPORT_NAME,
@@ -50,6 +54,7 @@ from autotarefas.organize.sheets import (
 
 __all__ = [
     "ANALYSIS_REPORT_NAME",
+    "DASHBOARD_SHEET",
     "ORGANIZED_XLSX_NAME",
     "Criterion",
     "Indicator",
@@ -66,11 +71,14 @@ __all__ = [
     "audit_presentation",
     "build_indicators",
     "candidates",
+    "date_format_notes",
     "default_request",
+    "describe_source",
     "needs_sheet_choice",
     "organize_workbook",
     "suggest_roles",
     "summary_is_offerable",
     "survey_sheets",
     "write_analysis_report",
+    "write_panel",
 ]

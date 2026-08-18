@@ -828,6 +828,7 @@ export function startValidation(
     sortColumn?: string;
     sortDesc?: boolean;
     indicators?: { valor: string; categoria: string; data: string };
+    dashboard?: boolean;
   } = {},
 ): Promise<ValidateStartResponse> {
   const form = new FormData();
@@ -845,6 +846,9 @@ export function startValidation(
     form.append("indicator_value", opts.indicators.valor);
     form.append("indicator_category", opts.indicators.categoria);
     form.append("indicator_date", opts.indicators.data);
+    // A aba de painel so faz sentido com um valor confirmado: sem ele nao ha
+    // numero para somar, e um "dashboard" vazio seria pior que nenhum.
+    if (opts.dashboard) form.append("dashboard", "true");
   }
   return postJourney<ValidateStartResponse>(
     `/api/spreadsheets/${encodeURIComponent(token)}/validate`,

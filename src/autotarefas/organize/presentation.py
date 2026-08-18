@@ -21,6 +21,7 @@ O modulo NAO altera nada: ele lê e conclui. Quem aplica e o `organizer`.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Literal
 
@@ -212,47 +213,43 @@ def _criterios_cabecalho(ws: Worksheet, header_row: int) -> tuple[Criterion, Cri
 
 
 def _criterio_larguras(ws: Worksheet, header_row: int, colunas: int) -> Criterion:
-    estreitas: list[str] = []
-    largas: list[str] = []
+    """
+    Largura da coluna e titulo visivel — um criterio so.
+
+    Eram dois, e o relatorio saia contraditorio: "Larguras legiveis: OK" na
+    linha de cima e "Titulos visiveis por inteiro: melhorar" na de baixo. Para
+    quem le, largura e o titulo caber sao a mesma pergunta. Continuam duas
+    medicoes, com um veredito so.
+    """
+    fora_de_faixa: list[str] = []
+    cortados: list[str] = []
     for indice in range(1, colunas + 1):
         largura = _largura(ws, indice)
         if largura is None:
             continue
-        titulo = str(ws.cell(row=header_row, column=indice).value or f"coluna {indice}")
-        if largura < LARGURA_MINIMA:
-            estreitas.append(titulo)
-        elif largura > LARGURA_MAXIMA:
-            largas.append(titulo)
-
-    problemas = estreitas + largas
-    return Criterion(
-        "larguras_adequadas",
-        "Larguras legíveis",
-        passed=not problemas,
-        detail=(
-            "todas as larguras definidas estão em faixa legível"
-            if not problemas
-            else f"fora da faixa: {', '.join(problemas[:4])}"
-        ),
-    )
-
-
-def _criterio_texto_cortado(ws: Worksheet, header_row: int, colunas: int) -> Criterion:
-    cortados: list[str] = []
-    for indice in range(1, colunas + 1):
-        largura = _largura(ws, indice)
         titulo = str(ws.cell(row=header_row, column=indice).value or "")
-        if largura is not None and titulo and len(titulo) > largura:
-            cortados.append(titulo)
+        rotulo = titulo or f"coluna {indice}"
+        if largura < LARGURA_MINIMA or largura > LARGURA_MAXIMA:
+            fora_de_faixa.append(rotulo)
+        elif titulo and len(titulo) > largura:
+            cortados.append(rotulo)
+
+    if not fora_de_faixa and not cortados:
+        detalhe = "larguras em faixa legível e nenhum título cortado"
+    elif fora_de_faixa and cortados:
+        detalhe = (
+            f"fora da faixa: {', '.join(fora_de_faixa[:3])}; cortado(s): {', '.join(cortados[:3])}"
+        )
+    elif cortados:
+        detalhe = f"título(s) provavelmente cortado(s): {', '.join(cortados[:4])}"
+    else:
+        detalhe = f"largura fora da faixa legível: {', '.join(fora_de_faixa[:4])}"
+
     return Criterion(
-        "texto_nao_cortado",
-        "Títulos visíveis por inteiro",
-        passed=not cortados,
-        detail=(
-            "nenhum título maior que a largura da coluna"
-            if not cortados
-            else f"provavelmente cortado(s): {', '.join(cortados[:4])}"
-        ),
+        "larguras_legiveis",
+        "Larguras e títulos legíveis",
+        passed=not (fora_de_faixa or cortados),
+        detail=detalhe,
     )
 
 
@@ -428,7 +425,6 @@ def audit_presentation(
         cabecalho_destacado,
         _criterio_estrutura(ws, header_row, colunas),
         _criterio_larguras(ws, header_row, colunas),
-        _criterio_texto_cortado(ws, header_row, colunas),
         _criterio_formatos(amostra, colunas),
         _criterio_alinhamento(amostra, colunas),
         _criterio_filtro(ws, linhas_dados),
@@ -447,6 +443,85 @@ def audit_presentation(
     )
 
 
+#: Trechos entre colchetes sao locale e cor ("[$-409]", "[Red]"), nao data.
+_COLCHETES = re.compile(r"\[[^\]]*\]")
+
+
+def _mes_antes_do_dia(formato: str) -> bool:
+    """
+    O formato mostra o mes ANTES do dia (padrao americano)?
+
+    Comparar a ordem de aparicao de `y`, `m` e `d` distingue os tres casos que
+    importam sem depender de listar formatos um a um:
+
+        mm-dd-yy    -> m antes de d  -> americano
+        dd/mm/aaaa  -> d antes de m  -> brasileiro
+        yyyy-mm-dd  -> y primeiro    -> ISO, tambem sem ambiguidade
+    """
+    limpo = _COLCHETES.sub("", formato).lower()
+    posicoes = {letra: limpo.find(letra) for letra in "ymd"}
+    if posicoes["d"] < 0 or posicoes["m"] < 0:
+        return False  # sem dia e mes juntos nao e data (ex.: "h:mm" e minuto)
+    if 0 <= posicoes["y"] < posicoes["m"]:
+        return False  # ano primeiro: ISO
+    return posicoes["m"] < posicoes["d"]
+
+
+def date_format_notes(
+    path: Path, *, sheet: str | None = None, header_row: int = 1
+) -> tuple[str, ...]:
+    """
+    Observa colunas de data em formato americano — sem alterar NADA.
+
+    Preservar o formato do arquivo continua sendo a regra. Mas ficar calado
+    quando uma planilha brasileira mostra 12-01-19 no lugar de 01/12/2019 e
+    deixar a pessoa descobrir sozinha, e ela tem o direito de saber.
+
+    Args:
+        path: XLSX/XLSM. Aberto somente para leitura.
+        sheet: aba analisada; `None` usa a ativa.
+        header_row: linha dos titulos.
+
+    Returns:
+        Uma observacao por coluna encontrada. Vazio quando nao ha nenhuma.
+    """
+    workbook = load_workbook(path, read_only=True, data_only=True)
+    try:
+        ws = workbook[sheet] if sheet and sheet in workbook.sheetnames else workbook.active
+        if ws is None:  # pragma: no cover - arquivo sem aba ativa
+            return ()
+        colunas = int(ws.max_column or 0)
+        achadas: list[str] = []
+        for indice in range(1, colunas + 1):
+            celulas = [
+                linha[0]
+                for linha in ws.iter_rows(
+                    min_row=header_row + 1,
+                    max_row=header_row + AMOSTRA,
+                    min_col=indice,
+                    max_col=indice,
+                )
+                if linha
+            ]
+            # A barra invertida e so escape do Excel ("mm\-dd\-yy"); tira-la
+            # evita ter que adivinhar onde ela cai dentro do formato.
+            formatos = {
+                str(c.number_format).replace("\\", "") for c in celulas if c.value is not None
+            }
+            americanos = sorted(f for f in formatos if _mes_antes_do_dia(f))
+            if not americanos:
+                continue
+            titulo = str(ws.cell(row=header_row, column=indice).value or f"coluna {indice}")
+            achadas.append(
+                f"a coluna '{titulo}' exibe datas no formato americano "
+                f"({americanos[0]}), com o mês antes do dia. Os valores não foram "
+                "alterados — trocar o formato mudaria como a planilha é lida"
+            )
+        return tuple(achadas)
+    finally:
+        workbook.close()
+
+
 __all__ = [
     "AMOSTRA",
     "LARGURA_MAXIMA",
@@ -458,4 +533,5 @@ __all__ = [
     "PresentationAudit",
     "Verdict",
     "audit_presentation",
+    "date_format_notes",
 ]
