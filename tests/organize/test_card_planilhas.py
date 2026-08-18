@@ -31,6 +31,7 @@ from autotarefas.organize import (
     suggest_roles,
     summary_is_offerable,
     survey_sheets,
+    text_number_notes,
     write_analysis_report,
 )
 from autotarefas.reader import read_workbook
@@ -141,6 +142,125 @@ class TestAbas:
 # ============================================================
 # Organização (formatação opcional e confirmada)
 # ============================================================
+
+
+class TestVariasTabelasNaMesmaAba:
+    """
+    Duas bases coladas na mesma aba viram uma contagem errada em silencio.
+
+    Nao da para adivinhar qual delas a pessoa quis: o card devolve a pergunta
+    e nao oferece organizacao — organizar duas tabelas como se fossem uma so
+    seria justamente o chute que o produto evita.
+    """
+
+    def _com_duas_tabelas(self, destino: Path) -> Path:
+        from openpyxl import Workbook
+
+        wb = Workbook()
+        ws = wb.active
+        assert ws is not None
+        ws.append(["Aluno", "Turma", "Nota"])
+        for i in range(1, 6):
+            ws.append([f"Aluno {i}", "3A", 7 + i % 3])
+        ws.append([])
+        ws.append(["Professor", "Disciplina"])
+        for i in range(1, 4):
+            ws.append([f"Prof {i}", "Matematica"])
+        wb.save(destino)
+        return destino
+
+    def test_segunda_tabela_torna_a_estrutura_ambigua(self, tmp_path: Path) -> None:
+        audit = audit_presentation(self._com_duas_tabelas(tmp_path / "duas.xlsx"))
+        criterio = next(c for c in audit.criteria if c.key == "tabela_unica")
+
+        assert criterio.passed is False
+        assert "outra tabela na mesma aba" in criterio.detail
+        assert audit.verdict == "ambigua"
+        assert audit.can_improve is False
+
+    def test_a_pendencia_diz_o_motivo_e_a_linha(self, tmp_path: Path) -> None:
+        """Na tela, o titulo do criterio sozinho nao explica nada."""
+        audit = audit_presentation(self._com_duas_tabelas(tmp_path / "duas.xlsx"))
+        pendencia = next(
+            p for p in audit.as_dict()["pendencias"] if p.startswith("Uma tabela por aba")
+        )
+        assert "linha 8" in pendencia
+
+    @pytest.mark.parametrize(
+        "fixture", [VENDAS, FINANCEIRO, PUBLICO, ESTOQUE, CONTRATOS, ATENDIMENTOS]
+    )
+    def test_planilha_normal_nao_vira_falso_positivo(self, fixture: Path) -> None:
+        criterio = next(c for c in audit_presentation(fixture).criteria if c.key == "tabela_unica")
+        assert criterio.passed is True, criterio.detail
+
+    def test_linha_em_branco_no_meio_nao_e_alarme(self, tmp_path: Path) -> None:
+        """Base com um respiro no meio e comum demais para virar alarme."""
+        from openpyxl import Workbook
+
+        wb = Workbook()
+        ws = wb.active
+        assert ws is not None
+        ws.append(["Protocolo", "Setor", "Dias"])
+        for i in range(1, 5):
+            ws.append([f"P{i}", "Obras", i])
+        ws.append([])
+        for i in range(5, 9):
+            ws.append([f"P{i}", "Saude", i])
+        destino = tmp_path / "respiro.xlsx"
+        wb.save(destino)
+
+        criterio = next(c for c in audit_presentation(destino).criteria if c.key == "tabela_unica")
+        assert criterio.passed is True, criterio.detail
+
+
+class TestNumeroComoTexto:
+    """O leitor entende o valor; dentro do Excel a coluna continua quebrada."""
+
+    def _planilha(self, destino: Path, valores: list[object], formato: str = "@") -> Path:
+        from openpyxl import Workbook
+
+        wb = Workbook()
+        ws = wb.active
+        assert ws is not None
+        ws.append(["Convenio", "Repasse"])
+        for i, valor in enumerate(valores, start=2):
+            ws.cell(row=i, column=1, value=f"CV-{i:03d}")
+            ws.cell(row=i, column=2, value=valor).number_format = formato
+        wb.save(destino)
+        return destino
+
+    def test_moeda_como_texto_vira_observacao(self, tmp_path: Path) -> None:
+        notas = text_number_notes(
+            self._planilha(tmp_path / "t.xlsx", ["1234,50", "2500,00", "980,25"])
+        )
+        assert len(notas) == 1
+        assert "Repasse" in notas[0]
+        assert "não somam" in notas[0]
+        assert "Nada foi convertido" in notas[0]
+
+    @pytest.mark.parametrize("valores", [["15%", "20%", "5%"], ["R$ 10,00", "R$ 20,00"]])
+    def test_percentual_e_moeda_escritos_por_gente(
+        self, valores: list[object], tmp_path: Path
+    ) -> None:
+        assert text_number_notes(self._planilha(tmp_path / "p.xlsx", valores))
+
+    def test_numero_de_verdade_nao_gera_ruido(self, tmp_path: Path) -> None:
+        assert text_number_notes(self._planilha(tmp_path / "n.xlsx", [1, 2, 3], "General")) == ()
+
+    def test_identificador_com_zero_a_esquerda_nao_e_numero(self, tmp_path: Path) -> None:
+        """ "000123" e codigo. Converter seria o estrago que o card evita."""
+        assert text_number_notes(self._planilha(tmp_path / "id.xlsx", ["000123", "000124"])) == ()
+
+    def test_texto_comum_nao_e_numero(self, tmp_path: Path) -> None:
+        assert (
+            text_number_notes(self._planilha(tmp_path / "c.xlsx", ["deferido", "em analise"])) == ()
+        )
+
+    def test_nao_altera_o_arquivo(self, tmp_path: Path) -> None:
+        arquivo = self._planilha(tmp_path / "t.xlsx", ["1234,50", "2500,00"])
+        antes = hashlib.sha256(arquivo.read_bytes()).hexdigest()
+        text_number_notes(arquivo)
+        assert hashlib.sha256(arquivo.read_bytes()).hexdigest() == antes
 
 
 class TestAbaGrande:

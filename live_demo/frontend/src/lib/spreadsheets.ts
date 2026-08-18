@@ -108,6 +108,11 @@ export interface AnalysisResponse {
   multiple_sheets: boolean;
   /** PapÃ©is SUGERIDOS para as colunas â€” nada Ã© aplicado sem confirmaÃ§Ã£o. */
   column_roles: ColumnRoles;
+  /**
+   * Observacoes sobre os DADOS que mudam a decisao de quem esta na tela:
+   * numero guardado como texto, data em formato americano. Nada e alterado.
+   */
+  notes: string[];
   /** Preenchido quando o arquivo foi recusado. */
   rejection: string | null;
 }
@@ -503,6 +508,9 @@ export function parseAnalysis(bruto: unknown): AnalysisResponse {
     presentation: normalizarApresentacao(bruto.presentation),
     sheets: normalizarAbas(bruto.sheets),
     multiple_sheets: bruto.multiple_sheets === true,
+    notes: Array.isArray(bruto.notes)
+      ? bruto.notes.filter((n): n is string => typeof n === "string")
+      : [],
     column_roles: normalizarPapeis(bruto.column_roles),
     rejection: recusa,
   };

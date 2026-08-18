@@ -8,6 +8,8 @@ interface Props {
   presentation: PresentationAudit | null;
   /** Colunas disponíveis para ordenação e para os papéis do resumo. */
   columns: string[];
+  /** O que chama atenção nos dados — observado, nunca alterado. */
+  notes: string[];
   duplicateRows: number;
 
   applyCleaning: boolean;
@@ -99,6 +101,7 @@ export default function SpreadsheetReview({
   busy,
   presentation,
   columns,
+  notes,
   duplicateRows,
   applyCleaning,
   onApplyCleaningChange,
@@ -159,6 +162,22 @@ export default function SpreadsheetReview({
               ))}
             </ul>
           ) : null}
+        </div>
+      ) : null}
+
+      {notes.length > 0 ? (
+        <div className="rounded-lg border border-white/10 bg-ink px-4 py-3">
+          <p className="text-[0.85rem] font-semibold text-fg">
+            Observações sobre os dados
+          </p>
+          <ul className="mt-1.5 space-y-1 text-[0.85rem] text-muted">
+            {notes.map((nota) => (
+              <li key={nota}>• {nota}</li>
+            ))}
+          </ul>
+          <p className="mt-2 text-[0.8rem] text-muted">
+            São observações, não correções: nada disso é alterado sem você pedir.
+          </p>
         </div>
       ) : null}
 

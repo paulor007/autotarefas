@@ -15,6 +15,10 @@ from .config import settings
 _CHUNK = 64 * 1024
 
 
+#: Formatos que carregam macro. Recusados com explicacao propria.
+_COM_MACRO = frozenset({".xlsm", ".xlsb", ".xltm"})
+
+
 class UploadError(Exception):
     """Erro de validacao de upload (vira 4xx no main)."""
 
@@ -35,6 +39,14 @@ def safe_name(filename: str | None) -> str:
 def _check_ext(name: str, allowed: tuple[str, ...]) -> None:
     ext = Path(name).suffix.lower()
     if ext not in allowed:
+        # Dizer so "extensao nao permitida" para um .xlsm faz a pessoa achar
+        # que o arquivo esta corrompido. O motivo e outro: macro nao roda aqui.
+        if ext in _COM_MACRO:
+            raise UploadError(
+                415,
+                f"arquivos {ext} podem conter macros e nao sao aceitos neste fluxo. "
+                "Salve uma copia como .xlsx (sem macros) e envie de novo",
+            )
         raise UploadError(415, f"extensao nao permitida: {ext or '(sem extensao)'}")
 
 

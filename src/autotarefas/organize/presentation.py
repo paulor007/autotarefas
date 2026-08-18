@@ -53,10 +53,16 @@ MAX_CORES_NOS_DADOS = 3
 #: coluna de datas tem formato consistente.
 AMOSTRA = 200
 
+#: Menos de duas colunas preenchidas nao formam cabecalho de tabela.
+MIN_TITULOS = 2
+
+#: Uma linha solta abaixo da tabela e nota de rodape; duas ja sao um corpo.
+MIN_LINHAS_DE_OUTRA_TABELA = 2
+
 #: Criterios ESTRUTURAIS: falhar num deles significa que nao entendemos a
 #: tabela, e organizar seria chutar. Falta de destaque no cabecalho NAO
 #: entra aqui — isso e questao de apresentacao, e tem conserto seguro.
-_ESTRUTURAIS = frozenset({"estrutura_tabular", "cabecalho_presente"})
+_ESTRUTURAIS = frozenset({"estrutura_tabular", "cabecalho_presente", "tabela_unica"})
 
 
 @dataclass(frozen=True, slots=True)
@@ -118,7 +124,9 @@ class PresentationAudit:
                 }
                 for c in self.criteria
             ],
-            "pendencias": [c.title for c in self.failures],
+            # Com o titulo so, a tela dizia "Estrutura tabular clara" e a
+            # pessoa tinha de abrir o relatorio para saber POR QUE falhou.
+            "pendencias": [f"{c.title} — {c.detail}" for c in self.failures],
         }
 
 
@@ -360,6 +368,72 @@ def _criterio_estrutura(ws: Worksheet, header_row: int, colunas: int) -> Criteri
     )
 
 
+def _blocos_de_dados(ws: Worksheet, header_row: int) -> list[list[int]]:
+    """Agrupa as linhas de dados em blocos separados por linhas vazias."""
+    blocos: list[list[int]] = []
+    atual: list[int] = []
+    for linha in range(header_row + 1, int(ws.max_row or header_row) + 1):
+        vazia = all(c.value is None or str(c.value).strip() == "" for c in ws[linha])
+        if vazia:
+            if atual:
+                blocos.append(atual)
+                atual = []
+            continue
+        atual.append(linha)
+    if atual:
+        blocos.append(atual)
+    return blocos
+
+
+def _preenchidas(ws: Worksheet, linha: int) -> list[Any]:
+    return [c.value for c in ws[linha] if c.value is not None and str(c.value).strip() != ""]
+
+
+def _criterio_tabela_unica(ws: Worksheet, header_row: int) -> Criterion:
+    """
+    Ha mais de uma tabela empilhada na mesma aba?
+
+    Duas bases coladas com uma linha em branco no meio sao lidas como uma
+    tabela so, e a contagem de registros sai errada sem ninguem perceber. Nao
+    da para adivinhar qual delas a pessoa quis: viramos a pergunta para ela.
+
+    O sinal e conservador de proposito — linha em branco no meio de uma base e
+    comum demais para virar alarme sozinha. Exige-se, alem do intervalo: um
+    bloco seguinte com corpo (2+ linhas), a primeira linha desse bloco toda
+    em texto (cara de cabecalho) e uma forma diferente da do primeiro bloco.
+    """
+    blocos = _blocos_de_dados(ws, header_row)
+    suspeitos: list[int] = []
+    if len(blocos) > 1:
+        largura_inicial = len(_preenchidas(ws, blocos[0][0])) if blocos[0] else 0
+        tipos_iniciais = {type(v) for linha in blocos[0][:AMOSTRA] for v in _preenchidas(ws, linha)}
+        for bloco in blocos[1:]:
+            if len(bloco) < MIN_LINHAS_DE_OUTRA_TABELA:  # nota solta, nao tabela
+                continue
+            valores = _preenchidas(ws, bloco[0])
+            if len(valores) < MIN_TITULOS or not all(isinstance(v, str) for v in valores):
+                continue
+            # Mesma forma e mesmo feitio dos dados: e continuacao, nao tabela nova.
+            if len(valores) == largura_inicial and tipos_iniciais <= {str}:
+                continue
+            suspeitos.append(bloco[0])
+
+    return Criterion(
+        "tabela_unica",
+        "Uma tabela por aba",
+        passed=not suspeitos,
+        detail=(
+            "os dados formam uma tabela contínua"
+            if not suspeitos
+            else (
+                "parece haver outra tabela na mesma aba, começando na linha "
+                f"{suspeitos[0]}: a contagem de registros mistura as duas. "
+                "Separe em abas diferentes ou escolha uma delas"
+            )
+        ),
+    )
+
+
 def _criterio_tabela(ws: Worksheet) -> Criterion:
     tabelas = getattr(ws, "tables", {}) or {}
     return Criterion(
@@ -424,6 +498,7 @@ def audit_presentation(
         cabecalho_presente,
         cabecalho_destacado,
         _criterio_estrutura(ws, header_row, colunas),
+        _criterio_tabela_unica(ws, header_row),
         _criterio_larguras(ws, header_row, colunas),
         _criterio_formatos(amostra, colunas),
         _criterio_alinhamento(amostra, colunas),
@@ -465,6 +540,84 @@ def _mes_antes_do_dia(formato: str) -> bool:
     if 0 <= posicoes["y"] < posicoes["m"]:
         return False  # ano primeiro: ISO
     return posicoes["m"] < posicoes["d"]
+
+
+#: Fracao da coluna que precisa parecer numero para valer o aviso.
+_MAIORIA_NUMERICA = 0.6
+
+
+def _parece_numero(texto: str) -> bool:
+    """
+    O texto e um numero escrito por gente? (R$ 1.234,50 / 15% / -3,5)
+
+    Identificadores com zero a esquerda ficam de fora: "000123" e codigo, nao
+    quantidade, e converte-lo seria justamente o estrago que o card evita.
+    """
+    limpo = texto.strip().replace("R$", "").replace("%", "").strip()
+    if not limpo:
+        return False
+    negativo = limpo.startswith("-")
+    corpo = limpo[1:] if negativo else limpo
+    if len(corpo) > 1 and corpo[0] == "0" and corpo[1].isdigit():
+        return False  # zero a esquerda: identificador
+    corpo = corpo.replace(".", "").replace(",", ".")
+    try:
+        float(corpo)
+    except ValueError:
+        return False
+    return True
+
+
+def text_number_notes(
+    path: Path, *, sheet: str | None = None, header_row: int = 1
+) -> tuple[str, ...]:
+    """
+    Observa colunas de numeros guardados como TEXTO — sem converter nada.
+
+    O leitor entende o valor de qualquer jeito, entao a analise nao quebra. Mas
+    dentro do Excel essa coluna nao soma, nao ordena direito e nao entra em
+    formula: e um problema real da planilha, e quem decide corrigir e o dono.
+
+    Args:
+        path: XLSX/XLSM. Aberto somente para leitura.
+        sheet: aba analisada; `None` usa a ativa.
+        header_row: linha dos titulos.
+
+    Returns:
+        Uma observacao por coluna encontrada. Vazio quando nao ha nenhuma.
+    """
+    workbook = load_workbook(path, read_only=True, data_only=True)
+    try:
+        ws = workbook[sheet] if sheet and sheet in workbook.sheetnames else workbook.active
+        if ws is None:  # pragma: no cover - arquivo sem aba ativa
+            return ()
+        achadas: list[str] = []
+        for indice in range(1, int(ws.max_column or 0) + 1):
+            valores = [
+                linha[0].value
+                for linha in ws.iter_rows(
+                    min_row=header_row + 1,
+                    max_row=header_row + AMOSTRA,
+                    min_col=indice,
+                    max_col=indice,
+                )
+                if linha and linha[0].value is not None
+            ]
+            textos = [v for v in valores if isinstance(v, str) and v.strip()]
+            if not valores or len(textos) < len(valores) * _MAIORIA_NUMERICA:
+                continue
+            numericos = [v for v in textos if _parece_numero(v)]
+            if len(numericos) < len(textos) * _MAIORIA_NUMERICA:
+                continue
+            titulo = str(ws.cell(row=header_row, column=indice).value or f"coluna {indice}")
+            achadas.append(
+                f"a coluna '{titulo}' guarda números como texto (ex.: "
+                f"'{numericos[0]}'). Dentro do Excel eles não somam nem ordenam "
+                "como número. Nada foi convertido — a decisão é sua"
+            )
+        return tuple(achadas)
+    finally:
+        workbook.close()
 
 
 def date_format_notes(
@@ -529,9 +682,12 @@ __all__ = [
     "LINHAS_PARA_FILTRO",
     "LINHAS_PARA_PAINEL",
     "MAX_CORES_NOS_DADOS",
+    "MIN_LINHAS_DE_OUTRA_TABELA",
+    "MIN_TITULOS",
     "Criterion",
     "PresentationAudit",
     "Verdict",
     "audit_presentation",
     "date_format_notes",
+    "text_number_notes",
 ]

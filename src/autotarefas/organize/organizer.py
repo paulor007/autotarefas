@@ -392,6 +392,10 @@ def _elementos_nao_preservados(ws: Worksheet) -> list[str]:
         perdidos.append(f"{len(ws._charts)} gráfico(s) do original não sobrevivem à regravação")
     if getattr(ws, "_images", None):
         perdidos.append(f"{len(ws._images)} imagem(ns) do original não sobrevivem à regravação")
+    if getattr(ws, "_pivots", None):
+        perdidos.append(
+            f"{len(ws._pivots)} tabela(s) dinâmica(s) do original não sobrevivem à regravação"
+        )
     return perdidos
 
 

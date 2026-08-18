@@ -712,6 +712,49 @@ class TestCardAnaliseEOrganizacao:
         assert d["column_roles"]["offerable"] is True
         assert all(p["motivo"] for p in papeis.values())
 
+    # --- observações sobre os dados -----------------------------------
+
+    def test_numero_como_texto_aparece_antes_de_executar(self, client: TestClient) -> None:
+        """Observar depois da execução seria tarde: a decisão é antes."""
+        d = self._enviar_dominio(client, "servico_publico.xlsx")
+        assert isinstance(d["notes"], list)
+
+    def test_csv_nao_gera_observacoes_de_planilha(self, client: TestClient) -> None:
+        d = self._enviar_dominio(client, "clientes.csv")
+        assert d["notes"] == []
+
+    def test_duas_tabelas_na_mesma_aba_viram_ambiguidade(
+        self, client: TestClient, tmp_path: Path
+    ) -> None:
+        """
+        Duas bases coladas na mesma aba nao podem ser organizadas por chute:
+        a contagem de registros mistura as duas.
+        """
+        from openpyxl import Workbook
+
+        caminho = tmp_path / "duas_tabelas.xlsx"
+        wb = Workbook()
+        ws = wb.active
+        assert ws is not None
+        ws.append(["Aluno", "Turma", "Nota"])
+        for i in range(1, 6):
+            ws.append([f"Aluno {i}", "3A", 7 + i % 3])
+        ws.append([])
+        ws.append(["Professor", "Disciplina"])
+        for i in range(1, 4):
+            ws.append([f"Prof {i}", "Matematica"])
+        wb.save(caminho)
+
+        with caminho.open("rb") as handle:
+            resposta = client.post(
+                "/api/spreadsheets/analyze",
+                files={"files": (caminho.name, handle, XLSX_MIME)},
+            )
+        d = dict(resposta.json())
+
+        assert d["presentation"]["veredito"] == "ambigua"
+        assert any("outra tabela na mesma aba" in p for p in d["presentation"]["pendencias"])
+
     # --- organização --------------------------------------------------
 
     def test_sem_confirmacao_nao_ha_planilha_organizada(self, client: TestClient) -> None:

@@ -38,6 +38,7 @@ from autotarefas.organize.presentation import (
     Verdict,
     audit_presentation,
     date_format_notes,
+    text_number_notes,
 )
 from autotarefas.organize.report import (
     ANALYSIS_REPORT_NAME,
@@ -79,6 +80,7 @@ __all__ = [
     "suggest_roles",
     "summary_is_offerable",
     "survey_sheets",
+    "text_number_notes",
     "write_analysis_report",
     "write_panel",
 ]

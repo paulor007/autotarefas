@@ -393,6 +393,26 @@ describe("SpreadsheetJourney", () => {
     expect(corpo?.get("indicator_value")).toBeNull();
   });
 
+  it("mostra as observações sobre os dados antes de executar", async () => {
+    await irAteRevisao({
+      notes: [
+        "a coluna 'Repasse' guarda números como texto (ex.: '1234,50')",
+        "a coluna 'Data' exibe datas no formato americano (mm-dd-yy)",
+      ],
+    });
+
+    expect(screen.getByText("Observações sobre os dados")).toBeTruthy();
+    expect(screen.getByText(/guarda números como texto/)).toBeTruthy();
+    expect(screen.getByText(/formato americano/)).toBeTruthy();
+    // O texto precisa deixar claro que observar nao e corrigir.
+    expect(screen.getByText(/não correções/i)).toBeTruthy();
+  });
+
+  it("não inventa bloco de observações quando não há nenhuma", async () => {
+    await irAteRevisao();
+    expect(screen.queryByText("Observações sobre os dados")).toBeNull();
+  });
+
   it("só oferece o Dashboard depois de confirmar a coluna de valor", async () => {
     await irAteRevisao({
       presentation: apresentacao("melhoravel"),

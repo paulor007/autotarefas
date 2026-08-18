@@ -52,6 +52,8 @@ O que é verificado automaticamente, em qualquer área, quando aplicável:
 | Mistura de tipos | `coluna_mista` e `tipos_misturados`, sem converter à força |
 | Espaços desnecessários | `espacos_extras` |
 | Fórmulas existentes | `formulas` (usa o valor salvo) e recusa de ordenação |
+| Mais de uma tabela na mesma aba | critério estrutural → veredicto ambíguo, com a linha |
+| Números guardados como texto | observação na revisão e no relatório, sem converter |
 | Rodapé de totais | `rodape_suspeito`, sem remover |
 | Data em formato americano | observação no relatório, sem alterar |
 | Apresentação, cabeçalho, larguras, filtro, painel | 9 critérios objetivos |
@@ -96,7 +98,8 @@ Nada aqui é opinião de estilo. Cada critério é verificável em
 
 | Critério | Como é medido | Peso |
 | --- | --- | --- |
-| `estrutura_tabular` | ausência de mesclagens na área de dados | **estrutural** |
+| `estrutura_tabular` | mesclagens, títulos repetidos, colunas sem título | **estrutural** |
+| `tabela_unica` | uma só tabela na aba, sem outra base colada abaixo | **estrutural** |
 | `cabecalho_presente` | linha de cabeçalho identificável, sem vazios | **estrutural** |
 | `cabecalho_destacado` | negrito ou preenchimento na linha do cabeçalho | cosmético |
 | `larguras_legiveis` | largura em faixa legível **e** título não cortado | cosmético |
@@ -306,12 +309,12 @@ Verificado com sondas em 18/08/2026:
 | Macros (`.xlsm`) | recusado no envio: só `.csv` e `.xlsx` são aceitos |
 | Gráficos e imagens não preserváveis | declarados em "Observações e limites" |
 | Estrutura ambígua | veredicto próprio, sem organizar |
-| **Várias tabelas na mesma aba** | **não detectado** — lê como tabela única |
-| **Números guardados como texto** | valor é entendido, mas **não há aviso** |
-| **Tabelas dinâmicas** | **não detectadas nem declaradas** |
+| Várias tabelas na mesma aba | veredicto **ambíguo**, dizendo em que linha a segunda começa |
+| Números guardados como texto | observação na revisão e no relatório, sem converter |
+| Tabelas dinâmicas | declaradas junto com gráficos e imagens |
 
-As três últimas linhas são limitações conhecidas, não comportamentos
-desejados.
+As três últimas eram limitações conhecidas e foram fechadas em 18/08/2026,
+depois da homologação humana.
 
 ### I.4 Não testado
 
@@ -348,15 +351,15 @@ planilha é lida, e essa decisão é sua.
 
 | Verificação | Resultado |
 | --- | --- |
-| `pytest` (núcleo) | 2.463 passaram · cobertura 92,86% (mínimo 85%) |
-| `pytest live_demo/backend/tests` | 162 passaram |
-| `npm test` (vitest) | 68 passaram |
+| `pytest` (núcleo) | 2.479 passaram · cobertura 92,83% (mínimo 85%) |
+| `pytest live_demo/backend/tests` | 165 passaram |
+| `npm test` (vitest) | 70 passaram |
 | `npm run typecheck` | sem erros |
 | `npm run build` | build gerado |
 | `ruff check .` | limpo |
 | `ruff format --check .` | limpo |
 | `mypy src/` | 115 arquivos, sem problemas |
-| E2E Chromium | 6 passaram em 30,7 s |
+| E2E Chromium | 6 passaram em 28,4 s |
 
 ---
 

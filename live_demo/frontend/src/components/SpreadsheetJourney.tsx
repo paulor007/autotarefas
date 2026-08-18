@@ -263,6 +263,7 @@ export default function SpreadsheetJourney() {
           busy={busy}
           presentation={analysis.presentation}
           columns={jornada.columns}
+          notes={analysis.notes}
           duplicateRows={analysis.duplicate_rows}
           applyCleaning={jornada.applyCleaning}
           onApplyCleaningChange={jornada.setApplyCleaning}

@@ -64,6 +64,7 @@ from autotarefas.organize import (
     suggest_roles,
     summary_is_offerable,
     survey_sheets,
+    text_number_notes,
     write_analysis_report,
 )
 from autotarefas.profiles import (
@@ -210,16 +211,17 @@ def _diagnostico_estendido(journey: jobs.Journey) -> dict[str, Any]:
     """
     O que a analise geral acrescenta ao diagnostico estrutural.
 
-    Tres coisas que a pessoa precisa ANTES de decidir: como estao as abas,
-    como esta a apresentacao e se da para propor um resumo com seguranca.
-    Nada aqui altera o arquivo, e nada e aplicado — e diagnostico.
+    Quatro coisas que a pessoa precisa ANTES de decidir: como estao as abas,
+    como esta a apresentacao, o que chama atencao nos dados e se da para
+    propor um resumo com seguranca. Nada aqui altera o arquivo, e nada e
+    aplicado — e diagnostico.
 
     Em CSV nao ha apresentacao nem abas para avaliar: o payload sai vazio,
     e a interface simplesmente nao oferece a organizacao visual.
     """
     origem = journey.source_path
     if not _e_xlsx(origem):
-        return {"sheets": [], "presentation": None, "multiple_sheets": False}
+        return {"sheets": [], "presentation": None, "multiple_sheets": False, "notes": []}
 
     try:
         abas = survey_sheets(origem)
@@ -227,14 +229,31 @@ def _diagnostico_estendido(journey: jobs.Journey) -> dict[str, Any]:
             origem, sheet=journey.sheet, header_row=journey.header_row or 1
         )
     except (OSError, ValueError, KeyError):  # pragma: no cover - arquivo ilegivel
-        return {"sheets": [], "presentation": None, "multiple_sheets": False}
+        return {"sheets": [], "presentation": None, "multiple_sheets": False, "notes": []}
 
     journey.presentation_verdict = auditoria.verdict
     return {
         "sheets": [info.as_dict() for info in abas],
         "presentation": auditoria.as_dict(),
         "multiple_sheets": needs_sheet_choice(abas),
+        # Observacoes que mudam a decisao de quem esta olhando a tela agora.
+        # Estavam so no relatorio, depois de executar — tarde demais.
+        "notes": [*_observacoes_dos_dados(journey)],
     }
+
+
+def _observacoes_dos_dados(journey: jobs.Journey) -> list[str]:
+    """O que chama atencao nos dados, sem alterar nada."""
+    if not _e_xlsx(journey.source_path):
+        return []
+    argumentos = {"sheet": journey.sheet, "header_row": journey.header_row or 1}
+    try:
+        return [
+            *date_format_notes(journey.source_path, **argumentos),
+            *text_number_notes(journey.source_path, **argumentos),
+        ]
+    except (OSError, ValueError, KeyError):  # pragma: no cover - arquivo ilegivel
+        return []
 
 
 def _papeis_payload(journey: jobs.Journey) -> dict[str, Any]:
@@ -855,15 +874,9 @@ def _pos_processar(job: jobs.Job, journey: jobs.Journey) -> None:
             auditoria = audit_presentation(
                 journey.source_path, sheet=journey.sheet, header_row=journey.header_row or 1
             )
-            # Observar sem alterar: uma planilha brasileira com data no formato
-            # americano e um deslize que a pessoa tem o direito de saber.
-            observacoes.extend(
-                date_format_notes(
-                    journey.source_path,
-                    sheet=journey.sheet,
-                    header_row=journey.header_row or 1,
-                )
-            )
+            # As mesmas observacoes que a tela mostrou antes de executar
+            # entram no relatorio, para quem so recebe o arquivo.
+            observacoes.extend(_observacoes_dos_dados(journey))
         except (OSError, ValueError):  # pragma: no cover
             auditoria = None
 
