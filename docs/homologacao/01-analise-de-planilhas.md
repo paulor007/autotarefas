@@ -1,7 +1,7 @@
 # Card 01 — Análise e organização de planilhas
 
 **Status: HOMOLOGADO.**
-Homologado por Paulo Lavarini (proprietário do produto) em **18/08/2026**, ao
+Homologado por Paulo Lavarini (proprietário do produto) em **19/08/2026**, ao
 final de uma sessão de homologação humana guiada, conduzida com a planilha real
 `Vendas - Dez.xlsx` (7.089 registros) e com as planilhas de teste sintéticas.
 
@@ -41,15 +41,20 @@ agendamentos, protocolos e atendimentos públicos, assistência social, compras 
 contratos, recursos humanos, logística, educação, saúde administrativa,
 pesquisas e bases públicas, projetos e patrimônio.
 
-| Formato | Análise geral | Apresentação e organização |
-| --- | --- | --- |
-| `.xlsx` | sim | sim |
-| `.csv` | sim | não há apresentação para avaliar |
-| `.xls` (Excel antigo) | sim | não — o openpyxl não abre o formato |
-| `.ods` (LibreOffice) | sim | não — o openpyxl não abre o formato |
+**XLSX** — análise geral, avaliação da apresentação e versão organizada.
+É o único formato completo, porque é o único que o openpyxl abre para
+inspecionar formatação.
 
-Para `.csv`, `.xls` e `.ods` a tela **não oferece** a versão organizada, e diz
-o porquê. Prometer organização nesses formatos seria mentira.
+**CSV** — análise geral. Não há apresentação para avaliar: é texto puro.
+
+**ODS (LibreOffice)** — análise geral. Sem avaliação de apresentação e sem
+versão organizada. *Verificado de ponta a ponta* (seção I.2).
+
+**XLS (Excel antigo)** — análise geral, pelo mesmo caminho do ODS.
+**Não verificado com um arquivo válido** — ver a ressalva na seção I.4.
+
+Nos três últimos a tela **não oferece** a versão organizada, e diz o porquê.
+Prometer organização neles seria mentira.
 
 O que é verificado automaticamente, em qualquer área, quando aplicável:
 
@@ -338,6 +343,14 @@ instável, upload interrompido ou sessão expirando no meio.
 
 ### I.4 Não testado
 
+- **`.xls` válido.** A leitura de `.xls` usa exatamente o mesmo caminho do
+  `.ods` (pandas + motor específico), e o `.ods` foi verificado de ponta a
+  ponta. Mas nenhum `.xls` legítimo foi lido: o projeto não tem como *criar*
+  um — `xlrd` só lê, e `xlwt` (a única biblioteca que escreve) está sem
+  manutenção desde 2017 e não foi adicionada como dependência só para isso.
+  O que **foi** verificado é a rede de proteção: um `.xls` que não abre vira
+  recusa com o motivo, nunca erro técnico. Se aparecer um `.xls` real, basta
+  enviá-lo pela tela — e o teste automatizado pode então ser escrito;
 - planilhas realmente protegidas por senha (a recusa foi verificada com
   arquivo ilegível, não com um arquivo cifrado de verdade);
 - arquivos com macro — `.xlsm` é recusado no envio, por decisão de projeto;
@@ -365,7 +378,8 @@ fica de fora do aviso de propósito — `000123` é código, não quantidade.
 
 ## J. Estruturas que exigem cautela
 
-Verificado com sondas em 18/08/2026:
+Comportamento observado em sondas de 18 e 19/08/2026 — exceto na linha
+marcada como não verificada:
 
 | Estrutura | Comportamento |
 | --- | --- |
@@ -374,7 +388,8 @@ Verificado com sondas em 18/08/2026:
 | Títulos de coluna repetidos | veredicto **ambíguo**; não organiza |
 | Várias tabelas na mesma aba | veredicto **ambíguo**, dizendo em que linha a segunda começa |
 | Formulário/relatório sem estrutura tabular | aba classificada como "apresentação" |
-| Planilha protegida ou ilegível | recusa: "pode estar corrompido, protegido ou não ser uma planilha válida" |
+| Arquivo corrompido ou ilegível | recusa com o motivo — **verificado** |
+| Planilha protegida por senha | espera-se a mesma recusa, pela mesma porta — **não verificado** (I.4) |
 | Macros (`.xlsm`) | recusado no envio, explicando que o motivo é macro |
 | Gráficos, imagens e tabelas dinâmicas | declarados em "Observações e limites" |
 | Números guardados como texto | observação, sem converter |
@@ -412,23 +427,48 @@ Verificado com sondas em 18/08/2026:
 
 ## M. Registro da homologação humana
 
-**Data:** 18/08/2026 · **Homologado por:** Paulo Lavarini (proprietário)
+**Data:** 19/08/2026 · **Homologado por:** Paulo Lavarini (proprietário)
+**Verificações técnicas:** 18 e 19/08/2026
 **Arquivo real usado:** `Vendas - Dez.xlsx` (7.089 registros, não versionado)
 
 ### M.1 O que a homologação humana encontrou
 
-Sete achados que **nenhum dos 2.448 testes automatizados nem o teste de
-navegador haviam pego**. Todos corrigidos antes da homologação.
+Sete achados que **nenhum dos 2.448 testes automatizados existentes naquele
+momento, nem o teste de navegador, haviam pego**. Todos corrigidos antes da
+homologação; a suíte terminou a sessão com 2.485 testes de núcleo, já
+incluindo as regressões escritas para cada um destes achados.
 
-| # | Achado | Tipo | Correção |
-| --- | --- | --- | --- |
-| 1 | Toda tabela com mais de 111 linhas era classificada "ambígua — 1% preenchida". A contagem de células olhava 50 linhas e dividia pela área da planilha inteira | informação falsa | conta corrigida; regressão em 20/112/500/3.000 linhas |
-| 2 | Avaliação da apresentação levava **16 s** numa planilha de 7 mil linhas, e rodava duas vezes | desempenho | uma passada com `values_only`: 16 s → 0,5 s; jornada de ~40 s → 8,6 s; teste de guarda de 5 s |
-| 3 | Barra dizia "Conectando…" para sempre — media os servidores de demonstração, não o sistema | informação falsa | passou a refletir a saúde do backend |
-| 4 | Lista dos seletores ilegível: texto branco sobre fundo branco, visível só no hover. Classe `bg-panel` não existia na paleta | usabilidade | token real + regra explícita para `select`/`option` |
-| 5 | "16 problemas encontrados" contradizia o produto (duplicidade é aviso) | vocabulário | "Ocorrências encontradas", sem destaque de erro |
-| 6 | "Larguras legíveis: OK" seguido de "Títulos visíveis: melhorar" | vocabulário | um critério só |
-| 7 | Relatório dizia "nenhuma coluna de valor foi confirmada" mesmo quando ela tinha sido escolhida | informação falsa | três motivos distintos, cada um verdadeiro |
+**1. Classificação de aba errada em toda planilha real** *(informação falsa)*
+Qualquer tabela com mais de 111 linhas era rotulada "ambígua — 1% preenchida":
+a contagem de células olhava 50 linhas e dividia pela área da planilha inteira.
+*Correção:* conta refeita, com regressão em 20, 112, 500 e 3.000 linhas.
+
+**2. Avaliação da apresentação levava 16 s** *(desempenho)*
+Numa planilha de 7 mil linhas, e rodava duas vezes — a jornada parecia travada.
+*Correção:* uma passada com `values_only` (16 s → 0,5 s; jornada de ~40 s →
+8,6 s), mais um teste de guarda de 5 s para 5 mil linhas.
+
+**3. Barra dizia "Conectando…" para sempre** *(informação falsa)*
+Media se os servidores de demonstração estavam vivos, não o sistema.
+*Correção:* passou a refletir a saúde do backend.
+
+**4. Lista dos seletores ilegível** *(usabilidade)*
+Texto branco sobre fundo branco, visível só ao passar o mouse: a classe
+`bg-panel` não existia na paleta, então o campo ficava sem fundo.
+*Correção:* token real, mais uma regra explícita para `select` e `option`.
+
+**5. "16 problemas encontrados"** *(vocabulário)*
+Contradizia o próprio produto, que trata duplicidade como aviso.
+*Correção:* "Ocorrências encontradas", sem destaque de erro.
+
+**6. "Larguras legíveis: OK" seguido de "Títulos visíveis: melhorar"**
+*(vocabulário)* — duas linhas do relatório se contradizendo.
+*Correção:* um critério só.
+
+**7. Motivo errado quando faltava a dimensão** *(informação falsa)*
+O relatório dizia "nenhuma coluna de valor foi confirmada" mesmo quando ela
+tinha sido escolhida e o que faltava era categoria ou data.
+*Correção:* três motivos distintos, cada um verdadeiro.
 
 ### M.2 Lacunas de escopo fechadas na homologação
 
