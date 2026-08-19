@@ -50,8 +50,8 @@ inspecionar formatação.
 **ODS (LibreOffice)** — análise geral. Sem avaliação de apresentação e sem
 versão organizada. *Verificado de ponta a ponta* (seção I.2).
 
-**XLS (Excel antigo)** — análise geral, pelo mesmo caminho do ODS.
-**Não verificado com um arquivo válido** — ver a ressalva na seção I.4.
+**XLS (Excel antigo)** — análise geral. *Verificado com um `.xls` real,
+gravado pelo Excel* (seção I.2).
 
 Nos três últimos a tela **não oferece** a versão organizada, e diz o porquê.
 Prometer organização neles seria mentira.
@@ -184,6 +184,14 @@ sintéticas (`tests/fixtures/dominios/`):
 | `atendimentos_duas_abas.xlsx` | pergunta qual aba usar, sem escolher em silêncio |
 | `contratos_sem_anomalia.xlsx` | conclui sem nada a decidir |
 | `clientes.csv` | CSV: sem avaliação de apresentação, análise normal |
+| `patrimonio_legado.xls` | `.xls` antigo: análise normal, sem organização |
+
+Todas as fixtures são geradas por `build_fixtures.py`, com uma exceção:
+`patrimonio_legado.xls` é versionada como binário. Nenhuma biblioteca do
+projeto escreve `.xls` — `xlrd` só lê e `xlwt` está sem manutenção desde 2017
+— então ela foi produzida uma vez, a partir de dados sintéticos, convertendo
+com o Excel instalado (`SaveAs` com formato 56, BIFF8). O motivo está escrito
+no topo do `build_fixtures.py`.
 
 Nota de operação: o Live aceita **40 sessões simultâneas** e cada uma expira em
 **15 minutos**. Passando disso, o envio responde "servidor ocupado, tente em
@@ -313,8 +321,12 @@ O arquivo **não está versionado** e **não entra em fixture, commit ou ZIP**.
 - números guardados como texto e datas em formato americano;
 - geração do `relatorio_analise.xlsx` com as abas previstas;
 - indicadores só com papéis confirmados (confiança mínima 0,6);
-- leitura de `.ods` e recusa explicada de `.xls` ilegível
-  (`tests/reader/test_formatos_legados.py`).
+- leitura de `.ods` (criado no próprio teste) e de um **`.xls` real gravado
+  pelo Excel**, com aba, cabeçalho, duplicidade e zero à esquerda conferidos,
+  mais a recusa explicada de um `.xls` ilegível
+  (`tests/reader/test_formatos_legados.py`, 9 testes);
+- `.xls` real percorrendo a jornada pela API, sem oferecer organização
+  (`live_demo/backend/tests/test_spreadsheets.py`).
 
 ### I.3 Comprovado em navegador real (Chromium)
 
@@ -343,14 +355,6 @@ instável, upload interrompido ou sessão expirando no meio.
 
 ### I.4 Não testado
 
-- **`.xls` válido.** A leitura de `.xls` usa exatamente o mesmo caminho do
-  `.ods` (pandas + motor específico), e o `.ods` foi verificado de ponta a
-  ponta. Mas nenhum `.xls` legítimo foi lido: o projeto não tem como *criar*
-  um — `xlrd` só lê, e `xlwt` (a única biblioteca que escreve) está sem
-  manutenção desde 2017 e não foi adicionada como dependência só para isso.
-  O que **foi** verificado é a rede de proteção: um `.xls` que não abre vira
-  recusa com o motivo, nunca erro técnico. Se aparecer um `.xls` real, basta
-  enviá-lo pela tela — e o teste automatizado pode então ser escrito;
 - planilhas realmente protegidas por senha (a recusa foi verificada com
   arquivo ilegível, não com um arquivo cifrado de verdade);
 - arquivos com macro — `.xlsm` é recusado no envio, por decisão de projeto;
@@ -413,15 +417,15 @@ marcada como não verificada:
 
 | Verificação | Resultado |
 | --- | --- |
-| `pytest` (núcleo) | **2.485** passaram · cobertura 92,86% (mínimo 85%) |
-| `pytest live_demo/backend/tests` | **172** passaram |
+| `pytest` (núcleo) | **2.489** passaram · cobertura 92,86% (mínimo 85%) |
+| `pytest live_demo/backend/tests` | **173** passaram |
 | `npm test` (vitest) | **72** passaram |
 | `npm run typecheck` | sem erros |
 | `npm run build` | build gerado |
 | `ruff check .` | limpo |
 | `ruff format --check .` | limpo |
 | `mypy src/` | 116 arquivos, sem problemas |
-| E2E Chromium | **6** passaram em 30,3 s |
+| E2E Chromium | **6** passaram em 29,9 s |
 
 ---
 
@@ -485,7 +489,8 @@ vendas. Três itens do contrato não estavam cobertos e foram implementados:
 - aba de **Dashboard** opcional dentro da planilha organizada;
 - **prévia do resumo** antes de executar;
 - **aviso imediato** quando a coluna de Valor não é numérica;
-- leitura de **`.xls` e `.ods`**, com o limite declarado na tela.
+- leitura de **`.xls` e `.ods`**, com o limite declarado na tela e com
+  ambos verificados por teste automatizado.
 
 ### M.4 Commits desta homologação
 

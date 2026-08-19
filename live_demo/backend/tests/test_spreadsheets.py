@@ -932,6 +932,28 @@ class TestCardAnaliseEOrganizacao:
         # A verificacao de repetidas nao depende do formato.
         assert d["duplicate_rows"] == 1
 
+    def test_xls_real_e_analisado_pela_jornada(self, client: TestClient) -> None:
+        """
+        `.xls` legitimo, gravado pelo Excel — o formato que ainda chega de
+        sistema antigo. A fixture e versionada porque o projeto nao tem como
+        escrever `.xls`; ver `tests/fixtures/dominios/build_fixtures.py`.
+        """
+        caminho = DOMINIOS / "patrimonio_legado.xls"
+        with caminho.open("rb") as handle:
+            resposta = client.post(
+                "/api/spreadsheets/analyze",
+                files={"files": (caminho.name, handle, "application/vnd.ms-excel")},
+            )
+        d = dict(resposta.json())
+
+        assert resposta.status_code == HTTP_OK, resposta.text[:200]
+        assert d["status"] == "analysis_ready"
+        assert d["analysis"]["leitura"]["selected_sheet"] == "Bens"
+        assert d["analysis"]["estrutura"]["row_count"] == 6
+        assert d["duplicate_rows"] == 1
+        # Sem apresentacao para avaliar, nada de organizacao — como no CSV.
+        assert d["presentation"] is None
+
     def test_ods_nao_promete_organizacao(self, client: TestClient, tmp_path: Path) -> None:
         """
         Sem apresentacao para avaliar, a tela nao pode oferecer a versao

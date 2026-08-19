@@ -13,15 +13,12 @@ esta instalada.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from pathlib import Path
 
 import pandas as pd
 import pytest
 
 from autotarefas.reader import read_workbook
-
-if TYPE_CHECKING:
-    from pathlib import Path
 
 
 @pytest.fixture
@@ -61,6 +58,54 @@ class TestOds:
         read_workbook(beneficios_ods)
 
         assert hashlib.sha256(beneficios_ods.read_bytes()).hexdigest() == antes
+
+
+#: `.xls` de verdade, gravado pelo Excel (BIFF8). Nao da para gerar aqui:
+#: `xlrd` so le, e `xlwt` esta sem manutencao desde 2017 — por isso a fixture
+#: e versionada. Ver `tests/fixtures/dominios/build_fixtures.py`.
+PATRIMONIO_XLS = (
+    Path(__file__).resolve().parents[1] / "fixtures" / "dominios" / "patrimonio_legado.xls"
+)
+
+
+class TestXls:
+    """
+    `.xls` legitimo, do Excel — nao um arquivo renomeado.
+
+    Este e o formato que ainda chega de sistemas antigos de orgao publico.
+    Aceitar a extensao sem nunca ter lido um arquivo valido seria promessa
+    sem prova.
+    """
+
+    def test_e_mesmo_um_xls_e_nao_um_xlsx_renomeado(self) -> None:
+        """A assinatura OLE (D0CF11E0) prova que o binario e BIFF, nao zip."""
+        assert PATRIMONIO_XLS.read_bytes()[:4] == bytes.fromhex("d0cf11e0")
+
+    def test_e_lido_como_tabela(self) -> None:
+        leitura = read_workbook(PATRIMONIO_XLS)
+
+        assert leitura.ok, leitura.rejected_reason
+        assert leitura.file_type == "legado"
+        assert leitura.selected_sheet == "Bens"
+        assert leitura.header_row == 1
+        assert list(leitura.original_dataframe.columns) == [
+            "Tombamento",
+            "Bem",
+            "Setor",
+            "Valor",
+        ]
+        assert len(leitura.original_dataframe) == 6
+
+    def test_analise_geral_funciona_igual(self) -> None:
+        leitura = read_workbook(PATRIMONIO_XLS)
+
+        assert "linhas_duplicadas" in {aviso.code for aviso in leitura.warnings}
+
+    def test_zero_a_esquerda_sobrevive(self) -> None:
+        """`000431` e tombamento, nao quantidade. Virar 431 seria estrago."""
+        leitura = read_workbook(PATRIMONIO_XLS)
+
+        assert leitura.original_dataframe.iloc[0, 0] == "000431"
 
 
 class TestRecusas:

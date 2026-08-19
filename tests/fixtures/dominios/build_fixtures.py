@@ -246,6 +246,21 @@ def _contratos_sem_anomalia() -> None:
     wb.save(AQUI / "contratos_sem_anomalia.xlsx")
 
 
+#: `patrimonio_legado.xls` NAO e gerado por este script.
+#:
+#: Nenhuma biblioteca do projeto escreve .xls: o `xlrd` so le, e o `xlwt`
+#: esta sem manutencao desde 2017. A fixture foi produzida uma vez, a partir
+#: de dados sinteticos, convertendo com o Excel instalado na maquina:
+#:
+#:     $excel = New-Object -ComObject Excel.Application
+#:     $wb = $excel.Workbooks.Open("patrimonio_base.xlsx")
+#:     $wb.SaveAs("patrimonio_legado.xls", 56)   # 56 = xlExcel8 (BIFF8)
+#:
+#: Por isso ela e versionada como binario, e nao regenerada a cada execucao.
+#: Conteudo: 6 bens publicos, um tombamento duplicado de proposito e codigos
+#: com zero a esquerda.
+
+
 def main() -> None:
     _vendas_simples()
     _financeiro_profissional()
@@ -255,7 +270,7 @@ def main() -> None:
     _pesquisa_ambigua()
     _atendimentos_duas_abas()
     _contratos_sem_anomalia()
-    print(f"OK: 8 fixtures de dominios em {AQUI}")
+    print(f"OK: 8 fixtures geradas em {AQUI} (patrimonio_legado.xls e versionada)")
 
 
 if __name__ == "__main__":
