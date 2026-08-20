@@ -2,13 +2,24 @@
 
 from __future__ import annotations
 
+import csv
+import hashlib
+import io
 import zipfile
+from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 import pytest
 
 from autotarefas.core.base import TaskStatus
-from autotarefas.tasks.backup import BackupTask
+from autotarefas.tasks.backup import (
+    MANIFEST_NAME,
+    BackupTask,
+    rotate_backups,
+    timestamped_name,
+    verify_backup,
+)
 
 # ============================================================
 # Helpers
@@ -33,7 +44,18 @@ def _criar_estrutura(base: Path, files: dict[str, str]) -> None:
 
 
 def _zip_namelist(zip_path: Path) -> list[str]:
-    """Retorna lista de arcnames dentro do ZIP."""
+    """
+    Arcnames dos ARQUIVOS dentro do ZIP.
+
+    Ignora o `MANIFESTO.csv` e as entradas de pasta: todo pacote passou a ter
+    os dois, e os testes aqui falam do conteudo copiado.
+    """
+    with zipfile.ZipFile(zip_path) as zf:
+        return [n for n in zf.namelist() if n != MANIFEST_NAME and not n.endswith("/")]
+
+
+def _zip_todas_as_entradas(zip_path: Path) -> list[str]:
+    """Tudo que ha no pacote, inclusive manifesto e pastas."""
     with zipfile.ZipFile(zip_path) as zf:
         return zf.namelist()
 
@@ -535,3 +557,413 @@ class TestBackupTaskSeguranca:
                 sources=[projeto_simples],
                 destination=dest_ruim,
             )
+
+
+# ============================================================
+# Tests: os defeitos encontrados na auditoria do card
+#
+# Cada classe abaixo corresponde a um problema COMPROVADO antes da correcao.
+# Sao os casos em que um backup falha na vida real — arquivo aberto no Excel,
+# duas pastas com o mesmo nome, falha no meio da gravacao — e onde falhar em
+# silencio e pior do que nao ter rodado.
+# ============================================================
+
+
+def _travar(caminho: Path) -> Any:
+    """Trava um arquivo como o Office faz, e devolve o handle aberto."""
+    import msvcrt
+
+    fh = caminho.open("r+b")
+    msvcrt.locking(fh.fileno(), msvcrt.LK_NBLCK, 100)
+    return fh
+
+
+def _destravar(fh: Any) -> None:
+    import msvcrt
+
+    msvcrt.locking(fh.fileno(), msvcrt.LK_UNLCK, 100)
+    fh.close()
+
+
+class TestArquivoIlegivelNaoDerrubaOBackup:
+    """
+    Arquivo travado, sem permissao ou que sumiu nao pode abortar tudo.
+
+    Numa micro empresa em horario comercial, a planilha mais importante e
+    justamente a que esta aberta. Antes, um unico arquivo assim derrubava o
+    backup inteiro e nenhum pacote era entregue.
+    """
+
+    @pytest.fixture
+    def escritorio(self, tmp_path: Path) -> Path:
+        pasta = tmp_path / "escritorio"
+        pasta.mkdir()
+        for i in range(3):
+            (pasta / f"a{i}_nota.txt").write_text(f"nota {i}", encoding="utf-8")
+        (pasta / "m_planilha.xlsx").write_bytes(b"planilha" * 50)
+        for i in range(3):
+            (pasta / f"z{i}_recibo.txt").write_text(f"recibo {i}", encoding="utf-8")
+        return pasta
+
+    def test_backup_conclui_com_ressalva(self, tmp_path: Path, escritorio: Path) -> None:
+        dest = tmp_path / "backup.zip"
+        fh = _travar(escritorio / "m_planilha.xlsx")
+        try:
+            result = BackupTask(sources=[escritorio], destination=dest).run()
+        finally:
+            _destravar(fh)
+
+        assert result.status == TaskStatus.PARTIAL
+        assert result.data["file_count"] == 6
+        assert result.data["unreadable_count"] == 1
+        assert dest.is_file(), "o pacote com os outros 6 arquivos tem de ser entregue"
+
+    def test_o_arquivo_que_faltou_e_nomeado_com_o_motivo(
+        self, tmp_path: Path, escritorio: Path
+    ) -> None:
+        """Ausencia silenciosa e o pior defeito possivel num backup."""
+        dest = tmp_path / "backup.zip"
+        fh = _travar(escritorio / "m_planilha.xlsx")
+        try:
+            result = BackupTask(sources=[escritorio], destination=dest).run()
+        finally:
+            _destravar(fh)
+
+        (ausente,) = result.data["unreadable"]
+        assert ausente["arquivo"] == "escritorio/m_planilha.xlsx"
+        assert "aberto por outro programa" in ausente["motivo"]
+
+    def test_nao_sobra_entrada_vazia_no_lugar_do_arquivo(
+        self, tmp_path: Path, escritorio: Path
+    ) -> None:
+        """
+        Regressao: escrevendo direto no ZIP, o arquivo que falhava na metade
+        da leitura deixava uma entrada de 0 byte com o nome certo. Quem
+        extraisse pelo Windows recebia um arquivo vazio no lugar da planilha.
+        """
+        dest = tmp_path / "backup.zip"
+        fh = _travar(escritorio / "m_planilha.xlsx")
+        try:
+            BackupTask(sources=[escritorio], destination=dest).run()
+        finally:
+            _destravar(fh)
+
+        assert "escritorio/m_planilha.xlsx" not in _zip_todas_as_entradas(dest)
+
+    def test_arquivo_que_some_no_meio_vira_ressalva(self, tmp_path: Path) -> None:
+        """Temporarios e logs somem entre a listagem e a gravacao."""
+        pasta = tmp_path / "dados"
+        pasta.mkdir()
+        (pasta / "fica.txt").write_text("fica", encoding="utf-8")
+        efemero = pasta / "some.txt"
+        efemero.write_text("some", encoding="utf-8")
+
+        task = BackupTask(sources=[pasta], destination=tmp_path / "b.zip")
+        arquivos, _ = task._collect_files()
+        efemero.unlink()
+        entradas, ilegiveis = task._build_package(
+            arquivos, task._resolve_arcnames(arquivos), datetime.now(UTC)
+        )
+
+        assert [e.arcname for e in entradas] == ["dados/fica.txt"]
+        assert "deixou de existir" in ilegiveis[0].reason
+
+    def test_tudo_ilegivel_e_falha_e_nao_pacote_vazio(self, tmp_path: Path) -> None:
+        """Um pacote vazio com cara de backup seria a pior mentira possivel."""
+        pasta = tmp_path / "so_travado"
+        pasta.mkdir()
+        (pasta / "unico.bin").write_bytes(b"x" * 300)
+        dest = tmp_path / "backup.zip"
+
+        fh = _travar(pasta / "unico.bin")
+        try:
+            result = BackupTask(sources=[pasta], destination=dest).run()
+        finally:
+            _destravar(fh)
+
+        assert result.status == TaskStatus.FAILURE
+        assert not dest.exists(), "sem nenhum arquivo lido, nao se entrega pacote"
+
+
+class TestGravacaoAtomica:
+    """O caminho final ou nao existe, ou esta inteiro."""
+
+    def test_nao_sobra_arquivo_parcial_quando_falha(self, tmp_path: Path) -> None:
+        pasta = tmp_path / "d"
+        pasta.mkdir()
+        (pasta / "unico.bin").write_bytes(b"x" * 300)
+        dest = tmp_path / "backup.zip"
+        task = BackupTask(sources=[pasta], destination=dest)
+
+        fh = _travar(pasta / "unico.bin")
+        try:
+            task.run()
+        finally:
+            _destravar(fh)
+
+        assert not task.partial_path.exists()
+        assert not dest.exists()
+
+    def test_backup_dentro_da_pasta_nao_engorda_a_cada_execucao(self, tmp_path: Path) -> None:
+        """Guardar o ZIP na propria pasta e comum em rede compartilhada."""
+        pasta = tmp_path / "compartilhada"
+        pasta.mkdir()
+        (pasta / "dado.txt").write_text("dado", encoding="utf-8")
+        dest = pasta / "backup.zip"
+
+        BackupTask(sources=[pasta], destination=dest).run()
+        segunda = BackupTask(sources=[pasta], destination=dest).run()
+
+        assert segunda.data["file_count"] == 1
+        assert _zip_namelist(dest) == ["compartilhada/dado.txt"]
+
+
+class TestNomesRepetidos:
+    """Dois arquivos com o mesmo caminho relativo, vindos de fontes diferentes."""
+
+    @pytest.fixture
+    def dois_clientes(self, tmp_path: Path) -> tuple[Path, Path]:
+        a = tmp_path / "clienteA" / "docs"
+        b = tmp_path / "clienteB" / "docs"
+        a.mkdir(parents=True)
+        b.mkdir(parents=True)
+        (a / "contrato.txt").write_text("CLIENTE A", encoding="utf-8")
+        (b / "contrato.txt").write_text("CLIENTE B", encoding="utf-8")
+        return a, b
+
+    def test_os_dois_arquivos_sobrevivem(
+        self, tmp_path: Path, dois_clientes: tuple[Path, Path]
+    ) -> None:
+        """
+        Regressao: o ZIP aceita nomes repetidos sem reclamar, e na extracao um
+        sobrescrevia o outro. O resultado dizia "2 arquivos" e entregava 1 —
+        o contrato do cliente A sumia em silencio.
+        """
+        dest = tmp_path / "backup.zip"
+        result = BackupTask(sources=list(dois_clientes), destination=dest).run()
+
+        assert result.data["file_count"] == 2
+        nomes = _zip_namelist(dest)
+        assert len(nomes) == len(set(nomes)), "nome repetido dentro do pacote"
+
+        with zipfile.ZipFile(dest) as zf:
+            conteudos = {zf.read(n).decode("utf-8") for n in nomes}
+        assert conteudos == {"CLIENTE A", "CLIENTE B"}
+
+    def test_a_segunda_fonte_ganha_sufixo_legivel(
+        self, tmp_path: Path, dois_clientes: tuple[Path, Path]
+    ) -> None:
+        dest = tmp_path / "backup.zip"
+        BackupTask(sources=list(dois_clientes), destination=dest).run()
+
+        assert sorted(_zip_namelist(dest)) == ["docs (2)/contrato.txt", "docs/contrato.txt"]
+
+
+class TestPastasVazias:
+    def test_pasta_sem_arquivos_sobrevive(self, tmp_path: Path) -> None:
+        """Ha sistema que nao inicia se a pasta esperada nao existe."""
+        pasta = tmp_path / "app"
+        (pasta / "logs").mkdir(parents=True)
+        (pasta / "config.ini").write_text("[app]", encoding="utf-8")
+
+        dest = tmp_path / "backup.zip"
+        BackupTask(sources=[pasta], destination=dest).run()
+
+        assert "app/logs/" in _zip_todas_as_entradas(dest)
+
+
+class TestManifesto:
+    """O manifesto e o que torna o pacote autoverificavel."""
+
+    def test_todo_pacote_tem_manifesto(self, tmp_path: Path, projeto_simples: Path) -> None:
+        dest = tmp_path / "backup.zip"
+        BackupTask(sources=[projeto_simples], destination=dest).run()
+
+        assert MANIFEST_NAME in _zip_todas_as_entradas(dest)
+
+    def test_traz_o_sha256_de_cada_arquivo(self, tmp_path: Path, projeto_simples: Path) -> None:
+        dest = tmp_path / "backup.zip"
+        BackupTask(sources=[projeto_simples], destination=dest).run()
+
+        with zipfile.ZipFile(dest) as zf:
+            texto = zf.read(MANIFEST_NAME).decode("utf-8")
+            linhas = [
+                linha for linha in csv.reader(io.StringIO(texto)) if linha[:1] == ["incluido"]
+            ]
+            assert linhas, "o manifesto tem de listar os arquivos"
+            for linha in linhas:
+                arcname, sha = linha[1], linha[4]
+                assert sha == hashlib.sha256(zf.read(arcname)).hexdigest()
+
+    def test_nao_expoe_o_caminho_da_maquina(self, tmp_path: Path, projeto_simples: Path) -> None:
+        """O pacote costuma sair da maquina; caminho interno nao ajuda ninguem."""
+        dest = tmp_path / "backup.zip"
+        BackupTask(sources=[projeto_simples], destination=dest).run()
+
+        with zipfile.ZipFile(dest) as zf:
+            texto = zf.read(MANIFEST_NAME).decode("utf-8")
+        assert str(tmp_path) not in texto
+
+    def test_registra_quem_ficou_de_fora(self, tmp_path: Path) -> None:
+        pasta = tmp_path / "d"
+        pasta.mkdir()
+        (pasta / "ok.txt").write_text("ok", encoding="utf-8")
+        (pasta / "travado.bin").write_bytes(b"x" * 300)
+        dest = tmp_path / "backup.zip"
+
+        fh = _travar(pasta / "travado.bin")
+        try:
+            BackupTask(sources=[pasta], destination=dest).run()
+        finally:
+            _destravar(fh)
+
+        with zipfile.ZipFile(dest) as zf:
+            texto = zf.read(MANIFEST_NAME).decode("utf-8")
+        assert "NAO_LIDO" in texto
+        assert "d/travado.bin" in texto
+
+
+class TestVerificacao:
+    """Backup que ninguem confere e fe, nao garantia."""
+
+    def _regravar(self, dest: Path, conteudo: dict[str, bytes]) -> None:
+        with zipfile.ZipFile(dest, "w", zipfile.ZIP_DEFLATED) as zf:
+            for nome, dados in conteudo.items():
+                zf.writestr(nome, dados)
+
+    def _conteudo(self, dest: Path) -> dict[str, bytes]:
+        with zipfile.ZipFile(dest) as zf:
+            return {n: zf.read(n) for n in zf.namelist()}
+
+    def test_pacote_intacto_e_aprovado(self, tmp_path: Path, projeto_simples: Path) -> None:
+        dest = tmp_path / "backup.zip"
+        BackupTask(sources=[projeto_simples], destination=dest).run()
+
+        relatorio = verify_backup(dest)
+
+        assert relatorio.ok is True
+        assert relatorio.checked > 0
+        assert relatorio.corrupted == ()
+
+    def test_conteudo_adulterado_e_detectado(self, tmp_path: Path, projeto_simples: Path) -> None:
+        dest = tmp_path / "backup.zip"
+        BackupTask(sources=[projeto_simples], destination=dest).run()
+        conteudo = self._conteudo(dest)
+        alvo = next(n for n in conteudo if n.endswith(".py"))
+        conteudo[alvo] = b"ADULTERADO"
+        self._regravar(dest, conteudo)
+
+        relatorio = verify_backup(dest)
+
+        assert relatorio.ok is False
+        assert relatorio.corrupted == (alvo,)
+
+    def test_arquivo_removido_do_pacote_e_detectado(
+        self, tmp_path: Path, projeto_simples: Path
+    ) -> None:
+        dest = tmp_path / "backup.zip"
+        BackupTask(sources=[projeto_simples], destination=dest).run()
+        conteudo = self._conteudo(dest)
+        removido = next(n for n in conteudo if n.endswith(".py"))
+        del conteudo[removido]
+        self._regravar(dest, conteudo)
+
+        relatorio = verify_backup(dest)
+
+        assert relatorio.ok is False
+        assert relatorio.missing == (removido,)
+
+    def test_lembra_o_que_ficou_de_fora_na_origem(self, tmp_path: Path) -> None:
+        """Quem confere precisa saber que esses arquivos nunca estiveram la."""
+        pasta = tmp_path / "d"
+        pasta.mkdir()
+        (pasta / "ok.txt").write_text("ok", encoding="utf-8")
+        (pasta / "travado.bin").write_bytes(b"x" * 300)
+        dest = tmp_path / "backup.zip"
+
+        fh = _travar(pasta / "travado.bin")
+        try:
+            BackupTask(sources=[pasta], destination=dest).run()
+        finally:
+            _destravar(fh)
+
+        relatorio = verify_backup(dest)
+
+        assert relatorio.ok is True, "o pacote esta integro; o que faltou ja era sabido"
+        assert relatorio.unreadable_at_origin == ("d/travado.bin",)
+
+    def test_zip_de_outra_ferramenta_diz_que_nao_da_para_conferir(self, tmp_path: Path) -> None:
+        alheio = tmp_path / "alheio.zip"
+        with zipfile.ZipFile(alheio, "w") as zf:
+            zf.writestr("a.txt", "conteudo")
+
+        relatorio = verify_backup(alheio)
+
+        assert relatorio.ok is False
+        assert "sem MANIFESTO" in relatorio.problem
+
+    def test_arquivo_que_nem_e_zip(self, tmp_path: Path) -> None:
+        falso = tmp_path / "nao_e.zip"
+        falso.write_text("isto nao e um zip", encoding="utf-8")
+
+        relatorio = verify_backup(falso)
+
+        assert relatorio.ok is False
+        assert relatorio.problem
+
+
+class TestRetencao:
+    """Backup diario sem retencao enche o disco e vira 300 arquivos iguais."""
+
+    def _criar(self, pasta: Path, nome: str) -> Path:
+        alvo = pasta / nome
+        with zipfile.ZipFile(alvo, "w") as zf:
+            zf.writestr("x.txt", "antigo")
+        return alvo
+
+    def test_nome_ganha_data_e_hora(self, tmp_path: Path) -> None:
+        alvo = timestamped_name(tmp_path / "contabilidade.zip", datetime(2026, 8, 20, 17, 30))
+
+        assert alvo.name == "contabilidade_2026-08-20_1730.zip"
+
+    def test_mantem_os_mais_recentes(self, tmp_path: Path) -> None:
+        for dia in (17, 18, 19):
+            self._criar(tmp_path, f"dados_2026-08-{dia}_0900.zip")
+        novo = self._criar(tmp_path, "dados_2026-08-20_0900.zip")
+
+        removidos = rotate_backups(novo, keep=2)
+
+        assert {p.name for p in removidos} == {
+            "dados_2026-08-17_0900.zip",
+            "dados_2026-08-18_0900.zip",
+        }
+        assert novo.exists()
+
+    def test_nunca_apaga_o_recem_criado(self, tmp_path: Path) -> None:
+        """Mesmo com pacotes de carimbo mais novo (relogio adiantado)."""
+        for hora in ("1800", "1900"):
+            self._criar(tmp_path, f"dados_2026-08-20_{hora}.zip")
+        novo = self._criar(tmp_path, "dados_2026-08-20_0900.zip")
+
+        rotate_backups(novo, keep=1)
+
+        assert novo.exists()
+
+    def test_nao_toca_em_arquivo_de_outra_base(self, tmp_path: Path) -> None:
+        """Apagar arquivo do cliente por engano seria pior que disco cheio."""
+        outro = self._criar(tmp_path, "notas_fiscais_2026-08-17_0900.zip")
+        sem_data = self._criar(tmp_path, "dados.zip")
+        self._criar(tmp_path, "dados_2026-08-17_0900.zip")
+        novo = self._criar(tmp_path, "dados_2026-08-20_0900.zip")
+
+        rotate_backups(novo, keep=1)
+
+        assert outro.exists()
+        assert sem_data.exists()
+
+    def test_manter_zero_nao_apaga_nada(self, tmp_path: Path) -> None:
+        antigo = self._criar(tmp_path, "dados_2026-08-17_0900.zip")
+        novo = self._criar(tmp_path, "dados_2026-08-20_0900.zip")
+
+        assert rotate_backups(novo, keep=0) == []
+        assert antigo.exists()

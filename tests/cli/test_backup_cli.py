@@ -4,11 +4,13 @@ from __future__ import annotations
 
 import zipfile
 from pathlib import Path
+from typing import Any
 
 import pytest
 from click.testing import CliRunner
 
 from autotarefas.cli.commands.backup import _format_size, backup
+from autotarefas.cli.commands.verificar import verificar
 from autotarefas.cli.context import CLIContext
 
 # ============================================================
@@ -647,3 +649,193 @@ class TestBackupCliOutput:
         )
         # Nao deve aparecer "Arquivos excluidos:" (nao tem nenhum)
         assert "excluidos: 0" not in result.output
+
+
+# ============================================================
+# Tests: o que a tarefa agendada enxerga
+#
+# Backup de micro empresa roda sozinho, de madrugada. Se o desfecho nao
+# aparece no codigo de saida, ninguem nunca fica sabendo que algo ficou
+# de fora — e a primeira noticia vem no dia da restauracao.
+# ============================================================
+
+
+def _travar(caminho: Path) -> Any:
+    """Trava um arquivo como o Office faz, e devolve o handle aberto."""
+    import msvcrt
+
+    fh = caminho.open("r+b")
+    msvcrt.locking(fh.fileno(), msvcrt.LK_NBLCK, 100)
+    return fh
+
+
+def _destravar(fh: Any) -> None:
+    import msvcrt
+
+    msvcrt.locking(fh.fileno(), msvcrt.LK_UNLCK, 100)
+    fh.close()
+
+
+class TestCodigoDeSaida:
+    def test_backup_completo_sai_0(
+        self, tmp_path: Path, projeto_simples: Path, cli_ctx: CLIContext
+    ) -> None:
+        resultado = CliRunner().invoke(
+            backup,
+            [str(projeto_simples), "--output", str(tmp_path / "b.zip")],
+            obj=cli_ctx,
+        )
+
+        assert resultado.exit_code == 0
+
+    def test_com_ressalvas_sai_1_e_nomeia_o_arquivo(
+        self, tmp_path: Path, cli_ctx: CLIContext
+    ) -> None:
+        pasta = tmp_path / "escritorio"
+        pasta.mkdir()
+        (pasta / "nota.txt").write_text("nota", encoding="utf-8")
+        (pasta / "planilha.xlsx").write_bytes(b"planilha" * 50)
+
+        fh = _travar(pasta / "planilha.xlsx")
+        try:
+            resultado = CliRunner().invoke(
+                backup, [str(pasta), "--output", str(tmp_path / "b.zip")], obj=cli_ctx
+            )
+        finally:
+            _destravar(fh)
+
+        assert resultado.exit_code == 1
+        assert "NAO entraram no backup" in resultado.output
+        assert "planilha.xlsx" in resultado.output
+        # A saida tem de dizer o que fazer, nao so que deu errado.
+        assert "fora do horario de uso" in resultado.output
+
+    def test_falha_total_sai_2(self, tmp_path: Path, cli_ctx: CLIContext) -> None:
+        pasta = tmp_path / "so_travado"
+        pasta.mkdir()
+        (pasta / "unico.bin").write_bytes(b"x" * 300)
+
+        fh = _travar(pasta / "unico.bin")
+        try:
+            resultado = CliRunner().invoke(
+                backup, [str(pasta), "--output", str(tmp_path / "b.zip")], obj=cli_ctx
+            )
+        finally:
+            _destravar(fh)
+
+        assert resultado.exit_code == 2
+
+
+class TestNomeComDataERetencao:
+    def test_com_data_muda_o_nome_do_arquivo(
+        self, tmp_path: Path, projeto_simples: Path, cli_ctx: CLIContext
+    ) -> None:
+        destino = tmp_path / "contabilidade.zip"
+        CliRunner().invoke(
+            backup, [str(projeto_simples), "--output", str(destino), "--com-data"], obj=cli_ctx
+        )
+
+        gerados = list(tmp_path.glob("contabilidade_*.zip"))
+        assert len(gerados) == 1
+        assert not destino.exists(), "sem --com-data o nome fixo nao deve aparecer"
+
+    def test_manter_sem_com_data_e_recusado(
+        self, tmp_path: Path, projeto_simples: Path, cli_ctx: CLIContext
+    ) -> None:
+        """Sem data no nome nao ha o que rotacionar — melhor recusar que adivinhar."""
+        resultado = CliRunner().invoke(
+            backup,
+            [str(projeto_simples), "--output", str(tmp_path / "b.zip"), "--manter", "3"],
+            obj=cli_ctx,
+        )
+
+        assert resultado.exit_code == 2
+        assert "--manter exige --com-data" in resultado.output
+
+    def test_retencao_remove_os_antigos(
+        self, tmp_path: Path, projeto_simples: Path, cli_ctx: CLIContext
+    ) -> None:
+        for dia in (17, 18, 19):
+            with zipfile.ZipFile(tmp_path / f"dados_2026-08-{dia}_0900.zip", "w") as zf:
+                zf.writestr("x.txt", "antigo")
+
+        resultado = CliRunner().invoke(
+            backup,
+            [
+                str(projeto_simples),
+                "--output",
+                str(tmp_path / "dados.zip"),
+                "--com-data",
+                "--manter",
+                "2",
+            ],
+            obj=cli_ctx,
+        )
+
+        assert resultado.exit_code == 0
+        assert "Retencao" in resultado.output
+        assert not (tmp_path / "dados_2026-08-17_0900.zip").exists()
+        assert (tmp_path / "dados_2026-08-19_0900.zip").exists()
+
+
+class TestComandoVerificar:
+    def test_pacote_integro_sai_0(
+        self, tmp_path: Path, projeto_simples: Path, cli_ctx: CLIContext
+    ) -> None:
+        destino = tmp_path / "b.zip"
+        CliRunner().invoke(backup, [str(projeto_simples), "--output", str(destino)], obj=cli_ctx)
+
+        resultado = CliRunner().invoke(verificar, [str(destino)], obj=cli_ctx)
+
+        assert resultado.exit_code == 0
+        assert "integro" in resultado.output
+
+    def test_pacote_adulterado_sai_1(
+        self, tmp_path: Path, projeto_simples: Path, cli_ctx: CLIContext
+    ) -> None:
+        destino = tmp_path / "b.zip"
+        CliRunner().invoke(backup, [str(projeto_simples), "--output", str(destino)], obj=cli_ctx)
+
+        with zipfile.ZipFile(destino) as zf:
+            conteudo = {n: zf.read(n) for n in zf.namelist()}
+        alvo = next(n for n in conteudo if n.endswith(".py"))
+        conteudo[alvo] = b"ADULTERADO"
+        with zipfile.ZipFile(destino, "w", zipfile.ZIP_DEFLATED) as zf:
+            for nome, dados in conteudo.items():
+                zf.writestr(nome, dados)
+
+        resultado = CliRunner().invoke(verificar, [str(destino)], obj=cli_ctx)
+
+        assert resultado.exit_code == 1
+        assert "NAO confie" in resultado.output
+        assert alvo in resultado.output
+
+    def test_zip_sem_manifesto_sai_2(self, tmp_path: Path, cli_ctx: CLIContext) -> None:
+        alheio = tmp_path / "alheio.zip"
+        with zipfile.ZipFile(alheio, "w") as zf:
+            zf.writestr("a.txt", "conteudo")
+
+        resultado = CliRunner().invoke(verificar, [str(alheio)], obj=cli_ctx)
+
+        assert resultado.exit_code == 2
+        # O console quebra linha; comparar frase inteira seria teste fragil.
+        assert "sem MANIFESTO" in resultado.output
+
+    def test_avisa_o_que_ficou_de_fora_na_origem(self, tmp_path: Path, cli_ctx: CLIContext) -> None:
+        pasta = tmp_path / "escritorio"
+        pasta.mkdir()
+        (pasta / "nota.txt").write_text("nota", encoding="utf-8")
+        (pasta / "planilha.xlsx").write_bytes(b"planilha" * 50)
+        destino = tmp_path / "b.zip"
+
+        fh = _travar(pasta / "planilha.xlsx")
+        try:
+            CliRunner().invoke(backup, [str(pasta), "--output", str(destino)], obj=cli_ctx)
+        finally:
+            _destravar(fh)
+
+        resultado = CliRunner().invoke(verificar, [str(destino)], obj=cli_ctx)
+
+        assert resultado.exit_code == 0, "o pacote esta integro; o que faltou ja era sabido"
+        assert "nao entraram quando" in resultado.output
+        assert "planilha.xlsx" in resultado.output

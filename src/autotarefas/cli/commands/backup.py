@@ -22,13 +22,14 @@ Uso:
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 import click
 
 from autotarefas.cli.console import Console
 from autotarefas.cli.context import CLIContext
 from autotarefas.core.base import TaskStatus
-from autotarefas.tasks.backup import BackupTask
+from autotarefas.tasks.backup import BackupTask, rotate_backups, timestamped_name
 
 # ============================================================
 # Helpers de formatacao
@@ -36,6 +37,16 @@ from autotarefas.tasks.backup import BackupTask
 
 #: Quantos arquivos do preview mostrar em dry-run.
 _DRY_RUN_PREVIEW_COUNT = 5
+
+#: Quantos arquivos nao lidos listar antes de resumir.
+_UNREADABLE_PREVIEW_COUNT = 10
+
+#: Saida 1 = concluido COM RESSALVAS. Backup roda em tarefa agendada, e sem
+#: um codigo proprio ninguem fica sabendo que algo ficou de fora.
+_EXIT_PARTIAL = 1
+
+#: Saida 2 = falhou, nenhum pacote gerado.
+_EXIT_FAILURE = 2
 
 #: Limites para formatacao de tamanho.
 _KB = 1024
@@ -62,6 +73,80 @@ def _format_size(bytes_count: int) -> str:
     if bytes_count < _GB:
         return f"{bytes_count / _MB:.1f} MB"
     return f"{bytes_count / _GB:.2f} GB"
+
+
+def _resumo_da_operacao(
+    console: Console,
+    sources: tuple[Path, ...],
+    output: Path,
+    exclude: tuple[str, ...],
+    no_default_excludes: bool,
+) -> None:
+    """Diz o que vai acontecer, antes de acontecer."""
+    plural = "s" if len(sources) > 1 else ""
+    console.info(f"Backup de {len(sources)} source{plural} -> {output}")
+    if exclude:
+        console.info(f"Excludes adicionais: {', '.join(exclude)}")
+    if no_default_excludes:
+        console.warning(
+            "Excludes padrao DESABILITADOS (__pycache__, .git, node_modules serao incluidos)."
+        )
+    console.info("")
+
+
+def _relatar_dry_run(console: Console, output: Path, dados: dict[str, Any]) -> None:
+    """Mostra o que seria feito, sem criar nada."""
+    file_count: int = dados["file_count"]
+    console.warning(f"[DRY-RUN] Backup NAO criado: {output}")
+    console.info(f"Arquivos a incluir: {file_count}")
+    console.info(f"Arquivos a excluir: {dados['skipped_count']}")
+
+    preview: list[str] = dados.get("files_preview") or []
+    if not preview:
+        return
+    console.info("")
+    console.info("Preview dos primeiros arquivos:")
+    for file_path in preview[:_DRY_RUN_PREVIEW_COUNT]:
+        console.info(f"  - {file_path}")
+    restantes = file_count - min(file_count, _DRY_RUN_PREVIEW_COUNT)
+    if restantes > 0:
+        console.info(f"  ... e mais {restantes}.")
+
+
+def _relatar_nao_lidos(console: Console, nao_lidos: list[dict[str, Any]]) -> None:
+    """
+    Lista o que NAO entrou no pacote.
+
+    Fica em destaque de proposito: a ausencia precisa ser tao visivel quanto
+    a presenca, senao a pessoa acha que tem o arquivo e so descobre que nao
+    tem no pior dia possivel.
+    """
+    console.info("")
+    console.warning(f"{len(nao_lidos)} arquivo(s) NAO entraram no backup:")
+    for item in nao_lidos[:_UNREADABLE_PREVIEW_COUNT]:
+        console.warning(f"  - {item['arquivo']}: {item['motivo']}")
+    restantes = len(nao_lidos) - _UNREADABLE_PREVIEW_COUNT
+    if restantes > 0:
+        console.warning(f"  ... e mais {restantes}. A lista completa esta no manifesto.")
+    console.info("")
+    console.info(
+        "Arquivo aberto no Excel ou no Word nao pode ser copiado. "
+        "Feche os arquivos, ou agende o backup fora do horario de uso."
+    )
+
+
+def _aplicar_retencao(console: Console, output: Path, manter: int) -> None:
+    """Apaga os backups datados mais antigos, avisando quais sairam."""
+    removidos = rotate_backups(output, manter)
+    if not removidos:
+        return
+    console.info("")
+    console.info(
+        f"Retencao: mantidos os {manter} mais recentes; "
+        f"{len(removidos)} backup(s) antigo(s) removido(s)."
+    )
+    for antigo in removidos:
+        console.info(f"  - {antigo.name}")
 
 
 # ============================================================
@@ -94,6 +179,21 @@ def _format_size(bytes_count: int) -> str:
     help="Padrao adicional de exclusao (fnmatch). Pode repetir.",
 )
 @click.option(
+    "--com-data",
+    is_flag=True,
+    default=False,
+    help="Inclui data e hora no nome (backup_2026-08-20_1730.zip).",
+)
+@click.option(
+    "--manter",
+    type=click.IntRange(min=0),
+    default=0,
+    help=(
+        "Mantem apenas os N backups datados mais recentes desta mesma base, "
+        "apagando os mais antigos. Exige --com-data. 0 = nao apaga nada."
+    ),
+)
+@click.option(
     "--no-default-excludes",
     is_flag=True,
     default=False,
@@ -105,27 +205,24 @@ def backup(
     sources: tuple[Path, ...],
     output: Path,
     exclude: tuple[str, ...],
+    com_data: bool,
+    manter: int,
     no_default_excludes: bool,
 ) -> None:
-    """Compacta SOURCES em um ZIP com hash SHA-256."""
+    """Compacta SOURCES em um ZIP verificavel, com manifesto."""
     console = Console(ctx)
+
+    if manter and not com_data:
+        console.error("--manter exige --com-data: sem data no nome nao ha o que rotacionar.")
+        raise click.exceptions.Exit(_EXIT_FAILURE)
+
+    if com_data:
+        output = timestamped_name(output)
 
     # ============================================================
     # 1. Resumo da operacao
     # ============================================================
-    n_sources = len(sources)
-    plural_s = "s" if n_sources > 1 else ""
-    console.info(f"Backup de {n_sources} source{plural_s} -> {output}")
-
-    if exclude:
-        console.info(f"Excludes adicionais: {', '.join(exclude)}")
-
-    if no_default_excludes:
-        console.warning(
-            "Excludes padrao DESABILITADOS (__pycache__, .git, node_modules serao incluidos)."
-        )
-
-    console.info("")
+    _resumo_da_operacao(console, sources, output, exclude, no_default_excludes)
 
     # ============================================================
     # 2. Executa a task (BaseTask faz audit automatico)
@@ -151,39 +248,45 @@ def backup(
     # 3b. FAILURE — algo deu errado (source inexistente, I/O error)
     if result.is_failure:
         console.error(f"Backup falhou: {result.error_message}")
-        raise click.exceptions.Exit(1)
+        for item in result.data.get("unreadable", [])[:_UNREADABLE_PREVIEW_COUNT]:
+            console.error(f"  - {item['arquivo']}: {item['motivo']}")
+        raise click.exceptions.Exit(_EXIT_FAILURE)
 
     # 3c. DRY_RUN — mostra preview sem criar
     file_count = result.data["file_count"]
     skipped_count = result.data["skipped_count"]
 
     if result.status == TaskStatus.DRY_RUN:
-        console.warning(f"[DRY-RUN] Backup NAO criado: {output}")
-        console.info(f"Arquivos a incluir: {file_count}")
-        console.info(f"Arquivos a excluir: {skipped_count}")
-
-        files_preview = result.data.get("files_preview", [])
-        if files_preview:
-            console.info("")
-            console.info("Preview dos primeiros arquivos:")
-            for file_path in files_preview[:_DRY_RUN_PREVIEW_COUNT]:
-                console.info(f"  - {file_path}")
-
-            remaining = file_count - min(file_count, _DRY_RUN_PREVIEW_COUNT)
-            if remaining > 0:
-                console.info(f"  ... e mais {remaining}.")
+        _relatar_dry_run(console, output, result.data)
         return  # exit 0
 
-    # 3d. SUCCESS — backup criado
+    # 3d. SUCCESS ou PARTIAL — o pacote existe
     size_str = _format_size(result.data["size_bytes"])
-    sha256 = result.data["sha256"]
+    nao_lidos = result.data.get("unreadable", [])
 
-    console.success(f"Backup criado: {output}")
+    if nao_lidos:
+        console.warning(f"Backup criado COM RESSALVAS: {output}")
+    else:
+        console.success(f"Backup criado: {output}")
+
     console.info(f"Arquivos incluidos: {file_count}")
     if skipped_count > 0:
-        console.info(f"Arquivos excluidos: {skipped_count}")
+        console.info(f"Excluidos por regra: {skipped_count}")
     console.info(f"Tamanho: {size_str}")
-    console.info(f"SHA-256: {sha256}")
+    console.info(f"SHA-256: {result.data['sha256']}")
+    console.info(f"Manifesto: {result.data['manifest']} (dentro do pacote)")
+
+    if nao_lidos:
+        _relatar_nao_lidos(console, nao_lidos)
+
+    if manter:
+        _aplicar_retencao(console, output, manter)
+
+    console.info("")
+    console.info(f"Para conferir depois: autotarefas verificar {output}")
+
+    if nao_lidos:
+        raise click.exceptions.Exit(_EXIT_PARTIAL)
 
 
 __all__ = ["backup"]

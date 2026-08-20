@@ -34,6 +34,7 @@ from autotarefas.cli.commands.send import send
 from autotarefas.cli.commands.sync import sync
 from autotarefas.cli.commands.transferir import transferir
 from autotarefas.cli.commands.validate import validate
+from autotarefas.cli.commands.verificar import verificar
 from autotarefas.cli.context import CLIContext
 
 
@@ -104,6 +105,7 @@ cli.add_command(send)
 cli.add_command(sync)
 cli.add_command(transferir)
 cli.add_command(validate)
+cli.add_command(verificar)
 
 
 __all__ = ["cli"]
