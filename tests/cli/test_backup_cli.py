@@ -839,3 +839,80 @@ class TestComandoVerificar:
         assert resultado.exit_code == 0, "o pacote esta integro; o que faltou ja era sabido"
         assert "nao entraram quando" in resultado.output
         assert "planilha.xlsx" in resultado.output
+
+
+# ============================================================
+# Tests: Card 02.A — o que a tela diz sobre caminhos e volume
+# ============================================================
+
+
+def _junção_cli(atalho: Path, alvo: Path) -> bool:
+    """Cria uma junção do Windows. False quando o SO não permite."""
+    import os
+    import subprocess
+
+    if os.name != "nt":
+        return False
+    resultado = subprocess.run(  # noqa: S603
+        ["cmd", "/c", "mklink", "/J", str(atalho), str(alvo)],  # noqa: S607
+        capture_output=True,
+        check=False,
+    )
+    return resultado.returncode == 0 and atalho.exists()
+
+
+class TestAvisoDeMesmoVolumeNaTela:
+    def test_avisa_sem_bloquear(
+        self, tmp_path: Path, projeto_simples: Path, cli_ctx: CLIContext
+    ) -> None:
+        resultado = CliRunner().invoke(
+            backup,
+            [str(projeto_simples), "--output", str(tmp_path / "b.zip")],
+            obj=cli_ctx,
+        )
+
+        assert resultado.exit_code == 0, "o aviso não pode impedir o backup"
+        assert "MESMO disco" in resultado.output
+        assert "defeito do disco" in resultado.output
+        assert "ransomware" in resultado.output
+        assert (tmp_path / "b.zip").is_file()
+
+
+class TestAtalhosNaTela:
+    @pytest.fixture
+    def com_atalho(self, tmp_path: Path) -> Path:
+        origem = tmp_path / "origem"
+        origem.mkdir()
+        externo = tmp_path / "externo"
+        externo.mkdir()
+        (origem / "interno.txt").write_text("dado", encoding="utf-8")
+        (externo / "segredo.txt").write_text("DE OUTRO SETOR", encoding="utf-8")
+        if not _junção_cli(origem / "atalho", externo):
+            pytest.skip("o sistema não permitiu criar junção")
+        return origem
+
+    def test_lista_os_atalhos_nao_seguidos(
+        self, tmp_path: Path, com_atalho: Path, cli_ctx: CLIContext
+    ) -> None:
+        resultado = CliRunner().invoke(
+            backup, [str(com_atalho), "--output", str(tmp_path / "b.zip")], obj=cli_ctx
+        )
+
+        assert resultado.exit_code == 0
+        assert "NAO seguidos" in resultado.output
+        assert "fora da origem" in resultado.output
+        assert "segredo.txt" not in resultado.output
+
+    def test_seguir_links_e_uma_escolha_explicita(
+        self, tmp_path: Path, com_atalho: Path, cli_ctx: CLIContext
+    ) -> None:
+        resultado = CliRunner().invoke(
+            backup,
+            [str(com_atalho), "--output", str(tmp_path / "b.zip"), "--seguir-links"],
+            obj=cli_ctx,
+        )
+
+        assert resultado.exit_code == 0
+        assert "SEGUIDOS" in resultado.output
+        with zipfile.ZipFile(tmp_path / "b.zip") as zf:
+            assert any("segredo.txt" in n for n in zf.namelist())

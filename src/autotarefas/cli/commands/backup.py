@@ -41,6 +41,9 @@ _DRY_RUN_PREVIEW_COUNT = 5
 #: Quantos arquivos nao lidos listar antes de resumir.
 _UNREADABLE_PREVIEW_COUNT = 10
 
+#: Quantos atalhos listar antes de resumir.
+_LINK_PREVIEW_COUNT = 10
+
 #: Saida 1 = concluido COM RESSALVAS. Backup roda em tarefa agendada, e sem
 #: um codigo proprio ninguem fica sabendo que algo ficou de fora.
 _EXIT_PARTIAL = 1
@@ -113,6 +116,40 @@ def _relatar_dry_run(console: Console, output: Path, dados: dict[str, Any]) -> N
         console.info(f"  ... e mais {restantes}.")
 
 
+def _relatar_volume(console: Console, fontes: list[str]) -> None:
+    """
+    Avisa que origem e backup estao no mesmo disco.
+
+    So avisa: exigir confirmacao quebraria o backup agendado, que roda de
+    madrugada sem ninguem por perto.
+    """
+    if not fontes:
+        return
+    console.warning(f"Origem e destino no MESMO disco ({', '.join(fontes)}).")
+    console.info("  Backup no mesmo volume nao protege contra defeito do disco,")
+    console.info("  e pode nao proteger contra ransomware, que cifra o que alcanca.")
+    console.info("  Prefira outro disco, um destino de rede ou uma midia externa.")
+    console.info("")
+
+
+def _relatar_links(console: Console, links: list[dict[str, Any]]) -> None:
+    """Diz quais atalhos foram encontrados, para onde vao, e o que houve."""
+    if not links:
+        return
+    seguidos = [link for link in links if link["seguido"]]
+    console.info("")
+    if seguidos:
+        console.warning(f"{len(seguidos)} atalho(s) SEGUIDOS por --seguir-links:")
+    else:
+        console.info(f"{len(links)} atalho(s) encontrados e NAO seguidos:")
+    for link in links[:_LINK_PREVIEW_COUNT]:
+        marca = "fora da origem" if link["fora_da_origem"] else "dentro da origem"
+        console.info(f"  - {link['atalho']} -> {link['destino']} ({marca})")
+    restantes = len(links) - _LINK_PREVIEW_COUNT
+    if restantes > 0:
+        console.info(f"  ... e mais {restantes}. A lista completa esta no manifesto.")
+
+
 def _relatar_nao_lidos(console: Console, nao_lidos: list[dict[str, Any]]) -> None:
     """
     Lista o que NAO entrou no pacote.
@@ -179,6 +216,15 @@ def _aplicar_retencao(console: Console, output: Path, manter: int) -> None:
     help="Padrao adicional de exclusao (fnmatch). Pode repetir.",
 )
 @click.option(
+    "--seguir-links",
+    is_flag=True,
+    default=False,
+    help=(
+        "Entra em junções e links de pasta. Desligado por padrao: um atalho "
+        "para fora da origem colocaria dados de terceiros no pacote."
+    ),
+)
+@click.option(
     "--com-data",
     is_flag=True,
     default=False,
@@ -205,6 +251,7 @@ def backup(
     sources: tuple[Path, ...],
     output: Path,
     exclude: tuple[str, ...],
+    seguir_links: bool,
     com_data: bool,
     manter: int,
     no_default_excludes: bool,
@@ -232,6 +279,7 @@ def backup(
         destination=output,
         exclude_patterns=list(exclude) if exclude else None,
         include_default_excludes=not no_default_excludes,
+        follow_links=seguir_links,
         dry_run=ctx.dry_run,
     )
     result = task.run()
@@ -275,6 +323,9 @@ def backup(
     console.info(f"Tamanho: {size_str}")
     console.info(f"SHA-256: {result.data['sha256']}")
     console.info(f"Manifesto: {result.data['manifest']} (dentro do pacote)")
+
+    _relatar_volume(console, result.data.get("same_volume", []))
+    _relatar_links(console, result.data.get("links", []))
 
     if nao_lidos:
         _relatar_nao_lidos(console, nao_lidos)

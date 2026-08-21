@@ -16,6 +16,15 @@ Dai saem as regras que este modulo segue, em ordem de importancia:
    pelo Excel, sem permissao ou que sumiu no meio nao derruba o backup — vira
    ressalva registrada no resultado e dentro do proprio pacote.
 
+**O que o manifesto prova — e o que nao prova.** Os SHA-256 gravados dentro
+do pacote detectam corrupcao (disco com defeito, transferencia truncada) e
+alteracao acidental. Eles NAO comprovam autenticidade: quem tem acesso de
+escrita ao arquivo pode trocar o conteudo e recalcular o manifesto, e a
+conferencia passaria. Provar que o pacote e o mesmo que o AutoTarefas gerou
+exige assinatura com chave mantida FORA dele — e isso ainda nao existe aqui.
+Enquanto nao existir, a documentacao e as mensagens nao podem sugerir o
+contrario.
+
 O que este modulo NAO faz, de proposito:
 
 - **backup incremental**: restaurar exigiria a corrente inteira (completo +
@@ -23,6 +32,8 @@ O que este modulo NAO faz, de proposito:
   restaura esta sempre sob pressao. Simplicidade aqui e seguranca;
 - **senha de ZIP classica (ZipCrypto)**: quebravel em minutos. Oferecer daria
   falsa sensacao de protecao, pior do que nao oferecer;
+- **provar autenticidade**: ver o paragrafo acima. Detectamos corrupcao,
+  nao adulteracao deliberada;
 - **copiar arquivo aberto**: nenhuma copia comum le um `.xlsx` aberto no
   Excel. Isso exige instantaneo de volume (VSS) e privilegio de
   administrador — fica para um card proprio. Aqui, o arquivo aberto vira
@@ -46,6 +57,7 @@ import io
 import os
 import re
 import shutil
+import stat
 import tempfile
 import time
 import zipfile
@@ -85,6 +97,37 @@ class BackupEntry:
 
 
 @dataclass(frozen=True, slots=True)
+class LinkFound:
+    """
+    Um atalho de pasta encontrado na origem: junção, link simbólico ou
+    ponto de reanálise.
+
+    Por padrão o conteúdo apontado NAO e copiado. Um atalho para a pasta de
+    outro setor, ou para um drive de rede, colocaria dados de fora dentro do
+    pacote sem ninguem perceber — e dado de terceiro em backup alheio e
+    problema de LGPD, nao so de tamanho de arquivo.
+    """
+
+    arcname: str
+    """Onde o atalho esta, relativo a origem."""
+    target: str
+    """Para onde ele aponta."""
+    followed: bool
+    outside_source: bool
+    """O alvo esta FORA da pasta escolhida?"""
+    reason: str
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "atalho": self.arcname,
+            "destino": self.target,
+            "seguido": self.followed,
+            "fora_da_origem": self.outside_source,
+            "motivo": self.reason,
+        }
+
+
+@dataclass(frozen=True, slots=True)
 class UnreadableFile:
     """
     Um arquivo que NAO entrou, e por que.
@@ -96,6 +139,46 @@ class UnreadableFile:
 
     arcname: str
     reason: str
+
+
+def is_link(path: Path) -> bool:
+    """
+    O caminho e um atalho — link simbolico, junção ou ponto de reanálise?
+
+    `Path.is_symlink()` sozinho NAO basta no Windows: junção criada com
+    `mklink /J` devolve False ali, e era por isso que o backup entrava nela
+    como se fosse pasta comum. O atributo de ponto de reanálise pega os dois.
+    """
+    if path.is_symlink():
+        return True
+    try:
+        atributos = path.lstat().st_file_attributes
+    except (OSError, AttributeError):  # POSIX nao tem o atributo
+        return False
+    return bool(atributos & stat.FILE_ATTRIBUTE_REPARSE_POINT)
+
+
+def _volume(path: Path) -> int | None:
+    """Identificador do volume, subindo ate um caminho que exista."""
+    alvo = path
+    while not alvo.exists() and alvo != alvo.parent:
+        alvo = alvo.parent
+    try:
+        return alvo.stat().st_dev
+    except OSError:  # pragma: no cover - caminho invalido
+        return None
+
+
+def same_volume(source: Path, destination: Path) -> bool:
+    """
+    Origem e destino estao no MESMO disco?
+
+    Nao impede nada — so permite avisar. Backup no mesmo volume nao protege
+    contra defeito do disco, e ransomware cifra tudo o que alcança, backup
+    inclusive.
+    """
+    origem, destino = _volume(source), _volume(destination)
+    return origem is not None and origem == destino
 
 
 def timestamped_name(destination: Path, momento: datetime | None = None) -> Path:
@@ -208,13 +291,14 @@ class BackupTask(BaseTask):
     #: pacote; acima disso, vai para um temporario em disco. Ver `_escrever`.
     _SPOOL_LIMIT: ClassVar[int] = 16 * 1024 * 1024
 
-    def __init__(
+    def __init__(  # noqa: PLR0913 - opcionais keyword-only, uma decisao cada
         self,
         sources: list[Path],
         destination: Path,
         *,
         exclude_patterns: list[str] | None = None,
         include_default_excludes: bool = True,
+        follow_links: bool = False,
         dry_run: bool = False,
     ) -> None:
         """
@@ -226,11 +310,15 @@ class BackupTask(BaseTask):
             exclude_patterns: Padroes adicionais de exclusao (fnmatch).
             include_default_excludes: Se True (default), aplica tambem os
                 DEFAULT_EXCLUDES.
+            follow_links: Se True, entra em junção e link de pasta. Desligado
+                por padrao — atalho para fora da origem colocaria dado de
+                terceiro no pacote sem ninguem perceber.
             dry_run: Se True, nao cria o ZIP — so lista o que faria.
         """
         super().__init__(dry_run=dry_run)
         self.sources = sources
         self.destination = destination
+        self.follow_links = follow_links
 
         # SEGURANCA: valida que o nome do arquivo de destino e seguro
         try:
@@ -247,6 +335,15 @@ class BackupTask(BaseTask):
             excludes.extend(self.DEFAULT_EXCLUDES)
         self.exclude_patterns: tuple[str, ...] = tuple(excludes)
 
+    def same_volume_sources(self) -> list[str]:
+        """
+        Quais fontes estao no MESMO disco do destino.
+
+        So informa; nao bloqueia e nao pede confirmacao — travar aqui
+        quebraria backup agendado, que roda sem ninguem por perto.
+        """
+        return [s.name for s in self.sources if same_volume(s, self.destination)]
+
     @property
     def partial_path(self) -> Path:
         """Onde o pacote e montado antes de virar o arquivo final."""
@@ -257,7 +354,7 @@ class BackupTask(BaseTask):
         started_at = datetime.now(UTC)
 
         self._validate_sources()
-        files_to_backup, files_excluded = self._collect_files()
+        files_to_backup, files_excluded, links, pastas = self._collect_files()
 
         if not files_to_backup:
             return self._make_result(
@@ -269,6 +366,7 @@ class BackupTask(BaseTask):
                     "destination": str(self.destination),
                     "file_count": 0,
                     "skipped_count": len(files_excluded),
+                    "links": [link.as_dict() for link in links],
                 },
             )
 
@@ -285,12 +383,16 @@ class BackupTask(BaseTask):
                     "file_count": len(files_to_backup),
                     "skipped_count": len(files_excluded),
                     "files_preview": [str(f) for f in files_to_backup[:20]],
+                    "links": [link.as_dict() for link in links],
+                    "same_volume": self.same_volume_sources(),
                     "would_create": True,
                 },
             )
 
         self.destination.parent.mkdir(parents=True, exist_ok=True)
-        entradas, ilegiveis = self._build_package(files_to_backup, arcnames, started_at)
+        entradas, ilegiveis = self._build_package(
+            files_to_backup, arcnames, started_at, links=links, pastas=pastas
+        )
 
         if not entradas:
             # Tudo falhou: isso e falha, nao ressalva. Um pacote vazio com
@@ -336,6 +438,8 @@ class BackupTask(BaseTask):
                 "size_bytes": self.destination.stat().st_size,
                 "sha256": sha256,
                 "manifest": MANIFEST_NAME,
+                "links": [link.as_dict() for link in links],
+                "same_volume": self.same_volume_sources(),
             },
         )
 
@@ -357,31 +461,173 @@ class BackupTask(BaseTask):
     # Coleta de arquivos (com excludes)
     # ========================================================
 
-    def _collect_files(self) -> tuple[list[Path], list[Path]]:
+    def _collect_files(self) -> tuple[list[Path], list[Path], list[LinkFound], list[Path]]:
         """
-        Coleta arquivos a incluir, aplicando os padroes de exclusao.
+        Percorre as fontes e separa o que entra, o que sai e o que e atalho.
+
+        A travessia e nossa, e nao `rglob`, por dois motivos comprovados: o
+        `rglob` entra em junção como se fosse pasta comum — copiando dados de
+        FORA da origem — e, quando a junção aponta para um ancestral, ele
+        volta ao mesmo lugar repetidamente, duplicando arquivos ate o limite
+        de tamanho de caminho do sistema.
 
         Returns:
-            Tupla (incluidos, excluidos por regra).
+            (incluidos, excluidos por regra, atalhos, pastas visitadas).
         """
         included: list[Path] = []
         skipped: list[Path] = []
+        links: list[LinkFound] = []
+        pastas: list[Path] = []
         # O proprio pacote nunca entra no pacote: guardar o ZIP dentro da
         # pasta copiada e comum em rede compartilhada, e sem isto cada
         # execucao carregaria a anterior.
         proibidos = {self._resolvido(self.destination), self._resolvido(self.partial_path)}
 
         for source in self.sources:
-            candidatos = [source] if source.is_file() else sorted(source.rglob("*"))
-            for path in candidatos:
-                if not path.is_file():
-                    continue
-                if self._resolvido(path) in proibidos or self._should_exclude(path):
-                    skipped.append(path)
+            if source.is_file():
+                if self._resolvido(source) in proibidos or self._should_exclude(source):
+                    skipped.append(source)
                 else:
-                    included.append(path)
+                    included.append(source)
+                continue
+            self._andar(
+                pasta=source,
+                raiz=source,
+                incluidos=included,
+                excluidos=skipped,
+                links=links,
+                pastas=pastas,
+                proibidos=proibidos,
+                visitados={self._resolvido(source)},
+            )
 
-        return included, skipped
+        return included, skipped, links, pastas
+
+    def _andar(  # noqa: PLR0913 - a travessia carrega o estado dela junto
+        self,
+        *,
+        pasta: Path,
+        raiz: Path,
+        incluidos: list[Path],
+        excluidos: list[Path],
+        links: list[LinkFound],
+        pastas: list[Path],
+        proibidos: set[Path],
+        visitados: set[Path],
+    ) -> None:
+        """Uma pasta por vez, sem entrar em atalho e sem repetir caminho."""
+        try:
+            filhos = sorted(pasta.iterdir())
+        except OSError:  # pragma: no cover - pasta sem permissao de listagem
+            return
+
+        for filho in filhos:
+            if self._should_exclude(filho):
+                excluidos.append(filho)
+                continue
+
+            if is_link(filho):
+                links.append(self._descrever_link(filho, raiz))
+                destino = self._resolvido(filho)
+                # Mesmo com --seguir-links, um atalho que volta para onde ja
+                # estivemos e ignorado: e o que impede a repeticao infinita.
+                if self.follow_links and destino not in visitados:
+                    self._descer_no_link(
+                        filho,
+                        raiz=raiz,
+                        incluidos=incluidos,
+                        excluidos=excluidos,
+                        links=links,
+                        pastas=pastas,
+                        proibidos=proibidos,
+                        visitados=visitados | {destino},
+                    )
+                continue
+
+            if filho.is_dir():
+                real = self._resolvido(filho)
+                if real in visitados:  # pragma: no cover - so com link
+                    continue
+                pastas.append(filho)
+                self._andar(
+                    pasta=filho,
+                    raiz=raiz,
+                    incluidos=incluidos,
+                    excluidos=excluidos,
+                    links=links,
+                    pastas=pastas,
+                    proibidos=proibidos,
+                    visitados=visitados | {real},
+                )
+            elif filho.is_file():
+                if self._resolvido(filho) in proibidos:
+                    excluidos.append(filho)
+                else:
+                    incluidos.append(filho)
+
+    def _descer_no_link(  # noqa: PLR0913 - repassa o estado da travessia
+        self,
+        filho: Path,
+        *,
+        raiz: Path,
+        incluidos: list[Path],
+        excluidos: list[Path],
+        links: list[LinkFound],
+        pastas: list[Path],
+        proibidos: set[Path],
+        visitados: set[Path],
+    ) -> None:
+        """Entra no alvo de um atalho — so acontece com `--seguir-links`."""
+        if filho.is_dir():
+            pastas.append(filho)
+            self._andar(
+                pasta=filho,
+                raiz=raiz,
+                incluidos=incluidos,
+                excluidos=excluidos,
+                links=links,
+                pastas=pastas,
+                proibidos=proibidos,
+                visitados=visitados,
+            )
+        elif filho.is_file():
+            incluidos.append(filho)
+
+    def _descrever_link(self, filho: Path, raiz: Path) -> LinkFound:
+        """Registra o atalho: onde esta, para onde vai, e se saiu da origem."""
+        destino = self._resolvido(filho)
+        try:
+            fora = not destino.is_relative_to(self._resolvido(raiz))
+        except (OSError, ValueError):  # pragma: no cover - caminho estranho
+            fora = True
+
+        if self.follow_links:
+            motivo = (
+                "atalho SEGUIDO por --seguir-links; o alvo esta FORA da origem"
+                if fora
+                else "atalho seguido por --seguir-links"
+            )
+        else:
+            motivo = (
+                "atalho nao seguido: o alvo esta fora da origem escolhida"
+                if fora
+                else "atalho nao seguido (use --seguir-links para incluir o conteudo)"
+            )
+
+        return LinkFound(
+            arcname=self._arcname_de(filho, raiz),
+            target=str(destino),
+            followed=self.follow_links,
+            outside_source=fora,
+            reason=motivo,
+        )
+
+    def _arcname_de(self, caminho: Path, raiz: Path) -> str:
+        """Caminho relativo a origem, no formato do ZIP."""
+        try:
+            return (Path(raiz.name) / caminho.relative_to(raiz)).as_posix()
+        except ValueError:  # pragma: no cover - defesa
+            return caminho.name
 
     @staticmethod
     def _resolvido(path: Path) -> Path:
@@ -475,7 +721,13 @@ class BackupTask(BaseTask):
     # ========================================================
 
     def _build_package(
-        self, files: list[Path], arcnames: dict[Path, str], started_at: datetime
+        self,
+        files: list[Path],
+        arcnames: dict[Path, str],
+        started_at: datetime,
+        *,
+        links: list[LinkFound],
+        pastas: list[Path],
     ) -> tuple[list[BackupEntry], list[UnreadableFile]]:
         """
         Monta o pacote no arquivo temporario.
@@ -504,8 +756,11 @@ class BackupTask(BaseTask):
                         # backup inteiro — vira ressalva.
                         ilegiveis.append(UnreadableFile(arcname, _motivo(exc)))
 
-                self._escrever_pastas_vazias(zf, arcnames)
-                zf.writestr(MANIFEST_NAME, self._manifesto(entradas, ilegiveis, started_at))
+                self._escrever_pastas_vazias(zf, arcnames, pastas)
+                zf.writestr(
+                    MANIFEST_NAME,
+                    self._manifesto(entradas, ilegiveis, started_at, links=links),
+                )
         except OSError:
             self._discard_partial()
             raise
@@ -549,32 +804,46 @@ class BackupTask(BaseTask):
             modified_at=datetime.fromtimestamp(st.st_mtime, tz=UTC).isoformat(timespec="seconds"),
         )
 
-    def _escrever_pastas_vazias(self, zf: zipfile.ZipFile, arcnames: dict[Path, str]) -> None:
+    def _escrever_pastas_vazias(
+        self, zf: zipfile.ZipFile, arcnames: dict[Path, str], pastas: list[Path]
+    ) -> None:
         """
         Preserva pastas que ficaram sem nenhum arquivo.
 
         Sem isto, a estrutura volta incompleta na restauracao — e ha sistema
         que simplesmente nao inicia se a pasta esperada nao existe.
+
+        A lista de pastas vem da travessia, nao de um `rglob` novo: repetir a
+        varredura entraria de novo nas junções que acabamos de evitar.
         """
         com_conteudo = {
             pai for arcname in arcnames.values() for pai in Path(arcname).parents if str(pai) != "."
         }
         raizes = self._nomes_das_fontes()
-        for source in self.sources:
-            if source.is_file():
+        for pasta in pastas:
+            fonte = next((s for s in self.sources if self._sob(pasta, s)), None)
+            if fonte is None:  # pragma: no cover - defesa
                 continue
-            for pasta in source.rglob("*"):
-                if not pasta.is_dir() or self._should_exclude(pasta):
-                    continue
-                relativo = Path(raizes[source]) / pasta.relative_to(source)
-                if relativo not in com_conteudo:
-                    zf.mkdir(relativo.as_posix())
+            relativo = Path(raizes[fonte]) / pasta.relative_to(fonte)
+            if relativo not in com_conteudo:
+                zf.mkdir(relativo.as_posix())
+
+    @staticmethod
+    def _sob(caminho: Path, fonte: Path) -> bool:
+        """`caminho` esta dentro de `fonte`, pelo caminho literal?"""
+        try:
+            caminho.relative_to(fonte)
+        except ValueError:
+            return False
+        return True
 
     def _manifesto(
         self,
         entradas: list[BackupEntry],
         ilegiveis: list[UnreadableFile],
         started_at: datetime,
+        *,
+        links: list[LinkFound],
     ) -> str:
         """
         Monta o `MANIFESTO.csv` que vai DENTRO do pacote.
@@ -593,6 +862,7 @@ class BackupTask(BaseTask):
         writer.writerow(["# fontes", " | ".join(s.name for s in self.sources)])
         writer.writerow(["# arquivos", len(entradas)])
         writer.writerow(["# nao_lidos", len(ilegiveis)])
+        writer.writerow(["# atalhos", len(links)])
         writer.writerow([])
         writer.writerow(["situacao", "arquivo", "bytes", "modificado_em", "sha256", "motivo"])
         for entrada in entradas:
@@ -608,6 +878,12 @@ class BackupTask(BaseTask):
             )
         for ilegivel in ilegiveis:
             writer.writerow(["NAO_LIDO", ilegivel.arcname, "", "", "", ilegivel.reason])
+        # O DESTINO do atalho entra aqui de proposito: e a unica informacao
+        # que responde "o que eu deixei de copiar, e de onde?". E o unico
+        # caminho absoluto que o manifesto carrega.
+        for link in links:
+            situacao = "LINK_SEGUIDO" if link.followed else "LINK_IGNORADO"
+            writer.writerow([situacao, link.arcname, "", "", link.target, link.reason])
         return buffer.getvalue()
 
     def _discard_partial(self) -> None:
@@ -718,6 +994,12 @@ def verify_backup(path: Path, *, buffer_size: int = 64 * 1024) -> VerifyReport:
 
     Um backup que ninguem confere e fe, nao garantia. Com isto, da para
     conferir de tempos em tempos, ANTES do dia em que ele e necessario.
+
+    LIMITE, que precisa ficar dito: isto detecta CORRUPCAO e alteracao
+    acidental. Nao detecta adulteracao intencional — quem alterar um arquivo
+    e recalcular o manifesto passa por aqui sem ser notado, porque a chave da
+    conferencia viaja dentro do proprio pacote. Autenticidade so com
+    assinatura de chave externa.
     """
     if not path.is_file():
         return VerifyReport(path=path, ok=False, checked=0, problem="arquivo nao encontrado")

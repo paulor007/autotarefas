@@ -5,6 +5,8 @@ from __future__ import annotations
 import csv
 import hashlib
 import io
+import os
+import subprocess
 import zipfile
 from datetime import UTC, datetime
 from pathlib import Path
@@ -16,7 +18,9 @@ from autotarefas.core.base import TaskStatus
 from autotarefas.tasks.backup import (
     MANIFEST_NAME,
     BackupTask,
+    is_link,
     rotate_backups,
+    same_volume,
     timestamped_name,
     verify_backup,
 )
@@ -659,10 +663,14 @@ class TestArquivoIlegivelNaoDerrubaOBackup:
         efemero.write_text("some", encoding="utf-8")
 
         task = BackupTask(sources=[pasta], destination=tmp_path / "b.zip")
-        arquivos, _ = task._collect_files()
+        arquivos, _, links, pastas = task._collect_files()
         efemero.unlink()
         entradas, ilegiveis = task._build_package(
-            arquivos, task._resolve_arcnames(arquivos), datetime.now(UTC)
+            arquivos,
+            task._resolve_arcnames(arquivos),
+            datetime.now(UTC),
+            links=links,
+            pastas=pastas,
         )
 
         assert [e.arcname for e in entradas] == ["dados/fica.txt"]
@@ -967,3 +975,159 @@ class TestRetencao:
 
         assert rotate_backups(novo, keep=0) == []
         assert antigo.exists()
+
+
+# ============================================================
+# Tests: Card 02.A — segurança de caminhos e avisos
+#
+# Os defeitos aqui foram COMPROVADOS com sonda antes da correção: uma
+# junção apontando para fora copiava dados de terceiros para dentro do
+# pacote, e uma junção apontando para o topo fazia o mesmo arquivo entrar
+# sete vezes. Ambos em silêncio, com o relatório dizendo um número que não
+# correspondia a nada.
+# ============================================================
+
+
+def _junção(atalho: Path, alvo: Path) -> bool:
+    """Cria uma junção do Windows. False quando o SO não permite."""
+    if os.name != "nt":
+        return False
+    resultado = subprocess.run(  # noqa: S603
+        ["cmd", "/c", "mklink", "/J", str(atalho), str(alvo)],  # noqa: S607
+        capture_output=True,
+        check=False,
+    )
+    return resultado.returncode == 0 and atalho.exists()
+
+
+@pytest.fixture
+def com_junções(tmp_path: Path) -> Path:
+    """Origem com um atalho para fora e outro que volta ao topo."""
+    origem = tmp_path / "origem"
+    (origem / "sub").mkdir(parents=True)
+    externo = tmp_path / "externo"
+    externo.mkdir()
+    (origem / "interno.txt").write_text("dado interno", encoding="utf-8")
+    (externo / "segredo.txt").write_text("DADO DE OUTRO SETOR", encoding="utf-8")
+
+    if not _junção(origem / "atalho_externo", externo):
+        pytest.skip("o sistema não permitiu criar junção")
+    if not _junção(origem / "sub" / "volta_ao_topo", origem):
+        pytest.skip("o sistema não permitiu criar junção")
+    return origem
+
+
+class TestAtalhosNaoCopiamDeFora:
+    def test_conteudo_de_fora_nao_entra(self, tmp_path: Path, com_junções: Path) -> None:
+        """
+        Regressão: a junção era percorrida como pasta comum, e o arquivo de
+        outro setor entrava no pacote sem ninguém perceber.
+        """
+        dest = tmp_path / "backup.zip"
+        BackupTask(sources=[com_junções], destination=dest).run()
+
+        nomes = _zip_namelist(dest)
+        assert nomes == ["origem/interno.txt"]
+        assert not any("segredo" in n for n in nomes)
+
+    def test_atalho_e_registrado_com_destino_e_motivo(
+        self, tmp_path: Path, com_junções: Path
+    ) -> None:
+        """Ignorar em silêncio seria tão ruim quanto copiar em silêncio."""
+        dest = tmp_path / "backup.zip"
+        result = BackupTask(sources=[com_junções], destination=dest).run()
+
+        atalhos = {link["atalho"]: link for link in result.data["links"]}
+        fora = atalhos["origem/atalho_externo"]
+        assert fora["fora_da_origem"] is True
+        assert fora["seguido"] is False
+        assert "fora da origem" in fora["motivo"]
+        assert "externo" in fora["destino"]
+
+    def test_manifesto_registra_os_atalhos(self, tmp_path: Path, com_junções: Path) -> None:
+        dest = tmp_path / "backup.zip"
+        BackupTask(sources=[com_junções], destination=dest).run()
+
+        with zipfile.ZipFile(dest) as zf:
+            texto = zf.read(MANIFEST_NAME).decode("utf-8")
+        assert "LINK_IGNORADO" in texto
+        assert "origem/atalho_externo" in texto
+        assert "# atalhos,2" in texto
+
+
+class TestAtalhoCircularNaoRepete:
+    def test_sem_seguir_links_nao_ha_repeticao(self, tmp_path: Path, com_junções: Path) -> None:
+        dest = tmp_path / "backup.zip"
+        result = BackupTask(sources=[com_junções], destination=dest).run()
+
+        assert result.data["file_count"] == 1
+
+    def test_seguindo_links_o_ciclo_ainda_para(self, tmp_path: Path, com_junções: Path) -> None:
+        """
+        Regressão: `volta_ao_topo` apontava para a própria origem e o mesmo
+        arquivo entrava sete vezes, com nomes cada vez mais longos, até o
+        limite de caminho do Windows interromper por acaso.
+        """
+        dest = tmp_path / "backup.zip"
+        result = BackupTask(sources=[com_junções], destination=dest, follow_links=True).run()
+
+        nomes = _zip_namelist(dest)
+        assert len(nomes) == len(set(nomes)), "arquivo repetido no pacote"
+        assert not any(n.count("volta_ao_topo") > 1 for n in nomes)
+        # Com --seguir-links o conteúdo externo entra: foi uma escolha explícita.
+        assert "origem/atalho_externo/segredo.txt" in nomes
+        assert result.data["file_count"] == 2
+
+    def test_seguir_links_e_registrado_como_seguido(
+        self, tmp_path: Path, com_junções: Path
+    ) -> None:
+        dest = tmp_path / "backup.zip"
+        result = BackupTask(sources=[com_junções], destination=dest, follow_links=True).run()
+
+        assert all(link["seguido"] for link in result.data["links"])
+        with zipfile.ZipFile(dest) as zf:
+            assert "LINK_SEGUIDO" in zf.read(MANIFEST_NAME).decode("utf-8")
+
+
+class TestAvisoDeMesmoVolume:
+    def test_mesmo_disco_e_apontado(self, tmp_path: Path, projeto_simples: Path) -> None:
+        result = BackupTask(sources=[projeto_simples], destination=tmp_path / "backup.zip").run()
+
+        assert result.data["same_volume"] == ["projeto"]
+
+    def test_o_aviso_nao_bloqueia_o_backup(self, tmp_path: Path, projeto_simples: Path) -> None:
+        """Travar aqui quebraria o backup agendado, que roda sem ninguém por perto."""
+        dest = tmp_path / "backup.zip"
+        result = BackupTask(sources=[projeto_simples], destination=dest).run()
+
+        assert result.status == TaskStatus.SUCCESS
+        assert dest.is_file()
+
+    def test_volumes_diferentes_nao_geram_aviso(self, tmp_path: Path) -> None:
+        pasta = tmp_path / "d"
+        pasta.mkdir()
+        (pasta / "a.txt").write_text("a", encoding="utf-8")
+
+        assert same_volume(pasta, tmp_path / "b.zip") is True
+        assert same_volume(pasta, Path("//servidor-inexistente/share/b.zip")) is False
+
+
+class TestDeteccaoDeAtalho:
+    def test_pasta_comum_nao_e_atalho(self, tmp_path: Path) -> None:
+        pasta = tmp_path / "comum"
+        pasta.mkdir()
+
+        assert is_link(pasta) is False
+
+    def test_junção_e_atalho(self, tmp_path: Path) -> None:
+        """
+        `Path.is_symlink()` devolve False para junção do Windows — era
+        exatamente essa a brecha por onde o backup entrava nelas.
+        """
+        alvo = tmp_path / "alvo"
+        alvo.mkdir()
+        atalho = tmp_path / "atalho"
+        if not _junção(atalho, alvo):
+            pytest.skip("o sistema não permitiu criar junção")
+
+        assert is_link(atalho) is True
