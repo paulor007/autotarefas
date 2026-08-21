@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import csv
 import hashlib
 import os
 import re
@@ -18,6 +19,7 @@ import subprocess  # nosec B404
 import threading
 import time
 import uuid
+import zipfile
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -61,6 +63,11 @@ def run_timeout_s() -> float:
 
 
 _VALIDATE_FAIL_EXIT = 1
+
+#: `backup` sai 1 quando CONCLUIU e algum arquivo ficou de fora (travado pelo
+#: Excel, sem permissao). O pacote existe e presta; chamar isso de erro
+#: tecnico esconderia um backup bom e assustaria sem motivo.
+_BACKUP_PARTIAL_EXIT = 1
 _TOKEN_RE = re.compile(r"^[0-9a-f]{32}$")
 _DEAD_PROXY = "http://127.0.0.1:9"
 
@@ -92,6 +99,14 @@ class RunResult:
     duration_ms: int
     stdout: str
     artifacts: list[Artifact] = field(default_factory=list)
+    notes: list[str] = field(default_factory=list)
+    """
+    O que a execucao precisa dizer alem do arquivo gerado.
+
+    Hoje: os arquivos que NAO entraram no backup. Sem isto, o Live mostraria
+    um pacote com cara de completo, e a ausencia so apareceria dentro do
+    manifesto — que ninguem abre a tempo.
+    """
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -101,6 +116,7 @@ class RunResult:
             "duration_ms": self.duration_ms,
             "stdout": self.stdout,
             "artifacts": [a.as_dict(self.token) for a in self.artifacts],
+            "notes": self.notes,
         }
 
 
@@ -196,6 +212,41 @@ def _postprocess(automation_id: str, workspace: Path) -> None:
         return
 
 
+#: Nome do manifesto dentro do pacote de backup (contrato do nucleo).
+_MANIFEST_NAME = "MANIFESTO.csv"
+
+#: Posicao do motivo na linha do manifesto.
+_COLUNA_MOTIVO = 5
+
+
+def _ressalvas_do_backup(out_dir: Path) -> list[str]:
+    """
+    Le o manifesto do pacote e devolve o que ficou de fora.
+
+    A fonte e o ARTEFATO entregue, nao o texto do terminal: o que a tela
+    afirma tem de sair do arquivo, senao uma troca de mensagem na CLI
+    silenciaria a tela sem ninguem perceber.
+    """
+    pacotes = sorted(out_dir.glob("*.zip"))
+    if not pacotes:
+        return []
+    try:
+        with zipfile.ZipFile(pacotes[0]) as zf:
+            if _MANIFEST_NAME not in zf.namelist():
+                return []
+            texto = zf.read(_MANIFEST_NAME).decode("utf-8", "replace")
+    except (zipfile.BadZipFile, OSError):  # pragma: no cover - pacote ilegivel
+        return []
+
+    ressalvas: list[str] = []
+    for linha in csv.reader(texto.splitlines()):
+        if linha[:1] != ["NAO_LIDO"]:
+            continue
+        motivo = linha[_COLUNA_MOTIVO] if len(linha) > _COLUNA_MOTIVO else ""
+        ressalvas.append(f"{linha[1]}: {motivo}" if motivo else linha[1])
+    return ressalvas
+
+
 def _should_postprocess(automation_id: str, exit_code: int, *, timed_out: bool) -> bool:
     """
     Decide se vale pos-processar a saida (zipar pastas geradas).
@@ -214,6 +265,9 @@ def _should_postprocess(automation_id: str, exit_code: int, *, timed_out: bool) 
         validate exit 2              -> NAO. Erro de USO/configuracao (schema
                                         invalido, arquivo recusado). Nao houve
                                         validacao; nao ha evidencia a empacotar.
+        backup exit 1                -> SIM. O pacote foi gerado inteiro; o que
+                                        mudou e que algum arquivo nao pode ser
+                                        lido e virou ressalva.
         outra automacao, exit != 0   -> NAO. Falha tecnica: a saida nao e
                                         confiavel.
     """
@@ -221,14 +275,21 @@ def _should_postprocess(automation_id: str, exit_code: int, *, timed_out: bool) 
         return False
     if exit_code == 0:
         return True
-    # Unico caso em que uma saida diferente de zero ainda tem saida completa.
-    return automation_id == "validate" and exit_code == _VALIDATE_FAIL_EXIT
+    # Saidas diferentes de zero que ainda deixam resultado completo.
+    return _concluiu_com_ressalva(automation_id, exit_code)
+
+
+def _concluiu_com_ressalva(automation_id: str, exit_code: int) -> bool:
+    """A automacao terminou o trabalho, mas tem algo que a pessoa precisa ver."""
+    if automation_id == "validate":
+        return exit_code == _VALIDATE_FAIL_EXIT
+    return automation_id == "backup" and exit_code == _BACKUP_PARTIAL_EXIT
 
 
 def _outcome(automation_id: str, exit_code: int) -> str:
     if exit_code == 0:
         return "ok"
-    if automation_id == "validate" and exit_code == _VALIDATE_FAIL_EXIT:
+    if _concluiu_com_ressalva(automation_id, exit_code):
         return "caught_issue"
     return "error"
 
@@ -381,6 +442,7 @@ async def run_streaming(
 
     artifacts = _collect(job.workspace / "out")
     outcome = "timeout" if timed_out else _outcome(automation_id, exit_code)
+    notes = _ressalvas_do_backup(job.workspace / "out") if automation_id == "backup" else []
     result = RunResult(
         token=job.token,
         outcome=outcome,
@@ -388,6 +450,7 @@ async def run_streaming(
         duration_ms=duration_ms,
         stdout="\n".join(job.lines),
         artifacts=artifacts,
+        notes=notes,
     )
     job.result = result
     job.status = outcome

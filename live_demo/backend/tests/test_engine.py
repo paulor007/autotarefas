@@ -11,6 +11,7 @@ from __future__ import annotations
 import json
 import re
 import warnings
+import zipfile
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
@@ -565,3 +566,57 @@ def test_matriz_do_pos_processamento(
     "not timed_out" aceitaria os outros dois indevidamente.
     """
     assert engine._should_postprocess(automation_id, exit_code, timed_out=timed_out) is esperado
+
+
+# ============================================================
+# Card 02.A — o Live precisa dizer a verdade sobre o backup
+# ============================================================
+
+
+def test_backup_com_ressalva_nao_e_erro_tecnico() -> None:
+    """
+    Regressao: o mapeamento so abria excecao para `validate`, entao um backup
+    que CONCLUIU pulando um arquivo travado aparecia como falha tecnica. O
+    pacote existe e presta — chamar isso de erro esconderia um backup bom.
+    """
+    assert engine._outcome("backup", 1) == "caught_issue"
+    assert engine._outcome("backup", 0) == "ok"
+    assert engine._outcome("backup", 2) == "error"
+    # As outras automacoes seguem estritas: exit != 0 continua sendo erro.
+    assert engine._outcome("organize", 1) == "error"
+
+
+def test_backup_com_ressalva_ainda_empacota_a_saida() -> None:
+    assert engine._should_postprocess("backup", 1, timed_out=False) is True
+    assert engine._should_postprocess("backup", 1, timed_out=True) is False
+
+
+def test_live_le_do_manifesto_o_que_nao_entrou(tmp_path: Path) -> None:
+    """
+    A tela mostra o que saiu do ARTEFATO, nao do texto do terminal: uma troca
+    de mensagem na CLI nao pode silenciar o aviso sem ninguem perceber.
+    """
+    out = tmp_path / "out"
+    out.mkdir()
+    with zipfile.ZipFile(out / "backup.zip", "w") as zf:
+        zf.writestr("dados/nota.txt", "nota")
+        zf.writestr(
+            "MANIFESTO.csv",
+            "# backup,autotarefas\n"
+            "situacao,arquivo,bytes,modificado_em,sha256,motivo\n"
+            "incluido,dados/nota.txt,4,2026-08-20T00:00:00+00:00,abc,\n"
+            'NAO_LIDO,dados/planilha.xlsx,,,,"aberto por outro programa"\n',
+        )
+
+    ressalvas = engine._ressalvas_do_backup(out)
+
+    assert ressalvas == ["dados/planilha.xlsx: aberto por outro programa"]
+
+
+def test_pacote_sem_manifesto_nao_inventa_ressalva(tmp_path: Path) -> None:
+    out = tmp_path / "out"
+    out.mkdir()
+    with zipfile.ZipFile(out / "alheio.zip", "w") as zf:
+        zf.writestr("a.txt", "conteudo")
+
+    assert engine._ressalvas_do_backup(out) == []

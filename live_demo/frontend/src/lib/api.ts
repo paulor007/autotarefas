@@ -80,6 +80,11 @@ export interface RunResult {
   duration_ms: number;
   stdout: string;
   artifacts: Artifact[];
+  /**
+   * O que a execucao precisa dizer alem dos arquivos gerados — hoje, o que
+   * NAO entrou no backup. Vem do manifesto do proprio pacote.
+   */
+  notes?: string[];
 }
 
 // ---- Auditoria de planilha ----

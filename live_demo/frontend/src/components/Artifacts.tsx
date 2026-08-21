@@ -72,6 +72,23 @@ export default function Artifacts({
           </div>
         ) : (
           <>
+            {result.notes && result.notes.length > 0 ? (
+              <div className="mx-auto mb-6 max-w-3xl rounded-lg border border-warn/40 bg-warn/5 px-4 py-3">
+                <p className="text-sm font-semibold text-warn">
+                  {result.notes.length} arquivo(s) não entraram no pacote
+                </p>
+                <ul className="mt-1.5 space-y-1 text-[0.85rem] text-muted">
+                  {result.notes.map((nota) => (
+                    <li key={nota}>• {nota}</li>
+                  ))}
+                </ul>
+                <p className="mt-2 text-[0.8rem] text-muted">
+                  O pacote está íntegro e pode ser usado — o que faltou está
+                  listado aqui e dentro do MANIFESTO.csv.
+                </p>
+              </div>
+            ) : null}
+
             <div className="mx-auto mb-6 flex max-w-3xl flex-wrap items-center justify-center gap-x-3 gap-y-1 text-xs text-muted">
               <span>
                 resultado:{" "}
