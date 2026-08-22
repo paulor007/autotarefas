@@ -1,8 +1,8 @@
 # 02 — Catálogo de Automações
 
 Inventário do que o usuário vê e executa, nos dois modos. Fonte de verdade dos
-cards: `live_demo/backend/app/catalog.py` (13 automações, 7 categorias) e
-`live_demo/backend/app/engine.py::ACTIVE_AUTOMATIONS` (régua do que roda ao
+cards: `apps/api/app/catalog.py` (13 automações, 7 categorias) e
+`apps/api/app/engine.py::ACTIVE_AUTOMATIONS` (régua do que roda ao
 vivo). Fonte de verdade do modo real: `src/autotarefas/cli/main.py` (13 comandos).
 
 ## 1. Cards do Live System
@@ -24,7 +24,7 @@ vivo). Fonte de verdade do modo real: `src/autotarefas/cli/main.py` (13 comandos
 | `dashboard` | Painel de auditoria | Auditoria | em breve | `autotarefas dashboard` | GOV-002, LIVE-006 |
 
 Mecânica da régua: o front separa ativos de "em breve" pelas
-`health.active_automations` (`live_demo/frontend/src/App.tsx` +
+`health.active_automations` (`apps/web/src/App.tsx` +
 `components/Catalog.tsx`); o backend recusa fora da régua com **HTTP 501** em
 `main.py::_precheck`. A receita de execução (`recipes.py::build_argv`) cobre
 exatamente os 7 ativos — os demais nem possuem argv definido (KeyError). O estado
@@ -56,7 +56,7 @@ mock).
 
 ## 2. Jornada guiada de planilhas (card `validate`)
 
-Endpoints reais (`live_demo/backend/app/spreadsheets.py`):
+Endpoints reais (`apps/api/app/spreadsheets.py`):
 
 ```
 GET  /api/spreadsheets/profiles            perfis embutidos (público)
@@ -96,7 +96,7 @@ produtos determinísticos, `/catalogo` HTML paginado, `/catalogo-js` renderizado
 por JavaScript, mock do Telegram (`/bot<token>/sendMessage`, caixa de entrada e
 `/telegram/limpar`), `/limpar` e `/seed`. SMTP de depuração: `tools/smtp_debug.py`.
 No Live, o ciclo de vida dos mocks é gerenciado por
-`live_demo/backend/app/demo_servers.py` (autostart configurável).
+`apps/api/app/demo_servers.py` (autostart configurável).
 
 ## 5. Renomeações públicas planejadas (IDs preservados)
 

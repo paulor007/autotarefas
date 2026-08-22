@@ -11,7 +11,7 @@ execução de task registra timestamp, status, duração e o HMAC do input
 base, resultado tipado e status `SUCCESS/PARTIAL/FAILURE` (`core/base.py`).
 
 **Card** — entrada do catálogo do Live System (13 no total), com título público,
-categoria e regras de upload/saída (`live_demo/backend/app/catalog.py`).
+categoria e regras de upload/saída (`apps/api/app/catalog.py`).
 
 **Dry-run** — simulação fiel sem efeito colateral; flag global `--dry-run`.
 
@@ -33,7 +33,7 @@ analisar → selecionar aba/cabeçalho → escolher schema → validar
 **Limpeza (modo)** — normalização segura com trilha antes/depois; jamais
 "conserta" valor inválido (`tasks/cleaning.py`).
 
-**Live System** — vitrine pública em `live_demo/` (FastAPI + React) que executa
+**Live System** — vitrine pública em `apps/` (FastAPI + React) que executa
 o produto real em sandbox contra mocks internos. Não confundir com o
 **dashboard**, que é o painel HTML estático do audit (`src/autotarefas/dashboard/`).
 

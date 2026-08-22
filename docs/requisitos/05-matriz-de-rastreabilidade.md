@@ -53,7 +53,7 @@ colhida manualmente na auditoria
 | RF-CORE-004 | CONCLUÍDO | OBRIG. V1 | `src/autotarefas/core/settings.py` | `tests/core/test_settings.py` | [N] | `.env.example` vazio | — | preencher exemplo (A2) |
 | RF-CORE-005 | CONCLUÍDO | OBRIG. V1 | `src/autotarefas/cli/main.py` + `commands/` | `tests/cli/` (19 arquivos) | [N][H] | — | CORE-001 | manter |
 | RF-CORE-006 | CONCLUÍDO (recorte V1) | **OBRIG. V1** (recorte aprovado — DP-01(d)) | `src/autotarefas/flow.py` + `cli/commands/run.py` (+ `profiles/`) | `tests/test_flow.py`, `tests/profiles/` | [B6] | encadeamento genérico e agendamento seguem PÓS-V1 (D4) | REC-004 | manter |
-| RF-CORE-007 | NÃO INICIADO | PÓS-V1 | — (semente: `live_demo/frontend/src/components/ValidationSummary.tsx`) | — | [H] | motor de regras | CORE-006 | Fase D1 |
+| RF-CORE-007 | NÃO INICIADO | PÓS-V1 | — (semente: `apps/web/src/components/ValidationSummary.tsx`) | — | [H] | motor de regras | CORE-006 | Fase D1 |
 | RF-CORE-008 | NÃO INICIADO | PÓS-V1 | — | — | — | tudo | CORE-006 | Fase D4 |
 | RF-ARQ-001 | CONCLUÍDO | OBRIG. V1 | `src/autotarefas/tasks/backup.py` | `tests/tasks/test_backup.py`, `tests/cli/test_backup_cli.py` | [N][L] | manifesto/restauração → ARQ-002 | CORE-001 | manter |
 | RF-ARQ-002 | NÃO INICIADO | PÓS-V1 | — | — | [H] (grep sem "manifest" em backup.py) | tudo | ARQ-001 | Fase D2 |
@@ -91,13 +91,13 @@ colhida manualmente na auditoria
 | RF-GOV-002 | CONCLUÍDO | OBRIG. V1 | `src/autotarefas/dashboard/{reader,renderer}.py` | `tests/dashboard/`, `tests/cli/test_dashboard_cli.py` | [N] | Live → LIVE-006a | GOV-001 | ativar no Live (A3) |
 | RF-GOV-003 | PARCIAL | **OBRIG. V1** | mascaramento em `core/security.py`; retenção fixa `core/logger.py:142`; `screenshot_retention_days` em `core/settings.py` | `tests/core/test_logger.py`, `test_security.py` | [N][H] | rotina de expurgo; retenção configurável; texto de transparência do Live | — (DP-05 aprovada) | **Fase A2** |
 | RF-GOV-004 | CONCLUÍDO | OBRIG. V1 | `src/autotarefas/dashboard/reader.py` (`verify_input_hash`) | `tests/dashboard/test_reader.py` | [N] | — | CORE-002 | manter |
-| RF-LIVE-001 | CONCLUÍDO | OBRIG. V1 | `live_demo/backend/app/catalog.py`, `engine.py::ACTIVE_AUTOMATIONS`, `main.py::_precheck` | `live_demo/backend/tests/test_engine.py` | [L][H] | estado `oculto` da régua não implementado | — | manter |
-| RF-LIVE-002 | CONCLUÍDO | OBRIG. V1 | `live_demo/backend/app/{main,engine,jobs,streaming}.py` | `test_engine.py`, `test_streaming.py` | [L] | — | LIVE-001 | manter |
-| RF-LIVE-003 | CONCLUÍDO | OBRIG. V1 | `live_demo/backend/app/{config,ratelimit,uploads,sanitize,engine}.py` | suíte 127 (limites) | [L][H] | — | LIVE-002 | manter |
-| RF-LIVE-004 | CONCLUÍDO | OBRIG. V1 | `live_demo/backend/app/spreadsheets.py` | `test_spreadsheets.py` (1002 linhas) + front 14 testes | [L][F] | — | PLA-002/005, LIVE-002 | manter |
-| RF-LIVE-005 | CONCLUÍDO | OBRIG. V1 | `tools/demo_server/`, `live_demo/backend/app/demo_servers.py` | `tests/tools/demo_server/` (5 arquivos) | [N][L] | — | — | manter |
+| RF-LIVE-001 | CONCLUÍDO | OBRIG. V1 | `apps/api/app/catalog.py`, `engine.py::ACTIVE_AUTOMATIONS`, `main.py::_precheck` | `apps/api/tests/test_engine.py` | [L][H] | estado `oculto` da régua não implementado | — | manter |
+| RF-LIVE-002 | CONCLUÍDO | OBRIG. V1 | `apps/api/app/{main,engine,jobs,streaming}.py` | `test_engine.py`, `test_streaming.py` | [L] | — | LIVE-001 | manter |
+| RF-LIVE-003 | CONCLUÍDO | OBRIG. V1 | `apps/api/app/{config,ratelimit,uploads,sanitize,engine}.py` | suíte 127 (limites) | [L][H] | — | LIVE-002 | manter |
+| RF-LIVE-004 | CONCLUÍDO | OBRIG. V1 | `apps/api/app/spreadsheets.py` | `test_spreadsheets.py` (1002 linhas) + front 14 testes | [L][F] | — | PLA-002/005, LIVE-002 | manter |
+| RF-LIVE-005 | CONCLUÍDO | OBRIG. V1 | `tools/demo_server/`, `apps/api/app/demo_servers.py` | `tests/tools/demo_server/` (5 arquivos) | [N][L] | — | — | manter |
 | RF-LIVE-006 | NÃO INICIADO | 006a RECOM. V1 · 006b PÓS-V1 (DP-02) | — (lacuna: `recipes.py::build_argv` cobre só 7 ids) | — | [H] | 006a: 4 ramos de receita + régua + testes · 006b: ajuste da vitrine + vídeo/GIF | LIVE-001..003 | **A3** (006a) · **A4** (vitrine, obrigatória antes do release) · D4 (reavaliação) |
-| RF-LIVE-007 | CONCLUÍDO | OBRIG. V1 | `live_demo/frontend/src/` | **52 passed** na árvore local (22 + 16 + 14), typecheck e build aprovados — A1, 10/08/2026 | [F][A1] | `spreadsheets.test.ts` (22 testes) **não aparece em `git ls-files` nem como não rastreado** — risco R-18, a confirmar na A1.2 | LIVE-002/004 | confirmar rastreamento do arquivo de teste (A1.2) |
+| RF-LIVE-007 | CONCLUÍDO | OBRIG. V1 | `apps/web/src/` | **52 passed** na árvore local (22 + 16 + 14), typecheck e build aprovados — A1, 10/08/2026 | [F][A1] | `spreadsheets.test.ts` (22 testes) **não aparece em `git ls-files` nem como não rastreado** — risco R-18, a confirmar na A1.2 | LIVE-002/004 | confirmar rastreamento do arquivo de teste (A1.2) |
 
 ## Evidências com ressalva (honestidade da auditoria)
 
@@ -152,12 +152,12 @@ colhida manualmente na auditoria
 7. **`spreadsheets.test.ts` sem rastreamento aparente (A1).** Entre os testes de
    frontend versionados aparecem somente `SpreadsheetJourney.test.tsx` e
    `SpreadsheetProfileMapping.test.tsx`. O arquivo
-   `live_demo/frontend/src/lib/spreadsheets.test.ts` **existe e executou 22
+   `apps/web/src/lib/spreadsheets.test.ts` **existe e executou 22
    testes**, mas não apareceu em `git ls-files` nem entre os não rastreados.
    Hipótese **não confirmada**: regra de `.gitignore` alcançando diretórios
    `lib`. Confirmação exigida na A1.2 com
-   `git check-ignore -v live_demo/frontend/src/lib/spreadsheets.test.ts` e
-   `git ls-files --error-unmatch live_demo/frontend/src/lib/spreadsheets.test.ts`.
+   `git check-ignore -v apps/web/src/lib/spreadsheets.test.ts` e
+   `git ls-files --error-unmatch apps/web/src/lib/spreadsheets.test.ts`.
    Risco R-18.
 
 8. **Fixtures de planilhas (A1).** `tests/fixtures/planilhas/build_fixtures.py`

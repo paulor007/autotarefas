@@ -228,7 +228,7 @@ ignore = [
 ]
 
 # Testes do backend do Live System (mesmas excecoes dos testes principais)
-"live_demo/backend/tests/**" = [
+"apps/api/tests/**" = [
     "S101",
     "PLR2004",
     "ANN",

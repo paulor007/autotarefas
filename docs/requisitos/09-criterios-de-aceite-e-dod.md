@@ -51,7 +51,7 @@ crua ao usuário.
 **Funcionalidade do Live backend:** allowlist respeitada (argv 100% do servidor;
 recusas 404/501/429/413 corretas); limites de `config.py` aplicados; artefatos
 apenas em `out/` com download de nome simples; testes em
-`live_demo/backend/tests` cobrindo sucesso, recusas e limites; egress lockdown
+`apps/api/tests` cobrindo sucesso, recusas e limites; egress lockdown
 inalterado.
 
 **Frontend do Live:** typecheck e build verdes; estado de erro/offline tratado;

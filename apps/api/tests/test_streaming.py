@@ -14,10 +14,10 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-from live_demo.backend.app import engine, jobs
-from live_demo.backend.app.config import settings
-from live_demo.backend.app.main import app
-from live_demo.backend.app.ratelimit import RateLimiter
+from apps.api.app import engine, jobs
+from apps.api.app.config import settings
+from apps.api.app.main import app
+from apps.api.app.ratelimit import RateLimiter
 
 warnings.filterwarnings("ignore")
 

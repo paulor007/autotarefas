@@ -176,7 +176,7 @@ constam em RNF-PRIV. Valores "vigentes" vêm do código deste snapshot;
 | Suíte | Comando | Resultado no baseline local |
 |---|---|---|
 | Núcleo | `python -m pytest tests` | **2052 passed**, cobertura **92,39 %** |
-| Live backend | `python -m pytest live_demo/backend/tests` | **127 passed** |
+| Live backend | `python -m pytest apps/api/tests` | **127 passed** |
 | Frontend | `npm test` (`vitest run`) | **52 passed** — 22 em `spreadsheets.test.ts`, 16 em `SpreadsheetProfileMapping.test.tsx`, 14 em `SpreadsheetJourney.test.tsx` |
 | Frontend estático | `npm run typecheck` / `npm run build` | aprovados |
 | Frontend — vulnerabilidades | `npm audit` / `npm audit --omit=dev` | **1 alta de desenvolvimento** (`nanoid < 3.3.17`, GHSA-2v37-7h3g-55p8) / **0** em produção; `git diff` do `package-lock.json` vazio — nenhuma correção aplicada (R-15, subetapa A1.3) |
@@ -203,7 +203,7 @@ corretos: a suíte completa é `python -m pytest tests`; a verificação com nav
 - RNF-CI-02 — **Lacunas da CI identificadas na A1** (nenhuma corrigida nesta
   etapa; registro em `08` R-16):
   1. `testpaths = ["tests"]` no `pyproject.toml` faz o `pytest` da CI cobrir
-     **somente o núcleo** — a suíte do Live backend (`live_demo/backend/tests`,
+     **somente o núcleo** — a suíte do Live backend (`apps/api/tests`,
      127 testes) **não roda na CI**;
   2. **nenhum job de frontend**: `npm ci`, `npm test`, `npm run typecheck`,
      `npm run build` e `npm audit` não aparecem em nenhum workflow;

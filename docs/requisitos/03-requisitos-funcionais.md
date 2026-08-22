@@ -88,7 +88,7 @@ módulo" para não repetir texto.
 **Requisitos adicionais:** `.env.example` completo e comentado.
 **Dependências:** pydantic-settings. **Segurança e privacidade:** `SecretStr`.
 **Falhas/Recuperação:** mensagens de validação.
-**Modo Live:** config própria em `live_demo/backend/app/config.py` (env `PORT`, limites etc.). **Modo real:** este requisito.
+**Modo Live:** config própria em `apps/api/app/config.py` (env `PORT`, limites etc.). **Modo real:** este requisito.
 **Testes:** `tests/core/test_settings.py`. **Prioridade:** OBRIGATÓRIO V1. **Fase:** entregue. **Status:** CONCLUÍDO.
 **Evidências:** `src/autotarefas/core/settings.py`; teste citado.
 **Lacunas:** **`.env.example` está vazio** (0 bytes) — não documenta as variáveis que `settings.py` consome. **Próxima ação:** preencher `.env.example` na Fase A (A2), sem mudar código.
@@ -147,7 +147,7 @@ módulo" para não repetir texto.
 **Modo Live:** semente já existente — o front oferece o CTA Auditoria→Cadastro após validar (`useSpreadsheetJourney`/`ValidationSummary`). **Modo real:** bloco no resumo do CLI.
 **Testes:** uma suíte por regra (dispara/não dispara).
 **Prioridade:** PÓS-V1. **Fase:** D1. **Status:** NÃO INICIADO (semente de UI no Live).
-**Evidências da semente:** `live_demo/frontend/src/components/ValidationSummary.tsx` + hooks.
+**Evidências da semente:** `apps/web/src/components/ValidationSummary.tsx` + hooks.
 **Lacunas:** motor de regras inexistente. **Próxima ação:** especificar as 5 regras iniciais na Fase D1.
 
 ### RF-CORE-008 — Agendamento, gatilhos e encadeamento
@@ -602,13 +602,13 @@ sobre esse núcleo.*
 ### RF-LIVE-001 — Catálogo curado com régua ativo/em breve
 **Descrição detalhada:** 13 automações/7 categorias em dataclass congelada; payload público sem comandos/caminhos; régua = `engine.ACTIVE_AUTOMATIONS` (7 ids); front separa pelo health; backend responde **501** fora da régua; estado `oculto` da régua de design não implementado.
 **Critérios de aceite:** id fora do catálogo → 404; dentro do catálogo mas fora da régua → 501.
-**Testes:** cobertos em `live_demo/backend/tests/test_engine.py` (suite 127 passed).
-**Prioridade:** OBRIGATÓRIO V1. **Status:** CONCLUÍDO. **Evidências:** `live_demo/backend/app/catalog.py` (249 linhas), `engine.py::ACTIVE_AUTOMATIONS`, `main.py::_precheck`. **Demais campos:** padrão do módulo.
+**Testes:** cobertos em `apps/api/tests/test_engine.py` (suite 127 passed).
+**Prioridade:** OBRIGATÓRIO V1. **Status:** CONCLUÍDO. **Evidências:** `apps/api/app/catalog.py` (249 linhas), `engine.py::ACTIVE_AUTOMATIONS`, `main.py::_precheck`. **Demais campos:** padrão do módulo.
 
 ### RF-LIVE-002 — Execução isolada em 2 fases com SSE
 **Descrição detalhada:** `POST /api/run/{id}` cria workspace UUID (com `AUTOTAREFAS_HOME` próprio), agenda a execução e devolve `{token, stream_url}`; `GET /api/stream/{token}` transmite stdout linha a linha via SSE com evento final done/timeout; `GET /api/result/{token}` para reconexão; `GET /api/download/{token}/{name}` só serve **arquivos diretos de `out/` com nome simples** (anti path traversal); artefatos de subpastas são zipados (ex.: pacote de execução).
 **Critérios de aceite:** reconectar no meio recupera o resultado; download de `../` recusado.
-**Testes:** `live_demo/backend/tests/test_engine.py` (567 linhas), `test_streaming.py`.
+**Testes:** `apps/api/tests/test_engine.py` (567 linhas), `test_streaming.py`.
 **Prioridade:** OBRIGATÓRIO V1. **Status:** CONCLUÍDO. **Evidências:** `main.py` (264), `engine.py` (403), `jobs.py`, `streaming.py`. **Demais campos:** padrão do módulo.
 
 ### RF-LIVE-003 — Segurança do Live
@@ -619,8 +619,8 @@ sobre esse núcleo.*
 ### RF-LIVE-004 — Jornada guiada de planilhas
 **Descrição detalhada:** ver 02 §2; aceita exemplo, upload, perfil embutido ou **YAML próprio ≤256 KB**; mesmo token do fluxo clássico; upload nunca baixável; `config/` fora de `out/`; `schema_efetivo.yaml` no pacote.
 **Critérios de aceite:** os 4 caminhos de schema chegam à validação; YAML inválido → erro campo a campo sem executar.
-**Testes:** `live_demo/backend/tests/test_spreadsheets.py` (1002 linhas); front `SpreadsheetJourney.test.tsx` (14 testes).
-**Prioridade:** OBRIGATÓRIO V1. **Status:** CONCLUÍDO. **Evidências:** `live_demo/backend/app/spreadsheets.py` (799 linhas) + componentes `Spreadsheet*` do front. **Demais campos:** padrão do módulo.
+**Testes:** `apps/api/tests/test_spreadsheets.py` (1002 linhas); front `SpreadsheetJourney.test.tsx` (14 testes).
+**Prioridade:** OBRIGATÓRIO V1. **Status:** CONCLUÍDO. **Evidências:** `apps/api/app/spreadsheets.py` (799 linhas) + componentes `Spreadsheet*` do front. **Demais campos:** padrão do módulo.
 
 ### RF-LIVE-005 — Mocks determinísticos internos
 **Descrição detalhada:** ver 02 §4; gerenciados no lifespan (`demo_servers.py`, autostart configurável); saúde exposta no `/api/health`.
@@ -640,5 +640,5 @@ sobre esse núcleo.*
 **Descrição detalhada:** React 18 + Vite + TS + Tailwind 3.4 consumindo somente APIs reais (`/api/health`, `/api/catalog`, `/api/run`, `/api/stream`, `/api/sample`, `/api/spreadsheets/*`); terminal ao vivo, artefatos com download, resumos específicos (Validation/Import/Extract), jornada em etapas, estados de erro/offline, ErrorBoundary.
 **Critérios de aceite:** typecheck e build verdes; teste de regressão "não desmonta com payload real" presente e verde.
 **Testes:** **52 passed na árvore local (A1, 10/08/2026)** — 22 em `src/lib/spreadsheets.test.ts`, 16 em `src/components/SpreadsheetProfileMapping.test.tsx`, 14 em `src/components/SpreadsheetJourney.test.tsx`; typecheck e build aprovados. Histórico: o zip de 05/08 executava 31 (17 + 14).
-**Prioridade:** OBRIGATÓRIO V1. **Status:** CONCLUÍDO. **Evidências:** `live_demo/frontend/src/` (24 componentes, 5 hooks, libs); typecheck/build/audit verdes também no zip (00 §4).
+**Prioridade:** OBRIGATÓRIO V1. **Status:** CONCLUÍDO. **Evidências:** `apps/web/src/` (24 componentes, 5 hooks, libs); typecheck/build/audit verdes também no zip (00 §4).
 **Lacunas:** `src/lib/spreadsheets.test.ts` (22 testes) não aparece em `git ls-files` nem entre os não rastreados — risco R-18, confirmação na subetapa A1.2. **Demais campos:** padrão do módulo.

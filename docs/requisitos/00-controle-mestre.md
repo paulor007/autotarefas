@@ -115,7 +115,7 @@ Node 22.22.2):
   **2023 passed, 1 skipped** (2024 coletados; o único *skip* é o teste que exige
   Chromium, que se auto-desativa). **O baseline vigente é o da árvore local:
   2052 testes** — ver §4.1.
-- Suíte do Live backend: `python -m pytest live_demo/backend/tests` → **127 passed**
+- Suíte do Live backend: `python -m pytest apps/api/tests` → **127 passed**
   (confere com o número informado da última etapa).
 - Frontend: `npx vitest run` sobre o zip → **31 passed** (2 arquivos: 14 + 17).
   **Resolvido (DP-07):** a validação local do responsável em 05/08/2026, posterior

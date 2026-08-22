@@ -14,8 +14,8 @@ aberta.
 A partir da raiz do repositorio, com a venv ativada e o pacote instalado:
 
 ```bash
-pip install -r live_demo/backend/requirements.txt
-uvicorn live_demo.backend.app.main:app --reload --port 7860
+pip install -r apps/api/requirements.txt
+uvicorn apps.api.app.main:app --reload --port 7860
 ```
 
 - `http://localhost:7860/api/health` — saude do servico e dos mocks
@@ -28,7 +28,7 @@ Para subir sem iniciar os mocks (util em testes): `DEMO_SERVERS_AUTOSTART=0`.
 A partir da raiz do repo:
 
 ```bash
-docker build -f live_demo/backend/Dockerfile -t autotarefas-live .
+docker build -f apps/api/Dockerfile -t autotarefas-live .
 docker run --rm -p 7860:7860 autotarefas-live
 ```
 

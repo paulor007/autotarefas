@@ -20,7 +20,7 @@ arquivo privado entra aqui.
 
 Rodar:
     playwright install chromium
-    npm --prefix live_demo/frontend run build
+    npm --prefix apps/web run build
     python -m pytest tests/e2e/test_jornada_planilhas_e2e.py
 
 O backend serve o `dist/` na propria origem, como em producao — sem dev
@@ -49,7 +49,7 @@ from playwright.sync_api import Page, sync_playwright
 
 RAIZ = Path(__file__).resolve().parents[2]
 DOMINIOS = RAIZ / "tests" / "fixtures" / "dominios"
-FRONTEND = RAIZ / "live_demo" / "frontend"
+FRONTEND = RAIZ / "apps" / "web"
 
 #: A jornada sobe dois processos; 60 s cobre npm frio em maquina lenta.
 TIMEOUT_SUBIDA_S = 60
@@ -94,7 +94,7 @@ def sistema() -> Iterator[str]:
     instrucao de como gera-lo.
     """
     if not (FRONTEND / "dist" / "index.html").is_file():
-        pytest.skip("frontend nao buildado: rode `npm --prefix live_demo/frontend run build`")
+        pytest.skip("frontend nao buildado: rode `npm --prefix apps/web run build`")
 
     porta = _porta_livre()
     backend = subprocess.Popen(  # noqa: S603
@@ -102,7 +102,7 @@ def sistema() -> Iterator[str]:
             sys.executable,
             "-m",
             "uvicorn",
-            "live_demo.backend.app.main:app",
+            "apps.api.app.main:app",
             "--port",
             str(porta),
         ],

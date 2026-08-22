@@ -19,8 +19,8 @@ from typing import Any
 import pytest
 from fastapi.testclient import TestClient
 
-from live_demo.backend.app import engine, recipes
-from live_demo.backend.app.main import app
+from apps.api.app import engine, recipes
+from apps.api.app.main import app
 
 warnings.filterwarnings("ignore")
 
@@ -314,7 +314,7 @@ def demo_crm() -> Iterator[None]:
 
     O `cwd` e obrigatorio: `tools.demo_server.app` e um modulo da RAIZ do
     projeto, entao sem ele a fixture so funcionava quando o pytest era
-    chamado de la. Rodando de `live_demo/backend` o subprocesso morria com
+    chamado de la. Rodando de `apps/api` o subprocesso morria com
     ModuleNotFoundError — e, como a saida ia para DEVNULL, o teste falhava
     dizendo apenas "nao subiu", escondendo a causa. A raiz e derivada de
     `__file__` (mesma convencao do conftest), nunca de caminho absoluto nem
@@ -327,9 +327,9 @@ def demo_crm() -> Iterator[None]:
 
     import httpx
 
-    from live_demo.backend.app.config import settings
+    from apps.api.app.config import settings
 
-    # tests/ -> backend/ -> live_demo/ -> raiz  (igual ao _REPO do conftest)
+    # tests/ -> api/ -> apps/ -> raiz  (igual ao _REPO do conftest)
     raiz = Path(__file__).resolve().parents[3]
     port = settings.demo_primary_port
     base = f"http://127.0.0.1:{port}"

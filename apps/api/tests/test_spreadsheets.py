@@ -26,8 +26,8 @@ import pytest
 from fastapi.testclient import TestClient
 from openpyxl import load_workbook
 
-from live_demo.backend.app import engine, jobs, ratelimit
-from live_demo.backend.app.main import app
+from apps.api.app import engine, jobs, ratelimit
+from apps.api.app.main import app
 
 FX = Path(__file__).resolve().parents[3] / "tests" / "fixtures" / "planilhas"
 
@@ -1168,7 +1168,7 @@ class TestCicloDeVida:
         assert threading.active_count() <= antes
 
     def test_nenhuma_tarefa_de_fundo_pendente(self, client: TestClient) -> None:
-        from live_demo.backend.app import spreadsheets
+        from apps.api.app import spreadsheets
 
         _jornada_completa(client, "32_servicos.csv")
         assert all(t.done() for t in spreadsheets.pending_tasks())
@@ -1180,7 +1180,7 @@ class TestCicloDeVida:
         O shutdown cancela e AGUARDA as tarefas; a thread sai pelo join. Nada
         pode estourar depois.
         """
-        from live_demo.backend.app.main import app as app_local
+        from apps.api.app.main import app as app_local
 
         with TestClient(app_local) as local:
             _zerar_estado_do_servidor()
@@ -1203,7 +1203,7 @@ class TestCicloDeVida:
         """
         import threading
 
-        from live_demo.backend.app import engine
+        from apps.api.app import engine
 
         antes = threading.active_count()
         monkeypatch.setattr(engine, "run_timeout_s", lambda: 0.0)

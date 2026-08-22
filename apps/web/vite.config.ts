@@ -5,7 +5,7 @@ import { defineConfig, loadEnv } from "vite";
 /**
  * Porta padrao do backend.
  *
- * E o MESMO valor do `PORT` em `live_demo/backend/app/config.py`, do
+ * E o MESMO valor do `PORT` em `apps/api/app/config.py`, do
  * `Dockerfile` e do README. Mudar a porta do backend deve exigir mexer em uma
  * fonte so: a variavel de ambiente abaixo — nunca em componente React.
  */

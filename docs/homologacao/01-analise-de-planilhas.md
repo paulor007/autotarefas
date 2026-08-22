@@ -102,7 +102,7 @@ por confirmação de papéis de coluna ou por schema YAML.
 Sobrou uma única porta avançada: **"Adicionar regras do meu processo (YAML)"**,
 com botão de voltar sem enviar.
 
-Prova automatizada: `live_demo/frontend/src/components/SpreadsheetJourney.test.tsx`,
+Prova automatizada: `apps/web/src/components/SpreadsheetJourney.test.tsx`,
 teste `vai do diagnóstico direto para a revisão, sem etapa de schema` — ele
 verifica que os botões antigos **não existem** e que a trilha tem quatro etapas.
 
@@ -167,8 +167,8 @@ e gerar o dashboard não tocam na ordem nem no conteúdo da aba de dados.
 ## E. Como verificar você mesmo
 
 ```bash
-npm --prefix live_demo/frontend run build
-python -m uvicorn live_demo.backend.app.main:app --port 8000
+npm --prefix apps/web run build
+python -m uvicorn apps.api.app.main:app --port 8000
 ```
 
 Abra `http://127.0.0.1:8000`, escolha o card e teste com estas fixtures
@@ -326,7 +326,7 @@ O arquivo **não está versionado** e **não entra em fixture, commit ou ZIP**.
   mais a recusa explicada de um `.xls` ilegível
   (`tests/reader/test_formatos_legados.py`, 9 testes);
 - `.xls` real percorrendo a jornada pela API, sem oferecer organização
-  (`live_demo/backend/tests/test_spreadsheets.py`).
+  (`apps/api/tests/test_spreadsheets.py`).
 
 ### I.3 Comprovado em navegador real (Chromium)
 
@@ -418,7 +418,7 @@ marcada como não verificada:
 | Verificação | Resultado |
 | --- | --- |
 | `pytest` (núcleo) | **2.489** passaram · cobertura 92,86% (mínimo 85%) |
-| `pytest live_demo/backend/tests` | **173** passaram |
+| `pytest apps/api/tests` | **173** passaram |
 | `npm test` (vitest) | **72** passaram |
 | `npm run typecheck` | sem erros |
 | `npm run build` | build gerado |

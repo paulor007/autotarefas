@@ -259,6 +259,6 @@ def download(token: str, name: str) -> Response:
 
 
 # Front-end buildado (Vite) - montado automaticamente quando existir (Fase 2/deploy).
-_frontend_dist = settings.repo_root / "live_demo" / "frontend" / "dist"
+_frontend_dist = settings.repo_root / "apps" / "web" / "dist"
 if _frontend_dist.is_dir():
     app.mount("/", StaticFiles(directory=str(_frontend_dist), html=True), name="frontend")

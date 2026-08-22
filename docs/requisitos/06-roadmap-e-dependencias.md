@@ -189,8 +189,8 @@ num `git clean` — é exatamente o risco que a subetapa fecha.
 **Comandos (Windows PowerShell 5.1) — diagnóstico, sem alterar nada:**
 ```powershell
 $ErrorActionPreference = 'Continue'   # aqui queremos ver as saidas, inclusive as de erro
-git check-ignore -v -- live_demo/frontend/src/lib/spreadsheets.test.ts
-git ls-files --error-unmatch -- live_demo/frontend/src/lib/spreadsheets.test.ts
+git check-ignore -v -- apps/web/src/lib/spreadsheets.test.ts
+git ls-files --error-unmatch -- apps/web/src/lib/spreadsheets.test.ts
 git check-ignore -v -- tests/fixtures/planilhas/01_csv_limpo.csv
 Get-Content -LiteralPath '.vscode\settings.json'
 Get-ChildItem -LiteralPath 'tests\fixtures\planilhas' -File |
@@ -261,8 +261,8 @@ ampla — fecha R-15.
 nenhuma correção aplicada.
 
 **Arquivos criados:** nenhum. **Arquivos alterados:**
-`live_demo/frontend/package-lock.json` (obrigatório) e
-`live_demo/frontend/package.json` (**somente** se a menor correção exigir mexer em
+`apps/web/package-lock.json` (obrigatório) e
+`apps/web/package.json` (**somente** se a menor correção exigir mexer em
 faixa declarada). **Motivo:** atualizar a versão resolvida de `nanoid`/`postcss`
 mantendo o restante intacto.
 
@@ -273,7 +273,7 @@ pela bateria completa após a correção.
 
 **Comandos (PowerShell):**
 ```powershell
-cd live_demo\frontend
+cd apps\frontend
 npm explain nanoid
 npm audit fix --dry-run            # avaliar o diff esperado; NUNCA --force
 npm audit fix                      # só depois de aprovar o dry-run
@@ -311,7 +311,7 @@ verificações regulares na CI rápida**:
 
 | # | Verificação ausente |
 |---|---|
-| 1 | `python -m pytest live_demo/backend/tests` (127 testes do backend Live) |
+| 1 | `python -m pytest apps/api/tests` (127 testes do backend Live) |
 | 2 | `npm ci` (instalação reprodutível do frontend) |
 | 3 | `npm audit` |
 | 4 | `npm audit --omit=dev` |
@@ -340,7 +340,7 @@ tem job nenhum.
 **Riscos:** (a) `mypy src/ tests/` falhar na CI e travar o pipeline — por isso
 **verificar localmente antes** de mudar o comando; (b) mexer em `testpaths` e
 alterar o comportamento local do `pytest` — preferir passo explícito
-`pytest live_demo/backend/tests`; (c) job de frontend quebrar por falta de fixtures
+`pytest apps/api/tests`; (c) job de frontend quebrar por falta de fixtures
 ou de versão de Node fixada — fixar Node LTS explícito e depender de A1.2; (d)
 duplicar instalação de dependências e encarecer o tempo — usar cache e jobs
 separados.
@@ -350,10 +350,10 @@ workflow:**
 ```powershell
 $ErrorActionPreference = 'Continue'
 mypy src/ tests/                                  # autoriza (ou nao) trocar o comando da CI
-python -m pytest live_demo/backend/tests -q
+python -m pytest apps/api/tests -q
 node --version                                    # registrar a LTS usada no job
 
-Push-Location 'live_demo\frontend'
+Push-Location 'apps\frontend'
 try {
     npm ci
     npm audit
@@ -421,7 +421,7 @@ Commit: `feat(gov): politica de retencao por ambiente, expurgo e transparencia d
 **A3. LIVE-006a — ativar os 4 cards baratos** *(RECOMENDADO V1 — não bloqueia)*
 `sync_api`, `send_email`, `report` e `dashboard`: 4 ramos em
 `recipes.py::build_argv`, régua em `engine.py::ACTIVE_AUTOMATIONS`, exemplo para
-e-mail em `samples.py`, testes em `live_demo/backend/tests/test_engine.py`.
+e-mail em `samples.py`, testes em `apps/api/tests/test_engine.py`.
 Riscos: SMTP mock no lifespan (porta 8025 já prevista em `config.py`);
 report/dashboard sobre audit recém-criado → semear o audit do workspace (risco
 R-10).

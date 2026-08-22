@@ -199,7 +199,7 @@ Dois modos, mesma base de código:
 
 - **Modo real** — CLI `autotarefas` sobre arquivos e sistemas do usuário,
   configurado por `.env`/variáveis (segredos via `SecretStr`, nunca em log).
-- **Live System público** — vitrine segura em `live_demo/`: os mesmos comandos
+- **Live System público** — vitrine segura em `apps/`: os mesmos comandos
   reais executados por subprocesso em sandbox, contra mocks internos, com
   streaming do stdout e artefatos baixáveis.
 
@@ -216,8 +216,8 @@ Dois modos, mesma base de código:
 | CLI | `src/autotarefas/cli/` | 13 comandos; flags globais `--dry-run`, `--yes`, `-v/-q` |
 | Dashboard estático | `src/autotarefas/dashboard/` | Painel HTML autocontido do audit trail (não é o Live) |
 | Mocks de desenvolvimento | `tools/demo_server/` | Sistema-alvo Flask: cadastro HTML (RPA), API paginada de clientes/catálogo, catálogo HTML e JS, mock do Telegram |
-| Live backend | `live_demo/backend/app/` | FastAPI: catálogo curado, execução em sandbox com SSE, jornada guiada de planilhas |
-| Live frontend | `live_demo/frontend/src/` | React consumindo somente APIs reais do backend |
+| Live backend | `apps/api/app/` | FastAPI: catálogo curado, execução em sandbox com SSE, jornada guiada de planilhas |
+| Live frontend | `apps/web/src/` | React consumindo somente APIs reais do backend |
 
 ## 13. Módulos (famílias de requisitos)
 
@@ -331,7 +331,7 @@ do formulário de referência:
 **DESEMPENHO (Live):** timeout de execução 60 s (kill); 4 execuções simultâneas;
 rate limit 12 req/min/IP; upload ≤ 10 MB e ≤ 50 arquivos; stream ≤ 2.000
 linhas/256 KB; ≤ 40 workspaces com TTL de 15 min (valores reais de
-`live_demo/backend/app/config.py`, ajustáveis por env). Usuários simultâneos
+`apps/api/app/config.py`, ajustáveis por env). Usuários simultâneos
 esperados: vitrine pública de baixo volume — sem estimativa formal (DECISÃO
 PENDENTE DP-03).
 

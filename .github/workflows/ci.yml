@@ -65,7 +65,7 @@ jobs:
 
       - name: Pytest (backend Live)
         if: matrix.python-version == '3.13'
-        run: pytest live_demo/backend/tests --no-cov
+        run: pytest apps/api/tests --no-cov
 
   frontend:
     name: Frontend Live (Node 22)
@@ -73,7 +73,7 @@ jobs:
 
     defaults:
       run:
-        working-directory: live_demo/frontend
+        working-directory: apps/web
 
     steps:
       - name: Checkout
@@ -84,7 +84,7 @@ jobs:
         with:
           node-version: "22"
           cache: npm
-          cache-dependency-path: live_demo/frontend/package-lock.json
+          cache-dependency-path: apps/web/package-lock.json
 
       - name: Instalar dependencias
         run: npm ci
