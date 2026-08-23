@@ -25,6 +25,14 @@ export interface Automation {
   // Quando preenchidos, o front mostra o bloco "Origem da demonstracao".
   source_label: string;
   source_detail: string;
+  /**
+   * Como a automacao recebe trabalho HOJE:
+   * `web_upload` = arquivos enviados pelo navegador;
+   * `agent_connected` = pastas da maquina, pelo AutoTarefas Agente.
+   */
+  modes?: string[];
+  /** Modos previstos e ainda indisponiveis. Viram texto, nunca botao. */
+  planned_modes?: string[];
 }
 
 export interface Catalog {
@@ -56,6 +64,43 @@ export interface Health {
   active_runs: number;
   limits: HealthLimits;
   demo_servers: DemoServer[];
+  /** O que ESTE servidor sabe fazer agora. Sem agente, so `web_upload`. */
+  capabilities?: string[];
+}
+
+/** Resultado da conferencia de um pacote de backup. */
+export interface VerifyReport {
+  arquivo: string;
+  integro: boolean;
+  conferidos: number;
+  corrompidos: string[];
+  faltando: string[];
+  nao_declarados: string[];
+  nao_lidos_na_origem: string[];
+  problema: string;
+  limite: string;
+}
+
+/**
+ * Confere um pacote gerado nesta execucao.
+ *
+ * A conferencia le o manifesto de DENTRO do pacote: nao depende dos arquivos
+ * originais, que e exatamente a situacao de quem precisa restaurar.
+ */
+export async function verifyPackage(
+  token: string,
+  name: string,
+): Promise<VerifyReport> {
+  const response = await fetch(
+    `/api/verify/${encodeURIComponent(token)}/${encodeURIComponent(name)}`,
+    { method: "POST" },
+  );
+  if (!response.ok) {
+    throw new Error(
+      `não foi possível conferir o pacote (erro ${response.status})`,
+    );
+  }
+  return (await response.json()) as VerifyReport;
 }
 
 // ---- Execucao real ----

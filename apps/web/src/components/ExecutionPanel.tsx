@@ -22,6 +22,19 @@ const SPREADSHEET_ACCEPT = ".csv,.xlsx";
 /** Card que abre a jornada guiada em vez do fluxo classico de execucao. */
 const SPREADSHEET_JOURNEY_ID = "validate";
 
+/**
+ * Titulo da secao de entrada.
+ *
+ * O backup ganha nome proprio: enviar arquivos pelo navegador e a porta de
+ * entrada do card, nao o produto. Chamar isso de "arquivo de entrada"
+ * esconderia que existe um caminho maior — o das pastas da maquina, que
+ * chega com o agente.
+ */
+function entradaTitulo(automation: Automation): string {
+  if (automation.id === "backup") return "Proteger arquivos avulsos";
+  return `Arquivo de entrada ${uploadLabel(automation.upload)}`;
+}
+
 function uploadLabel(upload: string): string {
   if (upload === "csv") return "(.csv)";
   if (upload === "spreadsheet") return "(.csv ou .xlsx)";
@@ -51,7 +64,7 @@ function buildSteps(
   return [
     { num: 1, title: "Escolher Automação", desc: "Selecione no catálogo" },
     { num: 2, title: entrada.title, desc: entrada.desc },
-    { num: 3, title: "Executar", desc: "Rodar no sandbox" },
+    { num: 3, title: "Executar", desc: "Processar em espaço isolado" },
     { num: 4, title: "Execução", desc: "Acompanhar o andamento" },
     { num: 5, title: "Resultados", desc: "Baixar evidências" },
   ];
@@ -202,8 +215,13 @@ export default function ExecutionPanel({
             {selected && needsFile && (
               <div>
                 <span className="mb-2 block text-xs font-semibold uppercase tracking-wider text-muted">
-                  Arquivo de entrada {uploadLabel(upload)}
+                  {entradaTitulo(selected)}
                 </span>
+                {selected.upload_hint && (
+                  <p className="mb-2 text-[0.85rem] text-muted">
+                    {selected.upload_hint}
+                  </p>
+                )}
                 <FileDrop
                   accept={uploadAccept(upload)}
                   multiple={upload === "folder"}
@@ -220,6 +238,22 @@ export default function ExecutionPanel({
                   Origem dos dados
                 </span>
                 <DemoSource automation={selected} />
+              </div>
+            )}
+
+            {/* O que este card AINDA nao faz. Texto, nunca botao: um botao
+                desabilitado prometeria data de entrega que nao existe. */}
+            {selected?.planned_modes?.includes("agent_connected") && (
+              <div className="rounded-lg border border-white/8 bg-ink px-4 py-3">
+                <p className="text-[0.85rem] font-semibold text-fg">
+                  Backup automático de pastas — ainda não disponível
+                </p>
+                <p className="mt-1 text-[0.85rem] text-muted">
+                  Proteger pastas inteiras do computador, com horário, retenção
+                  e destino externo, vai exigir o AutoTarefas Agente instalado
+                  na máquina. Ele ainda não existe. Por enquanto, o que funciona
+                  é o envio de arquivos acima.
+                </p>
               </div>
             )}
 
@@ -245,11 +279,7 @@ export default function ExecutionPanel({
                 ) : (
                   <Play className="h-4 w-4 fill-current" />
                 )}
-                {busy
-                  ? "Executando…"
-                  : needsFile
-                    ? "Executar com arquivo"
-                    : "Executar agora"}
+                {busy ? "Executando…" : "Executar agora"}
               </button>
 
               {hasSample && (

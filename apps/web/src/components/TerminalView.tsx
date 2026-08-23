@@ -102,7 +102,7 @@ export default function TerminalView({
       <div className="container-page">
         <SectionHeader
           title="Registro da execução"
-          subtitle="Saída em tempo real da execução no sandbox"
+          subtitle="Saída em tempo real da execução, em espaço isolado"
         />
 
         <div className="overflow-hidden rounded-2xl border border-white/6 bg-terminal shadow-[0_20px_60px_rgba(0,0,0,0.4)]">

@@ -130,7 +130,13 @@ export default function FileDrop({
           selecionar
         </span>
         <span className="text-xs text-muted">
-          Aceita {accept} · até 10 MB cada
+          Aceita {accept} · até 10 MB por arquivo
+        </span>
+        {/* O limite e do ENVIO PELO NAVEGADOR, nao do produto. Sem esta
+            distincao, quem tem uma pasta de 40 GB conclui que a ferramenta
+            nao serve — quando o caminho para esse caso e outro. */}
+        <span className="text-[0.7rem] text-muted/70">
+          limite do envio pelo navegador
         </span>
         <input
           ref={inputRef}

@@ -18,6 +18,7 @@ import ExtractSummary from "./ExtractSummary";
 import ImportSummary from "./ImportSummary";
 import SectionHeader from "./SectionHeader";
 import ValidationSummary from "./ValidationSummary";
+import VerifyPackage from "./VerifyPackage";
 
 function iconForFile(name: string): LucideIcon {
   const n = name.toLowerCase();
@@ -89,7 +90,13 @@ export default function Artifacts({
               </div>
             ) : null}
 
-            <div className="mx-auto mb-6 flex max-w-3xl flex-wrap items-center justify-center gap-x-3 gap-y-1 text-xs text-muted">
+            {/* So faz sentido conferir o que TEM manifesto: o pacote de
+                backup. Oferecer para qualquer .zip daria erro previsivel. */}
+            {result.artifacts.some((a) => a.name === "backup.zip") && (
+              <VerifyPackage token={result.token} name="backup.zip" />
+            )}
+
+            <div className="mx-auto mb-6 mt-6 flex max-w-3xl flex-wrap items-center justify-center gap-x-3 gap-y-1 text-xs text-muted">
               <span>
                 resultado:{" "}
                 <span

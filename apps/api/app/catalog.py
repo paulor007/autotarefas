@@ -47,6 +47,13 @@ class Automation:
     upload: UploadKind
     upload_hint: str
     output: OutputKind
+    #: Como a automacao recebe trabalho HOJE. `web_upload` = arquivos enviados
+    #: pelo navegador. `agent_connected` = pastas da maquina, pelo agente.
+    #: A tela usa isto para nao oferecer o que ainda nao existe.
+    modes: tuple[str, ...] = ("web_upload",)
+    #: Modos previstos e AINDA NAO disponiveis. Aparecem como texto honesto,
+    #: nunca como botao.
+    planned_modes: tuple[str, ...] = ()
     #: Automacoes sem upload rodam contra um servico de demonstracao interno.
     #: Estes dois campos descrevem ESSA origem para o visitante (o front
     #: renderiza o bloco "Origem da demonstracao" sempre que preenchidos).
@@ -73,13 +80,17 @@ AUTOMATIONS: tuple[Automation, ...] = (
     Automation(
         "backup",
         "arquivos",
-        "Backup compactado",
-        "ZIP com hash SHA-256",
-        "Compacta os arquivos enviados num .zip e calcula o hash SHA-256 do pacote.",
+        "Backup automático verificável",
+        "Pacote com manifesto e verificação",
+        "Gera um pacote .zip com manifesto: o SHA-256 de cada arquivo, a lista do "
+        "que não pôde ser lido e a soma do pacote inteiro. Depois de criado, você "
+        "pode conferir a integridade sem precisar dos arquivos originais.",
         False,
         "folder",
-        "Envie uma pasta ou vários arquivos (ou use os de exemplo).",
+        "Envie os arquivos que quer proteger agora.",
         "zip",
+        modes=("web_upload",),
+        planned_modes=("agent_connected",),
     ),
     Automation(
         "organize",
@@ -243,6 +254,8 @@ def public_catalog() -> dict[str, Any]:
             "output": a.output,
             "source_label": a.source_label,
             "source_detail": a.source_detail,
+            "modes": list(a.modes),
+            "planned_modes": list(a.planned_modes),
         }
         for a in AUTOMATIONS
     ]

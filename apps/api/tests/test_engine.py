@@ -620,3 +620,83 @@ def test_pacote_sem_manifesto_nao_inventa_ressalva(tmp_path: Path) -> None:
         zf.writestr("a.txt", "conteudo")
 
     assert engine._ressalvas_do_backup(out) == []
+
+
+# ============================================================
+# Card 02.G.1 — o card diz o que é, e o que ainda não é
+# ============================================================
+
+
+def test_card_de_backup_tem_o_nome_do_problema(client: TestClient) -> None:
+    """
+    "Backup compactado" descrevia a implementação. O cliente não tem o
+    problema de compactar arquivos: tem o de não conseguir recuperá-los.
+    """
+    catalogo = client.get("/api/catalog").json()
+    backup = next(a for a in catalogo["automations"] if a["id"] == "backup")
+
+    assert backup["title"] == "Backup automático verificável"
+    assert "ZIP" not in backup["title"]
+    assert "manifesto" in backup["description"].lower()
+
+
+def test_modos_declaram_o_que_existe_e_o_que_falta(client: TestClient) -> None:
+    catalogo = client.get("/api/catalog").json()
+    backup = next(a for a in catalogo["automations"] if a["id"] == "backup")
+
+    assert backup["modes"] == ["web_upload"]
+    assert backup["planned_modes"] == ["agent_connected"]
+
+
+def test_servidor_nao_anuncia_capacidade_que_nao_tem(client: TestClient) -> None:
+    """Sem agente pareado, `agent_connected` não pode aparecer em lugar nenhum."""
+    saude = client.get("/api/health").json()
+
+    assert saude["capabilities"] == ["web_upload"]
+    assert "agent_connected" not in saude["capabilities"]
+
+
+def test_pacote_gerado_pode_ser_conferido_pela_api(client: TestClient) -> None:
+    """
+    O card se chama "verificável": sem esta rota, seria só um adjetivo.
+
+    A conferência lê o manifesto de DENTRO do pacote — não depende dos
+    arquivos originais, que é a situação de quem precisa restaurar.
+    """
+    resultado = _run_and_collect(client, "backup", use_sample="true")
+    token = resultado["token"]
+
+    relatorio = client.post(f"/api/verify/{token}/backup.zip").json()
+
+    assert relatorio["integro"] is True
+    assert relatorio["conferidos"] > 0
+    assert relatorio["corrompidos"] == []
+    # O limite viaja junto com o resultado, sempre.
+    assert "autenticidade" in relatorio["limite"]
+
+
+def test_conferir_artefato_inexistente_da_404(client: TestClient) -> None:
+    resultado = _run_and_collect(client, "backup", use_sample="true")
+
+    resposta = client.post(f"/api/verify/{resultado['token']}/nao_existe.zip")
+
+    assert resposta.status_code == HTTP_NOT_FOUND
+
+
+def test_conferir_nao_escapa_do_workspace(client: TestClient) -> None:
+    """
+    A rota de conferência usa a mesma guarda anti-travessia do download.
+
+    Duas defesas, em camadas diferentes: com barra codificada a rota sequer
+    casa (o nome do artefato é um segmento só); com barra invertida o pedido
+    chega ao handler e é o `resolve_artifact` que recusa. O que importa nos
+    dois casos é o mesmo: nunca devolver 200 com arquivo de fora.
+    """
+    token = _run_and_collect(client, "backup", use_sample="true")["token"]
+
+    barra = client.post(f"/api/verify/{token}/..%2F..%2Fpyproject.toml")
+    invertida = client.post(f"/api/verify/{token}/..%5C..%5Cpyproject.toml")
+
+    assert barra.status_code != HTTP_OK
+    assert invertida.status_code == HTTP_NOT_FOUND
+    assert b"autotarefas" not in invertida.content

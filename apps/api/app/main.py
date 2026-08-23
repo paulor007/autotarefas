@@ -24,6 +24,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
+from autotarefas.tasks.backup import verify_backup
+
 from . import (
     catalog,
     demo_servers,
@@ -124,6 +126,9 @@ def health() -> dict[str, Any]:
         "version": settings.version,
         "browser_available": _browser_available(),
         "active_automations": list(engine.ACTIVE_AUTOMATIONS),
+        # O que ESTE servidor sabe fazer agora. `agent_connected` so entra
+        # quando houver agente pareado — nunca por antecipacao.
+        "capabilities": ["web_upload"],
         "active_runs": jobs.active_count(),
         "limits": {
             "max_concurrent_runs": settings.max_concurrent_runs,
@@ -256,6 +261,36 @@ def download(token: str, name: str) -> Response:
     if path is None:
         return JSONResponse({"detail": "arquivo nao encontrado"}, status_code=404)
     return FileResponse(path, filename=path.name, media_type="application/octet-stream")
+
+
+@app.post("/api/verify/{token}/{name}")
+def verify(token: str, name: str) -> JSONResponse:
+    """
+    Confere um pacote de backup gerado nesta execucao.
+
+    O card se chama "verificavel"; sem isto, seria um adjetivo sem funcao. A
+    conferencia le o `MANIFESTO.csv` de DENTRO do pacote e recalcula o hash de
+    cada arquivo — nao depende dos originais, que e justamente a situacao de
+    quem precisa restaurar.
+
+    Limite honesto, repetido na tela: isto detecta corrupcao e alteracao
+    acidental. NAO prova autenticidade contra quem tenha acesso de escrita ao
+    arquivo, porque a chave da conferencia viaja dentro do proprio pacote.
+    """
+    path = engine.resolve_artifact(token, name)
+    if path is None:
+        return JSONResponse({"detail": "arquivo nao encontrado"}, status_code=404)
+
+    relatorio = verify_backup(path)
+    return JSONResponse(
+        {
+            **relatorio.as_dict(),
+            "limite": (
+                "Detecta corrupção e alteração acidental. Não comprova "
+                "autenticidade contra adulteração intencional."
+            ),
+        }
+    )
 
 
 # Front-end buildado (Vite) - montado automaticamente quando existir (Fase 2/deploy).
