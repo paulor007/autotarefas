@@ -413,19 +413,26 @@ marcada como não verificada:
 
 ---
 
-## L. Validações da entrega final
+## L. Validações
 
-| Verificação | Resultado |
-| --- | --- |
-| `pytest` (núcleo) | **2.489** passaram · cobertura 92,86% (mínimo 85%) |
-| `pytest apps/api/tests` | **173** passaram |
-| `npm test` (vitest) | **72** passaram |
-| `npm run typecheck` | sem erros |
-| `npm run build` | build gerado |
-| `ruff check .` | limpo |
-| `ruff format --check .` | limpo |
-| `mypy src/` | 116 arquivos, sem problemas |
-| E2E Chromium | **6** passaram em 29,9 s |
+Duas colunas de propósito: o que foi medido **no dia da homologação** e o que
+a mesma suíte mede **hoje**. Os números da homologação não são atualizados —
+eles são o registro do que você aprovou, e reescrevê-los apagaria a evidência.
+A diferença entre as colunas vem do trabalho posterior (Card 02 e a
+reorganização estrutural), não de mudança no Card 01.
+
+| Verificação | Homologação · 19/08/2026 | Atual · após G.0 |
+| --- | --- | --- |
+| `pytest` (núcleo) | **2.489** · cobertura 92,86% | **2.538** · cobertura 92,86% |
+| `pytest apps/api/tests` | **173** | **177** |
+| `npm test` (vitest) | **72** | **72** |
+| `mypy src/` | 116 arquivos | 117 arquivos |
+| E2E Chromium | **6** em 29,9 s | **6** em 38,3 s |
+| `npm run typecheck` · `build` | sem erros | sem erros |
+| `ruff check` · `ruff format --check` | limpo | limpo |
+
+Na coluna atual, o backend rodava em `live_demo/backend` na homologação e roda
+em `apps/api` desde o commit `9c77a3b`; o caminho mudou, o comportamento não.
 
 ---
 
@@ -439,8 +446,17 @@ marcada como não verificada:
 
 Sete achados que **nenhum dos 2.448 testes automatizados existentes naquele
 momento, nem o teste de navegador, haviam pego**. Todos corrigidos antes da
-homologação; a suíte terminou a sessão com 2.485 testes de núcleo, já
-incluindo as regressões escritas para cada um destes achados.
+homologação.
+
+Os dois números abaixo são **marcos históricos da sessão de 18–19/08/2026**,
+preservados como evidência e não atualizados depois:
+
+| Marco | Quando | Contexto |
+| --- | --- | --- |
+| **2.448** testes de núcleo | 18/08/2026, início da sessão | suíte existente quando os sete defeitos foram encontrados |
+| **2.485** testes de núcleo | 19/08/2026, fim da sessão | já com as regressões escritas para cada achado |
+
+O número atual da suíte está na seção L.
 
 **1. Classificação de aba errada em toda planilha real** *(informação falsa)*
 Qualquer tabela com mais de 111 linhas era rotulada "ambígua — 1% preenchida":
