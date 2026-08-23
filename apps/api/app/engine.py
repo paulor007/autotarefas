@@ -152,6 +152,18 @@ def _env_for(workspace: Path) -> dict[str, str]:
             "ENVIRONMENT": "demo",
             "NO_COLOR": "1",
             "PYTHONUNBUFFERED": "1",
+            # A CLI escreve acentos. Sem isto o Python usa a pagina de codigo
+            # do Windows no cano do subprocesso e "opcao" chega quebrado.
+            "PYTHONIOENCODING": "utf-8",
+            # A saida vai para uma TELA, nao para um terminal. A CLI usa isto
+            # para nao imprimir instrucao de linha de comando nem aviso que so
+            # faz sentido quando a pessoa escolheu origem e destino.
+            "AUTOTAREFAS_UI": "web",
+            # Sem isto o console quebra em 80 colunas e parte o caminho do
+            # workspace em duas linhas — e um caminho partido escapa do
+            # sanitizador, que trabalha linha a linha. Foi assim que o caminho
+            # interno apareceu na tela.
+            "COLUMNS": "400",
             # Token fake do bot: usado so contra o mock local; evita prompt que travaria o processo.
             "AUTOTAREFAS_TELEGRAM_TOKEN": "demo-fake-token-0000",  # nosec B105
         }
@@ -303,6 +315,8 @@ def _start_process(argv: list[str], workspace: Path) -> subprocess.Popen[str]:
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         text=True,
+        encoding="utf-8",
+        errors="replace",
         bufsize=1,
     )
 

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from autotarefas.cli.context import CLIContext
 
 
@@ -85,3 +87,30 @@ class TestCLIContextConstructor:
         ctx.dry_run = True
         assert ctx.verbose == 3
         assert ctx.dry_run is True
+
+
+class TestNaTela:
+    """
+    `na_tela` separa o Live do terminal.
+
+    Existe uma variavel de ambiente no meio porque a CLI e um processo
+    separado, iniciado pelo servidor do Live: nao ha objeto para passar
+    adiante, so o ambiente.
+    """
+
+    def test_por_padrao_e_terminal(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.delenv("AUTOTAREFAS_UI", raising=False)
+        assert CLIContext().na_tela is False
+
+    def test_web_e_tela(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("AUTOTAREFAS_UI", "web")
+        assert CLIContext().na_tela is True
+
+    def test_aceita_espaco_e_caixa_alta(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("AUTOTAREFAS_UI", "  WEB  ")
+        assert CLIContext().na_tela is True
+
+    def test_valor_desconhecido_nao_vira_tela(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Na duvida, comporta-se como terminal: o aviso fica, e nada se perde."""
+        monkeypatch.setenv("AUTOTAREFAS_UI", "qualquer-coisa")
+        assert CLIContext().na_tela is False

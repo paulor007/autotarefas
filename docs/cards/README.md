@@ -34,7 +34,7 @@ Três regras valem para todos:
 | **Homologação** | — |
 | **Problema** | A rotina manual que não é executada, o backup que nunca foi testado e a cópia mantida no mesmo disco |
 | **Limitações** | Hoje o cliente não tem nenhum destino disponível pela interface: outro volume, disco externo e rede funcionam apenas por linha de comando; sem agente não há pasta local, agendamento nem VSS; hash no manifesto detecta corrupção, não adulteração intencional; sem incremental, políticas grandes consomem tempo e espaço |
-| **Próxima etapa** | 02.G.1 — card renomeado e modelo de capacidades (`web_upload` / `agent_connected`) |
+| **Próxima etapa** | 02.G.1 — **IMPLEMENTADA, AGUARDANDO HOMOLOGAÇÃO** (corrigida pela G.1.1). G.2 não começa antes da homologação |
 
 ---
 
@@ -51,7 +51,7 @@ card. Resumo:
 | 02.D | VSS para arquivos abertos | não iniciada |
 | 02.E | Agendamento, notificações e retenção | não iniciada |
 | 02.F | Destinos externos e conector S3 | não iniciada |
-| 02.G | Agente local e interface operacional | **G.0 concluída**, G.1–G.8 não iniciadas |
+| 02.G | Agente local e interface operacional | **G.0 concluída**; **G.1 implementada, aguardando homologação** (+ G.1.1); G.2–G.8 não iniciadas |
 | 02.H | Restauração guiada pela interface | não iniciada |
 | 02.I | Backup incremental com catálogo | não iniciada |
 | 02.J | Hooks e proteção antes de ação destrutiva | não iniciada |

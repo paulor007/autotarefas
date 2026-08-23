@@ -9,7 +9,7 @@ export default function Footer() {
           <span>AutoTarefas · Live System</span>
         </div>
         <div className="flex flex-wrap items-center justify-center gap-3 text-xs text-muted">
-          <span>Execução real em sandbox seguro</span>
+          <span>Execução real em espaço isolado</span>
           <span className="opacity-30">|</span>
           <span>Ambiente isolado</span>
           <span className="opacity-30">|</span>

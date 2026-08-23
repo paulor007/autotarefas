@@ -61,7 +61,7 @@ function buildChips(health: Health | null): Chip[] {
     },
     {
       icon: ShieldCheck,
-      title: "Sandbox Seguro",
+      title: "Espaço isolado",
       desc: health
         ? `${health.limits.max_concurrent_runs} execuções simultâneas`
         : "—",

@@ -61,7 +61,9 @@ describe("VerifyPackage", () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByText(/Pacote íntegro/)).toBeTruthy();
+      expect(
+        screen.getByText(/Pacote gerado e verificado antes do download/),
+      ).toBeTruthy();
     });
     expect(screen.getByText(/4 arquivo\(s\) conferem/)).toBeTruthy();
   });
@@ -112,7 +114,18 @@ describe("VerifyPackage", () => {
       expect(screen.getByText(/não entraram quando este pacote/i)).toBeTruthy();
     });
     // O pacote segue íntegro: o que faltou já era sabido.
-    expect(screen.getByText(/Pacote íntegro/)).toBeTruthy();
+    expect(
+      screen.getByText(/Pacote gerado e verificado antes do download/),
+    ).toBeTruthy();
+  });
+
+  it("diz que confere o pacote do servidor, antes do download", () => {
+    mockVerify(INTEGRO);
+    render(<VerifyPackage token="tok-1" name="backup.zip" />);
+
+    expect(
+      screen.getByText(/Confere o pacote no servidor, antes do download/),
+    ).toBeTruthy();
   });
 
   it("mostra erro sem derrubar a tela", async () => {

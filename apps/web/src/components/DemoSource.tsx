@@ -29,7 +29,7 @@ export default function DemoSource({ automation }: { automation: Automation }) {
           </div>
           <p className="mt-1 text-sm text-muted">
             {automation.upload_hint ||
-              "Esta automação não recebe arquivo: ela roda no sandbox contra os serviços de demonstração internos."}
+              "Esta automação não recebe arquivo: ela roda em espaço isolado contra os serviços de demonstração internos."}
           </p>
         </div>
       </div>

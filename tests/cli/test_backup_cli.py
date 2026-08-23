@@ -916,3 +916,106 @@ class TestAtalhosNaTela:
         assert "SEGUIDOS" in resultado.output
         with zipfile.ZipFile(tmp_path / "b.zip") as zf:
             assert any("segredo.txt" in n for n in zf.namelist())
+
+
+# ============================================================
+# Saida na tela (Live) x saida no terminal (CLI e agente)
+# ============================================================
+
+
+class TestSaidaNaTela:
+    """
+    A mesma CLI serve dois destinos, e eles pedem textos diferentes.
+
+    No terminal a pessoa escolheu origem e destino e pode digitar o proximo
+    comando. Na tela do Live ela enviou arquivos pelo navegador: nao tem
+    terminal, nao escolheu disco, e o caminho que apareceria e do SERVIDOR.
+
+    O que este bloco protege e a simetria: cada mensagem que some da tela
+    continua no terminal. Apagar do nucleo teria sido mais facil e teria
+    tirado o aviso de quem realmente precisa dele.
+    """
+
+    @pytest.fixture
+    def origem(self, tmp_path: Path) -> Path:
+        pasta = tmp_path / "dados"
+        _criar_estrutura(pasta, {"nota.txt": "conteudo"})
+        return pasta
+
+    def _rodar(self, origem: Path, saida: Path, cli_ctx: CLIContext) -> str:
+        resultado = CliRunner().invoke(backup, [str(origem), "--output", str(saida)], obj=cli_ctx)
+        assert resultado.exit_code == 0, resultado.output
+        return resultado.output
+
+    def test_na_tela_nao_manda_digitar_comando(
+        self,
+        tmp_path: Path,
+        origem: Path,
+        cli_ctx: CLIContext,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setenv("AUTOTAREFAS_UI", "web")
+        saida = self._rodar(origem, tmp_path / "b.zip", cli_ctx)
+
+        assert "autotarefas verificar" not in saida
+        assert 'Use a opção "Verificar este pacote"' in saida
+
+    def test_no_terminal_continua_ensinando_o_comando(
+        self,
+        tmp_path: Path,
+        origem: Path,
+        cli_ctx: CLIContext,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.delenv("AUTOTAREFAS_UI", raising=False)
+        saida = self._rodar(origem, tmp_path / "b.zip", cli_ctx)
+
+        assert "autotarefas verificar" in saida
+
+    def test_na_tela_nao_avisa_sobre_disco_que_a_pessoa_nao_escolheu(
+        self,
+        tmp_path: Path,
+        origem: Path,
+        cli_ctx: CLIContext,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setenv("AUTOTAREFAS_UI", "web")
+        saida = self._rodar(origem, tmp_path / "b.zip", cli_ctx)
+
+        assert "MESMO disco" not in saida
+        assert "Destino externo: não aplicável ao upload avulso." in saida
+
+    def test_no_terminal_o_aviso_de_mesmo_disco_continua(
+        self,
+        tmp_path: Path,
+        origem: Path,
+        cli_ctx: CLIContext,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """A protecao do nucleo nao foi enfraquecida para a CLI nem para o agente."""
+        monkeypatch.delenv("AUTOTAREFAS_UI", raising=False)
+        saida = self._rodar(origem, tmp_path / "b.zip", cli_ctx)
+
+        assert "MESMO disco" in saida
+        assert "Prefira outro disco" in saida
+
+    def test_na_tela_mostra_o_nome_do_pacote_e_nao_o_caminho(
+        self,
+        tmp_path: Path,
+        origem: Path,
+        cli_ctx: CLIContext,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """
+        O caminho na tela seria o do servidor: disco, usuario, pasta temporaria.
+
+        Cortar na origem e melhor do que confiar so no sanitizador do Live,
+        que trabalha linha a linha e ja falhou com caminho quebrado.
+        """
+        monkeypatch.setenv("AUTOTAREFAS_UI", "web")
+        destino = tmp_path / "b.zip"
+        saida = self._rodar(origem, destino, cli_ctx)
+
+        assert "b.zip" in saida
+        assert str(destino) not in saida
+        assert str(tmp_path) not in saida

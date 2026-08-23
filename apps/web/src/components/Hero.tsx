@@ -38,7 +38,7 @@ export default function Hero({ health }: { health: Health | null }) {
         </h1>
 
         <p className="mb-4 text-lg font-medium text-muted sm:text-xl">
-          Robô de automação operacional em sandbox seguro
+          Robô de automação operacional em espaço isolado
         </p>
 
         <p className="mx-auto mb-8 max-w-xl text-sm leading-relaxed text-muted/80 sm:text-base">
@@ -70,7 +70,7 @@ export default function Hero({ health }: { health: Health | null }) {
           <div className="hidden h-10 w-px bg-white/[0.06] sm:block" />
           <Metric value={timeout} label="Timeout por execução" />
           <div className="hidden h-10 w-px bg-white/[0.06] sm:block" />
-          <Metric value="100%" label="Sandbox isolado" />
+          <Metric value="100%" label="Espaço isolado" />
         </div>
       </div>
     </section>

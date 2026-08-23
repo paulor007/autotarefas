@@ -19,7 +19,7 @@ from typing import Any
 import pytest
 from fastapi.testclient import TestClient
 
-from apps.api.app import engine, recipes
+from apps.api.app import engine, recipes, sanitize
 from apps.api.app.main import app
 
 warnings.filterwarnings("ignore")
@@ -700,3 +700,126 @@ def test_conferir_nao_escapa_do_workspace(client: TestClient) -> None:
     assert barra.status_code != HTTP_OK
     assert invertida.status_code == HTTP_NOT_FOUND
     assert b"autotarefas" not in invertida.content
+
+
+# ============================================================
+# G.1.1 - nada do servidor aparece na tela
+# ============================================================
+
+#: Workspace de mentira, com a mesma forma do real: pasta temporaria do
+#: Windows + nome de usuario + `autotarefas-live` + token de 32 hexadecimais.
+_WS_FALSO = Path(
+    r"C:\Users\paulo\AppData\Local\Temp\autotarefas-live"
+    r"\2463dafd837548a99f9f674f3e4e8a0f"
+)
+_REPO_FALSO = Path(r"D:\Projetos\autotarefas")
+
+#: O que nao pode sobrar em nenhuma linha, de jeito nenhum.
+_PROIBIDOS = ("paulo", "AppData", "Temp", "autotarefas-live", "2463dafd", "C:")
+
+
+def _nada_de_interno(linha: str) -> None:
+    for proibido in _PROIBIDOS:
+        assert proibido not in linha, f"vazou {proibido!r} em {linha!r}"
+
+
+def test_sanitizador_apaga_caminho_interno_inteiro() -> None:
+    """Caminho completo numa linha so: o caso comum."""
+    linha = (
+        r"[OK] Backup criado: C:\Users\paulo\AppData\Local\Temp\autotarefas-live"
+        r"\2463dafd837548a99f9f674f3e4e8a0f\out\backup.zip"
+    )
+    limpa = sanitize.sanitize(linha, _WS_FALSO, _REPO_FALSO)
+
+    _nada_de_interno(limpa)
+    # O que interessa continua legivel: ainda da para saber que ha um arquivo.
+    assert "backup.zip" in limpa
+
+
+def test_sanitizador_apaga_caminho_interno_quebrado_entre_linhas() -> None:
+    """
+    Caminho partido em duas linhas pelo console: o caso que vazou de verdade.
+
+    O sanitizador trabalha linha a linha, entao a comparacao com o caminho
+    exato do workspace falhava e as duas metades passavam. Cada metade e
+    conferida sozinha, que e como elas chegam a tela.
+    """
+    cabeca = (
+        r"[OK] Backup criado: C:\Users\paulo\AppData\Local\Temp\autotarefas-live"
+        r"\2463dafd837548a99f9f674f3e4e8a"
+    )
+    rabo = r"0f\out\backup.zip"
+
+    _nada_de_interno(sanitize.sanitize(cabeca, _WS_FALSO, _REPO_FALSO))
+    _nada_de_interno(sanitize.sanitize(rabo, _WS_FALSO, _REPO_FALSO))
+    # O rabo perde so o pedaco do token; o nome do arquivo fica.
+    assert sanitize.sanitize(rabo, _WS_FALSO, _REPO_FALSO).endswith("backup.zip")
+
+
+def test_sanitizador_apaga_token_de_execucao_solto() -> None:
+    """O token identifica a execucao de outra pessoa: nao vai para a tela."""
+    limpa = sanitize.sanitize(
+        "workspace 2463dafd837548a99f9f674f3e4e8a0f pronto", _WS_FALSO, _REPO_FALSO
+    )
+    assert "2463dafd" not in limpa
+
+
+def test_sanitizador_nao_confunde_hash_com_token() -> None:
+    """
+    SHA-256 tem 64 hexadecimais e e informacao que a pessoa PRECISA ver.
+
+    Sem esta guarda, apagar o token levaria junto a prova de integridade.
+    """
+    sha = "a" * 64
+    assert sha in sanitize.sanitize(f"SHA-256: {sha}", _WS_FALSO, _REPO_FALSO)
+
+
+def _stdout_do_stream(client: TestClient, automation_id: str, **params: str) -> str:
+    """Todas as linhas de stdout do SSE, como a tela recebe."""
+    started = client.post(f"/api/run/{automation_id}", params=params)
+    assert started.status_code == HTTP_OK, started.text
+    token = started.json()["token"]
+
+    with client.stream("GET", f"/api/stream/{token}") as response:
+        linhas = list(response.iter_lines())
+
+    saida: list[str] = []
+    for linha in linhas:
+        if linha.startswith(("event: done", "event: timeout")):
+            break
+        if linha.startswith(DATA_PREFIX):
+            saida.append(linha[len(DATA_PREFIX) :])
+    return "\n".join(saida)
+
+
+def test_terminal_do_backup_nao_mostra_nada_do_servidor(client: TestClient) -> None:
+    """
+    A execucao real, ponta a ponta: nada de interno chega ao terminal.
+
+    Reproduz a homologacao manual do proprietario, em que o caminho do
+    workspace apareceu partido em duas linhas.
+    """
+    texto = _stdout_do_stream(client, "backup", use_sample="true")
+
+    assert "backup.zip" in texto, texto
+    for linha in texto.splitlines():
+        assert "AppData" not in linha
+        assert "autotarefas-live" not in linha
+        assert not re.search(r"[A-Za-z]:[\\/]", linha), linha
+        assert not re.search(r"\b[0-9a-f]{32}\b", linha), linha
+
+
+def test_terminal_do_backup_nao_manda_digitar_comando(client: TestClient) -> None:
+    """
+    Quem esta na tela nao tem terminal: instrucao de CLI ali nao serve.
+
+    E o aviso de disco de destino tambem nao: no upload avulso a pessoa nao
+    escolheu destino nenhum. As duas mensagens continuam vivas na CLI e no
+    agente - o que muda e so o que a tela mostra.
+    """
+    texto = _stdout_do_stream(client, "backup", use_sample="true")
+
+    assert "autotarefas verificar" not in texto
+    assert "MESMO disco" not in texto
+    assert 'Use a op\u00e7\u00e3o "Verificar este pacote"' in texto
+    assert "Destino externo: n\u00e3o aplic\u00e1vel ao upload avulso." in texto

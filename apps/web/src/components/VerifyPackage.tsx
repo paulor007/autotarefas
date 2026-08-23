@@ -17,9 +17,13 @@ interface Props {
  * hash de cada arquivo, sem depender dos originais: é exatamente a situação
  * de quem um dia precisar restaurar.
  *
- * O limite vem junto com o resultado, sempre. Um "íntegro" sem a ressalva de
- * que isso não prova autenticidade seria a mesma promessa exagerada que o
- * produto recusa em todos os outros lugares.
+ * O limite vem junto com o resultado, sempre. Um resultado positivo sem a
+ * ressalva de que isso não prova autenticidade seria a mesma promessa
+ * exagerada que o produto recusa em todos os outros lugares.
+ *
+ * Escopo: confere o pacote que está no servidor, na pasta desta execução —
+ * o mesmo arquivo que o botão de download entrega. Não confere a cópia já
+ * baixada, que o navegador guarda fora do alcance da página.
  */
 export default function VerifyPackage({ token, name }: Props) {
   const [relatorio, setRelatorio] = useState<VerifyReport | null>(null);
@@ -43,14 +47,19 @@ export default function VerifyPackage({ token, name }: Props) {
   return (
     <div className="mx-auto mt-4 max-w-3xl">
       {!relatorio && (
-        <button
-          type="button"
-          onClick={() => void conferir()}
-          disabled={conferindo}
-          className="rounded-lg border border-white/12 px-4 py-2 text-sm font-semibold text-fg hover:border-white/25 disabled:opacity-50"
-        >
-          {conferindo ? "Conferindo…" : "Verificar este pacote"}
-        </button>
+        <div>
+          <button
+            type="button"
+            onClick={() => void conferir()}
+            disabled={conferindo}
+            className="rounded-lg border border-white/12 px-4 py-2 text-sm font-semibold text-fg hover:border-white/25 disabled:opacity-50"
+          >
+            {conferindo ? "Conferindo…" : "Verificar este pacote"}
+          </button>
+          <p className="mt-1.5 text-[0.8rem] text-muted">
+            Confere o pacote no servidor, antes do download.
+          </p>
+        </div>
       )}
 
       {erro && (
@@ -73,9 +82,16 @@ export default function VerifyPackage({ token, name }: Props) {
             }`}
           >
             {relatorio.integro
-              ? `Pacote íntegro: ${relatorio.conferidos} arquivo(s) conferem com o manifesto`
+              ? "Pacote gerado e verificado antes do download."
               : "Pacote com problemas — não confie nele para restaurar"}
           </p>
+
+          {relatorio.integro && (
+            <p className="mt-1.5 text-[0.85rem] text-muted">
+              {relatorio.conferidos} arquivo(s) conferem com o manifesto, lido
+              de dentro do próprio pacote.
+            </p>
+          )}
 
           {relatorio.corrompidos.length > 0 && (
             <p className="mt-1.5 text-[0.85rem] text-muted">

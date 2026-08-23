@@ -386,7 +386,7 @@ em sequência, e **K não existe**.
 | **02.D** | VSS opcional para arquivos abertos | G.3–G.5 (agente) | não iniciada | exclusiva do agente; nunca no modo upload |
 | **02.E** | Agendamento, gatilhos, retry, notificações e retenção diária/semanal/mensal | 02.G.6 (política) | não iniciada | telas em G.6 e G.7 |
 | **02.F** | Destinos externos e conector S3 | 02.C (decisão de chave) · G.5 | não iniciada | tela em G.6 |
-| **02.G** | **Agente local e interface operacional** — fundação da plataforma | — | **G.0 concluída** (`9c77a3b`); G.1–G.8 não iniciadas | é a própria trilha G |
+| **02.G** | **Agente local e interface operacional** — fundação da plataforma | — | **G.0 concluída** (`9c77a3b`); **G.1 — IMPLEMENTADA, AGUARDANDO HOMOLOGAÇÃO** (`b671270` + correções da G.1.1); G.2–G.8 não iniciadas | é a própria trilha G |
 | **02.H** | **Restauração guiada pela interface** (era 02.I) | 02.B (mostrar autenticidade) | não iniciada | tela em G.6 |
 | **02.I** | **Backup incremental com catálogo** (era 02.J) | 02.E (retenção) · G.6 | não iniciada | sem tela própria; muda o motor |
 | **02.J** | **Hooks e proteção antes de ação destrutiva**, com falha fechada (era 02.K) | 02.G.6 | não iniciada | aviso na tela da automação bloqueada |
@@ -406,3 +406,68 @@ em sequência, e **K não existe**.
 | 02.H | Restauração reproduz os arquivos byte a byte; recusa caminho malicioso no pacote; não sobrescreve sem confirmação; recusa pacote corrompido |
 | 02.I | Arquivo idêntico não é reenviado; data alterada sem conteúdo alterado não infla o pacote; retenção nunca remove pacote referenciado |
 | 02.J | Backup que não atinge o nível exigido **bloqueia** a ação destrutiva, explicando o que não foi feito |
+
+
+---
+
+## 22. Trilha G — estado por subetapa
+
+| Subetapa | Estado | Commit |
+| --- | --- | --- |
+| **G.0** — `live_demo` vira `apps/web` + `apps/api` | concluída | `9c77a3b` |
+| **G.1** — nome do card, modelo de capacidades e linguagem honesta na interface | **IMPLEMENTADA, AGUARDANDO HOMOLOGAÇÃO** | `b671270`, corrigido pela G.1.1 |
+| **G.1.1** — correções da homologação manual da G.1 | implementada, aguarda a mesma homologação | commit separado, sem reescrever o anterior |
+| **G.2**–**G.8** | não iniciadas | — |
+
+A G.1 **não está homologada**. O que existe é uma implementação preparada para
+homologação: o proprietário executou o fluxo real e encontrou seis problemas,
+corrigidos na G.1.1.
+
+### 22.1 G.1.1 — o que mudou, mensagem por mensagem
+
+| # | Onde | Antes | Depois |
+| --- | --- | --- | --- |
+| 1 | Terminal do Live | `C:\Users\<usuário>\AppData\Local\Temp\autotarefas-live\<token>\out\backup.zip` (às vezes partido em duas linhas) | `backup.zip` — e, se algo escapar, `[arquivo interno]` |
+| 2 | Terminal do Live | `Para conferir depois: autotarefas verificar C:\...\backup.zip` | `Pacote gerado. Use a opção "Verificar este pacote" na área de artefatos.` |
+| 3 | Terminal do Live | `Origem e destino no MESMO disco (...)` + `Prefira outro disco...` | `Destino externo: não aplicável ao upload avulso.` |
+| 4 | Resultado da conferência | `Pacote íntegro: N arquivo(s) conferem com o manifesto` | `Pacote gerado e verificado antes do download.` + `N arquivo(s) conferem com o manifesto, lido de dentro do próprio pacote.` |
+| 5 | Cabeçalho do terminal | `Saída em tempo real da execução, em espaço isolado` / `autotarefas@sandbox:~` | `Saída em tempo real da execução em espaço isolado` / `autotarefas@espaco-isolado:~` |
+| 5 | Rodapé, capa, barra de status, `index.html` | "sandbox seguro", "Sandbox isolado", "Sandbox Seguro" | "espaço isolado", "Espaço isolado" |
+
+### 22.2 Vazamento de caminho — por que aconteceu
+
+O sanitizador do Live trabalha **linha a linha**, e relativizava o caminho
+comparando com o caminho **exato** do workspace. O console do robô quebrava a
+linha em 80 colunas no meio do caminho: nenhuma das duas metades era igual ao
+caminho exato, e as duas passavam.
+
+Três correções em camadas, da origem para a última rede:
+
+1. **A CLI não imprime mais o caminho na tela.** Com `AUTOTAREFAS_UI=web` ela
+   mostra só o nome do pacote. No terminal e no agente nada muda.
+2. **O console não quebra mais a linha.** O Live executa a CLI com
+   `COLUMNS=400`.
+3. **O sanitizador virou duas redes.** Além de relativizar o caminho exato,
+   agora apaga qualquer caminho absoluto, qualquer token de execução de 32
+   hexadecimais, e o pedaço final do workspace quando a linha começa com ele —
+   o caso do caminho partido. Vale para **todos os cards**, não só o backup.
+
+O hash SHA-256 tem 64 hexadecimais e continua visível: é informação que a
+pessoa precisa ver, e apagá-la junto com o token teria removido a prova de
+integridade.
+
+### 22.3 Escopo da verificação
+
+A conferência lê o pacote que está **no servidor**, na pasta desta execução —
+o mesmo arquivo que o botão de download entrega. Não confere a cópia já
+baixada, que o navegador guarda fora do alcance da página. Por isso o texto é
+`Pacote gerado e verificado antes do download.`, e a tela avisa o escopo antes
+de a pessoa clicar.
+
+### 22.4 O que a G.1.1 **não** resolve
+
+O fluxo continua sendo: selecionar arquivos no navegador, limite de 10 MB por
+arquivo, executar, baixar o ZIP pelo navegador. Pasta local, agendamento,
+destino externo e execução sem envio manual dependem do **agente** (G.3–G.5) e
+da **tela de política** (G.6). A G.1.1 corrigiu o que a interface **dizia**,
+não o que ela **faz**.

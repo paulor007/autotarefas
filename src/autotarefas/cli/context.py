@@ -14,7 +14,11 @@ Uso:
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
+
+#: Variavel de ambiente que o AutoTarefas Live define antes de executar a CLI.
+_VAR_INTERFACE = "AUTOTAREFAS_UI"
 
 
 @dataclass
@@ -34,6 +38,20 @@ class CLIContext:
     quiet: int = 0
     dry_run: bool = False
     yes: bool = False
+
+    @property
+    def na_tela(self) -> bool:
+        """
+        Diz se a saida vai para uma TELA do produto, e nao para um terminal.
+
+        O Live executa exatamente esta CLI e mostra o texto na interface. Duas
+        coisas nao fazem sentido ali: mandar a pessoa digitar um comando (ela
+        nao tem terminal) e avisar sobre o disco de destino (ela nao escolheu
+        destino nenhum — enviou arquivos pelo navegador). Sem esta distincao,
+        so restaria apagar as mensagens do nucleo, e ai quem usa a CLI de
+        verdade, ou o agente instalado na maquina, perderia o aviso.
+        """
+        return os.environ.get(_VAR_INTERFACE, "").strip().lower() == "web"
 
     @property
     def log_level(self) -> str:

@@ -84,10 +84,13 @@ def _resumo_da_operacao(
     output: Path,
     exclude: tuple[str, ...],
     no_default_excludes: bool,
+    *,
+    na_tela: bool = False,
 ) -> None:
     """Diz o que vai acontecer, antes de acontecer."""
     plural = "s" if len(sources) > 1 else ""
-    console.info(f"Backup de {len(sources)} source{plural} -> {output}")
+    destino = output.name if na_tela else str(output)
+    console.info(f"Backup de {len(sources)} source{plural} -> {destino}")
     if exclude:
         console.info(f"Excludes adicionais: {', '.join(exclude)}")
     if no_default_excludes:
@@ -116,13 +119,23 @@ def _relatar_dry_run(console: Console, output: Path, dados: dict[str, Any]) -> N
         console.info(f"  ... e mais {restantes}.")
 
 
-def _relatar_volume(console: Console, fontes: list[str]) -> None:
+def _relatar_volume(console: Console, fontes: list[str], *, na_tela: bool = False) -> None:
     """
     Avisa que origem e backup estao no mesmo disco.
 
     So avisa: exigir confirmacao quebraria o backup agendado, que roda de
     madrugada sem ninguem por perto.
+
+    No Live (`na_tela`) o aviso seria falso: quem enviou arquivos pelo
+    navegador nao escolheu disco nenhum, e a origem e o destino sao a mesma
+    pasta temporaria do servidor por construcao. Dizer "prefira outro disco"
+    ali sugere um erro que a pessoa nao cometeu e nao pode corrigir. A
+    protecao do nucleo continua inteira para a CLI e para o agente.
     """
+    if na_tela:
+        console.info("Destino externo: não aplicável ao upload avulso.")
+        console.info("")
+        return
     if not fontes:
         return
     console.warning(f"Origem e destino no MESMO disco ({', '.join(fontes)}).")
@@ -170,6 +183,34 @@ def _relatar_nao_lidos(console: Console, nao_lidos: list[dict[str, Any]]) -> Non
         "Arquivo aberto no Excel ou no Word nao pode ser copiado. "
         "Feche os arquivos, ou agende o backup fora do horario de uso."
     )
+
+
+def _anunciar_pacote(console: Console, output: Path, *, com_ressalvas: bool, na_tela: bool) -> None:
+    """
+    Anuncia o pacote criado.
+
+    Na tela o caminho e do SERVIDOR: nao ajuda quem esta olhando e ainda
+    expoe disco, usuario do sistema e pasta temporaria. O nome basta.
+    """
+    rotulo = output.name if na_tela else str(output)
+    if com_ressalvas:
+        console.warning(f"Backup criado COM RESSALVAS: {rotulo}")
+    else:
+        console.success(f"Backup criado: {rotulo}")
+
+
+def _como_conferir(console: Console, output: Path, *, na_tela: bool) -> None:
+    """
+    Diz como conferir o pacote depois — pelo caminho que a pessoa tem.
+
+    Quem esta na tela nao tem terminal: mandar digitar comando seria mandar
+    a lugar nenhum. O botao existe, e chama o mesmo verificador.
+    """
+    console.info("")
+    if na_tela:
+        console.info('Pacote gerado. Use a opção "Verificar este pacote" na área de artefatos.')
+    else:
+        console.info(f"Para conferir depois: autotarefas verificar {output}")
 
 
 def _aplicar_retencao(console: Console, output: Path, manter: int) -> None:
@@ -269,7 +310,7 @@ def backup(
     # ============================================================
     # 1. Resumo da operacao
     # ============================================================
-    _resumo_da_operacao(console, sources, output, exclude, no_default_excludes)
+    _resumo_da_operacao(console, sources, output, exclude, no_default_excludes, na_tela=ctx.na_tela)
 
     # ============================================================
     # 2. Executa a task (BaseTask faz audit automatico)
@@ -312,10 +353,7 @@ def backup(
     size_str = _format_size(result.data["size_bytes"])
     nao_lidos = result.data.get("unreadable", [])
 
-    if nao_lidos:
-        console.warning(f"Backup criado COM RESSALVAS: {output}")
-    else:
-        console.success(f"Backup criado: {output}")
+    _anunciar_pacote(console, output, com_ressalvas=bool(nao_lidos), na_tela=ctx.na_tela)
 
     console.info(f"Arquivos incluidos: {file_count}")
     if skipped_count > 0:
@@ -324,7 +362,7 @@ def backup(
     console.info(f"SHA-256: {result.data['sha256']}")
     console.info(f"Manifesto: {result.data['manifest']} (dentro do pacote)")
 
-    _relatar_volume(console, result.data.get("same_volume", []))
+    _relatar_volume(console, result.data.get("same_volume", []), na_tela=ctx.na_tela)
     _relatar_links(console, result.data.get("links", []))
 
     if nao_lidos:
@@ -333,8 +371,7 @@ def backup(
     if manter:
         _aplicar_retencao(console, output, manter)
 
-    console.info("")
-    console.info(f"Para conferir depois: autotarefas verificar {output}")
+    _como_conferir(console, output, na_tela=ctx.na_tela)
 
     if nao_lidos:
         raise click.exceptions.Exit(_EXIT_PARTIAL)
