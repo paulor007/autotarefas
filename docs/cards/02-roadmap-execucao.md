@@ -46,7 +46,7 @@ Uma capacidade só entra depois que a trilha G entrega o lugar onde ela mora.
 | **02.D** | VSS para arquivo aberto | **G.5.2** (só existe no Agente) | ✅ implementada · teste com elevação pendente |
 | **02.E** | Agendamento, retry/backoff, notificações, retenção GFS | G.5.2 · **G.6** | ✅ implementada · envio de e-mail exige SMTP no cofre |
 | **02.F** | Destino externo e conector S3 compatível | 02.C · G.5.3 | ✅ implementada · nuvem real pendente |
-| **02.H** | Restauração guiada pela interface | 02.B · G.6 | a fazer |
+| **02.H** | Restauração guiada pela interface | 02.B · G.6 | ✅ implementada |
 | **02.I** | Incremental por arquivo, com catálogo | 02.E | ✅ implementada |
 | **02.J** | Hooks de segurança com falha fechada | G.6 | a fazer |
 

@@ -648,6 +648,117 @@ def _registrar_pacote(
     sessao.flush()
 
 
+class PedidoDeRestauracao(BaseModel):
+    """O que a tela envia ao restaurar."""
+
+    pacote: str = Field(min_length=1)
+    destino: str = Field(min_length=1)
+    #: Pacotes anteriores da corrente, quando o backup e incremental.
+    anteriores: list[str] = Field(default_factory=list)
+    #: Restaurar so estes arquivos. Vazio = tudo. E como se testa um backup
+    #: sem tocar no que esta em producao.
+    apenas: list[str] = Field(default_factory=list)
+    #: Substituir o que ja existir no destino. Padrao: preservar. Restaurar
+    #: por cima e decisao de quem esta ali, e por isso e explicita.
+    sobrescrever: bool = False
+
+
+@roteador.post("/{dispositivo_id}/pacote")
+async def listar_pacote(
+    dispositivo_id: str,
+    pedido: PedidoDeRestauracao,
+    contexto: ContextoAtual,
+    sessao: SessaoBanco,
+) -> JSONResponse:
+    """Mostra o que ha dentro de um pacote, antes de restaurar."""
+    return await _pedir_ao_dispositivo(
+        sessao,
+        contexto,
+        dispositivo_id,
+        "listar_pacote",
+        {"pacote": pedido.pacote},
+    )
+
+
+@roteador.post("/{dispositivo_id}/restaurar")
+async def restaurar_no_dispositivo(
+    dispositivo_id: str,
+    pedido: PedidoDeRestauracao,
+    contexto: ContextoOperador,
+    sessao: SessaoBanco,
+) -> JSONResponse:
+    """
+    Restaura arquivos de um pacote para uma pasta da maquina.
+
+    Exige papel de operador — e o Agente ainda confere, na maquina, se pacote
+    e destino estao em pastas autorizadas. Escrever no disco do cliente e a
+    operacao mais perigosa do produto, e ela nao pode ter porta mais larga que
+    a de ler.
+    """
+    return await _pedir_ao_dispositivo(
+        sessao,
+        contexto,
+        dispositivo_id,
+        "restaurar",
+        {
+            "pacote": pedido.pacote,
+            "destino": pedido.destino,
+            "anteriores": pedido.anteriores,
+            "apenas": pedido.apenas,
+            "sobrescrever": pedido.sobrescrever,
+        },
+        prazo_s=1800.0,
+    )
+
+
+async def _pedir_ao_dispositivo(  # noqa: PLR0913 — sessao, contexto,
+    # dispositivo, acao, parametros e prazo sao seis coisas distintas;
+    # agrupa-las esconderia o que esta sendo pedido a quem.
+    sessao: Session,
+    contexto: repo.Contexto,
+    dispositivo_id: str,
+    acao: str,
+    parametros: dict[str, Any],
+    *,
+    prazo_s: float = 60.0,
+) -> JSONResponse:
+    """
+    Encaminha um pedido ao Agente, com as tres respostas que a tela distingue.
+
+    404 nao e desta organizacao; 409 a maquina esta desligada (situacao
+    normal); 504 esta no ar e nao respondeu. Colapsar os tres num "erro"
+    faria a tela acusar problema quando o computador esta so fechado.
+    """
+    from . import canal
+
+    existe = sessao.execute(
+        repo.escopo(Dispositivo, contexto).where(Dispositivo.id == dispositivo_id)
+    ).scalar_one_or_none()
+    if existe is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="dispositivo nao encontrado"
+        )
+
+    try:
+        resposta = await canal.pedir_ao_dispositivo(
+            dispositivo_id, acao, parametros, prazo_s=prazo_s
+        )
+    except canal.DispositivoDesconectado as erro:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(erro)) from erro
+    except canal.SemResposta as erro:
+        raise HTTPException(status_code=status.HTTP_504_GATEWAY_TIMEOUT, detail=str(erro)) from erro
+
+    repo.registrar(
+        sessao,
+        contexto,
+        acao=f"dispositivo.{acao}",
+        alvo=existe.nome,
+        detalhe="ok" if resposta.get("ok") else str(resposta.get("erro", "")),
+        dispositivo_id=dispositivo_id,
+    )
+    return JSONResponse(resposta)
+
+
 @roteador.post("/{dispositivo_id}/revogar")
 def revogar_dispositivo(
     dispositivo_id: str, contexto: ContextoAdministrador, sessao: SessaoBanco

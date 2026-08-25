@@ -215,6 +215,61 @@ async def executar_situacao(_parametros: dict[str, Any], contexto: Contexto) -> 
     }
 
 
+async def executar_listar_pacote(parametros: dict[str, Any], contexto: Contexto) -> dict[str, Any]:
+    """
+    Lista o que ha dentro de um pacote, para a tela mostrar antes de restaurar.
+
+    O pacote precisa estar numa pasta autorizada NESTA maquina, como qualquer
+    outro caminho: o Live nao ganha o direito de ler um ZIP arbitrario do
+    disco do cliente so porque a operacao se chama "restaurar".
+    """
+    from pathlib import Path as Caminho
+
+    from autotarefas.tasks.restauracao import listar_conteudo
+
+    from . import raizes
+
+    pacote = raizes.exigir_autorizacao(
+        contexto.configuracao, Caminho(str(parametros.get("pacote", "")))
+    )
+    return {"pacote": pacote.name, "conteudo": listar_conteudo(pacote)}
+
+
+async def executar_restaurar(parametros: dict[str, Any], contexto: Contexto) -> dict[str, Any]:
+    """
+    Restaura arquivos de um pacote para uma pasta desta maquina.
+
+    Origem E destino passam pela guarda de pastas autorizadas. Restaurar e
+    escrever no disco do cliente — a operacao mais perigosa que o Agente faz —,
+    e nao pode ter uma porta mais larga que a de ler.
+    """
+    import asyncio as _asyncio
+    from pathlib import Path as Caminho
+
+    from autotarefas.tasks.restauracao import restaurar
+
+    from . import raizes
+
+    configuracao = contexto.configuracao
+    pacote = raizes.exigir_autorizacao(configuracao, Caminho(str(parametros.get("pacote", ""))))
+    destino = raizes.exigir_autorizacao(configuracao, Caminho(str(parametros.get("destino", ""))))
+    anteriores = [
+        raizes.exigir_autorizacao(configuracao, Caminho(str(item)))
+        for item in parametros.get("anteriores") or []
+    ]
+
+    await contexto.relatar({"etapa": "restaurando", "pacote": pacote.name})
+    relatorio = await _asyncio.to_thread(
+        restaurar,
+        pacote,
+        destino,
+        anteriores=anteriores,
+        apenas=list(parametros.get("apenas") or []) or None,
+        sobrescrever=bool(parametros.get("sobrescrever", False)),
+    )
+    return dict(relatorio.as_dict())
+
+
 def registro_padrao() -> Registro:
     """Executores que todo Agente conhece."""
     # Import tardio: `backup` importa este modulo para o `Contexto`, e um
@@ -226,6 +281,8 @@ def registro_padrao() -> Registro:
     registro.registrar("backup", executar_backup)
     registro.registrar("politicas", executar_politicas)
     registro.registrar("situacao", executar_situacao)
+    registro.registrar("listar_pacote", executar_listar_pacote)
+    registro.registrar("restaurar", executar_restaurar)
     return registro
 
 
@@ -236,7 +293,9 @@ __all__ = [
     "Registro",
     "atender",
     "executar_estado",
+    "executar_listar_pacote",
     "executar_politicas",
+    "executar_restaurar",
     "executar_situacao",
     "registro_padrao",
 ]

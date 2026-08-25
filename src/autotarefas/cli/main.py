@@ -29,6 +29,7 @@ from autotarefas.cli.commands.manutencao import manutencao
 from autotarefas.cli.commands.organize import organize
 from autotarefas.cli.commands.perfis import perfis
 from autotarefas.cli.commands.report import report
+from autotarefas.cli.commands.restaurar import restaurar
 from autotarefas.cli.commands.rpa import rpa
 from autotarefas.cli.commands.run import run
 from autotarefas.cli.commands.send import send
@@ -100,6 +101,7 @@ cli.add_command(manutencao)
 cli.add_command(organize)
 cli.add_command(perfis)
 cli.add_command(report)
+cli.add_command(restaurar)
 cli.add_command(rpa)
 cli.add_command(run)
 cli.add_command(extract)
