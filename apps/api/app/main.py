@@ -28,6 +28,7 @@ from fastapi.staticfiles import StaticFiles
 from autotarefas.tasks.backup import verify_backup
 
 from . import (
+    canal,
     catalog,
     demo_servers,
     dispositivos,
@@ -120,6 +121,7 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         # bastante para tocar o loop depois que ele fechou.
         await _encerrar_tarefas(_background_tasks | spreadsheets.pending_tasks())
         demo_servers.stop()
+        canal.presenca.limpar()
         bootstrap.descartar()
         definir_banco(None)
 
@@ -148,6 +150,22 @@ app.add_middleware(
 app.include_router(spreadsheets.router)
 app.include_router(rotas_identidade.roteador)
 app.include_router(dispositivos.roteador)
+app.include_router(canal.roteador)
+
+
+def _capacidades() -> list[str]:
+    """
+    O que o servidor consegue fazer neste instante.
+
+    `web_upload` existe sempre. `agent_connected` depende de haver Agente
+    conectado de fato: um dispositivo cadastrado e desligado nao habilita
+    nada, e anunciar que habilita seria exatamente o "status simulado" que o
+    produto recusa.
+    """
+    capacidades = ["web_upload"]
+    if canal.ha_agente_conectado():
+        capacidades.append("agent_connected")
+    return capacidades
 
 
 @app.get("/api/health")
@@ -159,9 +177,10 @@ def health() -> dict[str, Any]:
         "version": settings.version,
         "browser_available": _browser_available(),
         "active_automations": list(engine.ACTIVE_AUTOMATIONS),
-        # O que ESTE servidor sabe fazer agora. `agent_connected` so entra
-        # quando houver agente pareado — nunca por antecipacao.
-        "capabilities": ["web_upload"],
+        # O que ESTE servidor sabe fazer AGORA. `agent_connected` so aparece
+        # quando ha canal aberto com algum Agente — nunca por antecipacao, e
+        # nunca so porque um dispositivo esta cadastrado.
+        "capabilities": _capacidades(),
         "active_runs": jobs.active_count(),
         "limits": {
             "max_concurrent_runs": settings.max_concurrent_runs,
