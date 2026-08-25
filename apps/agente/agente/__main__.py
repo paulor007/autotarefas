@@ -18,7 +18,7 @@ from pathlib import Path
 import click
 
 from . import identidade as ident
-from . import pareamento
+from . import pareamento, raizes
 from .config import Local
 
 _SAIDA_PROBLEMA = 1
@@ -64,6 +64,49 @@ def parear(servidor: str, codigo: str, nome: str, pasta_de_configuracao: Path | 
     click.echo("")
     click.echo("Confira se esta impressao e a mesma que aparece no Live.")
     click.echo("Nenhuma pasta esta autorizada ainda: autorize pelo Agente, nesta maquina.")
+
+
+@cli.command(name="autorizar")
+@click.argument("pasta", type=click.Path(path_type=Path))
+@click.option(
+    "--pasta-de-configuracao",
+    type=click.Path(file_okay=False, path_type=Path),
+    default=None,
+)
+def autorizar(pasta: Path, pasta_de_configuracao: Path | None) -> None:
+    """
+    Autoriza o Agente a ler uma pasta DESTA maquina.
+
+    So funciona aqui, no computador. Nao ha comando remoto que autorize pasta:
+    se houvesse, comprometer a conta do Live — ou o servidor — daria acesso a
+    qualquer arquivo de qualquer maquina da frota.
+    """
+    local, _ = _local(pasta_de_configuracao)
+    try:
+        configuracao = raizes.autorizar(local, pasta)
+    except raizes.AutorizacaoRecusada as erro:
+        click.echo(f"[ERRO] {erro}", err=True)
+        sys.exit(_SAIDA_PROBLEMA)
+
+    click.echo(f"Autorizada: {pasta.resolve()}")
+    click.echo(f"Pastas autorizadas agora: {len(configuracao.raizes)}")
+
+
+@cli.command(name="revogar-pasta")
+@click.argument("pasta", type=click.Path(path_type=Path))
+@click.option(
+    "--pasta-de-configuracao",
+    type=click.Path(file_okay=False, path_type=Path),
+    default=None,
+)
+def revogar_pasta(pasta: Path, pasta_de_configuracao: Path | None) -> None:
+    """Tira a autorizacao de uma pasta."""
+    local, _ = _local(pasta_de_configuracao)
+    configuracao = raizes.revogar(local, pasta)
+
+    click.echo(f"Revogada: {pasta}")
+    if not configuracao.raizes:
+        click.echo("Nenhuma pasta autorizada: este dispositivo nao copiaria nada.")
 
 
 @cli.command(name="estado")

@@ -83,3 +83,53 @@ class TestParear:
 
         assert codigo == 1
         assert Local(pasta=tmp_path).carregar().pareado is False
+
+
+class TestAutorizarPelaLinhaDeComando:
+    """
+    Autorizar so acontece AQUI, na maquina.
+
+    E o que o instalador guiado (G.8) vai chamar. Nao ha rota, comando remoto
+    ou tela na nuvem que chegue a este ponto.
+    """
+
+    def test_autoriza_uma_pasta(self, tmp_path: Path) -> None:
+        pasta = tmp_path / "dados"
+        pasta.mkdir()
+
+        codigo, saida = _rodar(
+            [
+                "autorizar",
+                str(pasta),
+                "--pasta-de-configuracao",
+                str(tmp_path / "cfg"),
+            ]
+        )
+
+        assert codigo == 0
+        assert "Autorizada" in saida
+        assert Local(pasta=tmp_path / "cfg").carregar().raizes == (str(pasta.resolve()),)
+
+    def test_pasta_do_disco_inteiro_e_recusada_com_saida_1(self, tmp_path: Path) -> None:
+        """
+        A recusa precisa ter saida diferente de zero.
+
+        O instalador confia no codigo de saida: um erro que sai 0 faria a
+        instalacao declarar sucesso com o disco inteiro autorizado.
+        """
+        raiz = str(Path(Path.cwd().anchor))
+
+        codigo, _ = _rodar(["autorizar", raiz, "--pasta-de-configuracao", str(tmp_path / "cfg")])
+
+        assert codigo == 1
+        assert Local(pasta=tmp_path / "cfg").carregar().raizes == ()
+
+    def test_revogar_avisa_quando_fica_sem_nenhuma(self, tmp_path: Path) -> None:
+        pasta = tmp_path / "dados"
+        pasta.mkdir()
+        configuracao = str(tmp_path / "cfg")
+        _rodar(["autorizar", str(pasta), "--pasta-de-configuracao", configuracao])
+
+        _, saida = _rodar(["revogar-pasta", str(pasta), "--pasta-de-configuracao", configuracao])
+
+        assert "nao copiaria nada" in saida
