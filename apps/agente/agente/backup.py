@@ -27,6 +27,7 @@ from typing import Any
 
 from autotarefas.tasks.backup import BackupTask
 
+from . import destinos as mod_destinos
 from . import raizes, vss
 from .comandos import Contexto
 
@@ -49,6 +50,9 @@ class Pedido:
     com_data: bool = True
     #: Tentar instantaneo de volume para copiar arquivo aberto.
     usar_vss: bool = False
+    #: Para onde COPIAR o pacote depois de pronto. Vazio = fica so na maquina.
+    destino_externo: Path | None = None
+    tipo_do_destino: mod_destinos.TipoDeDestino | None = None
 
 
 def _destino_padrao(configuracao_raizes: tuple[str, ...]) -> Path:
@@ -96,6 +100,14 @@ def montar_pedido(parametros: dict[str, Any], contexto: Contexto) -> Pedido:
         manter=int(parametros.get("manter") or 0),
         com_data=bool(parametros.get("com_data", True)),
         usar_vss=bool(parametros.get("usar_vss", False)),
+        destino_externo=(
+            Path(str(parametros["destino_externo"])) if parametros.get("destino_externo") else None
+        ),
+        tipo_do_destino=(
+            mod_destinos.TipoDeDestino(str(parametros["tipo_do_destino"]))
+            if parametros.get("tipo_do_destino")
+            else None
+        ),
     )
 
 
@@ -143,6 +155,9 @@ def executar(pedido: Pedido) -> dict[str, Any]:
         "excluidos_por_regra": int(dados.get("skipped_count", 0)),
         "nao_lidos": [{"arquivo": item["arquivo"], "motivo": item["motivo"]} for item in nao_lidos],
         "com_ressalva": bool(nao_lidos),
+        # Interno: some antes de a ficha subir. O servidor nunca ve caminho
+        # local do cliente.
+        "_caminho_local": alvo,
     }
 
 
@@ -188,6 +203,8 @@ async def executar_backup(parametros: dict[str, Any], contexto: Contexto) -> dic
     pedido = montar_pedido(parametros, contexto)
     await contexto.relatar({"etapa": "iniciando", "origens": len(pedido.origens)})
 
+    destino = _preparar_destino(pedido)
+
     if pedido.usar_vss:
         # Recusa explicita, e nao queda silenciosa para o modo antigo: quem
         # pediu instantaneo pediu porque tem arquivo aberto, e receber um
@@ -200,8 +217,36 @@ async def executar_backup(parametros: dict[str, Any], contexto: Contexto) -> dic
         ficha = await asyncio.to_thread(executar, pedido)
         ficha["instantaneo"] = False
 
+    if destino is not None:
+        await contexto.relatar({"etapa": "entregando", "destino": destino.descricao})
+        ficha["entrega"] = await asyncio.to_thread(
+            mod_destinos.entregar, ficha.pop("_caminho_local"), destino
+        )
+    else:
+        ficha.pop("_caminho_local", None)
+        ficha["entrega"] = None
+
     await contexto.relatar({"etapa": "concluido", "arquivos": ficha["arquivos"]})
     return ficha
+
+
+def _preparar_destino(pedido: Pedido) -> mod_destinos.Destino | None:
+    """
+    Confere o destino ANTES de copiar qualquer arquivo.
+
+    Descobrir que o disco externo esta cheio, ou que a pasta de rede nao
+    aceita escrita, depois de meia hora de copia e descobrir tarde.
+    """
+    if pedido.destino_externo is None:
+        return None
+    try:
+        return mod_destinos.preparar(
+            pedido.destino_externo,
+            tipo_declarado=pedido.tipo_do_destino,
+            origens=pedido.origens,
+        )
+    except mod_destinos.DestinoRecusado as erro:
+        raise BackupRecusado(str(erro)) from erro
 
 
 __all__ = [

@@ -393,6 +393,11 @@ class PedidoDeBackup(BaseModel):
     #: RECUSA quando nao tem privilegio, em vez de cair para o modo antigo em
     #: silencio — o pacote sairia sem a planilha aberta, marcado como sucesso.
     usar_vss: bool = False
+    #: Para onde COPIAR o pacote depois de pronto: disco externo, pasta de
+    #: rede, ou outra pasta local. O Agente confere o destino ANTES de ler o
+    #: primeiro arquivo, e confere a copia DEPOIS de gravar.
+    destino_externo: str = ""
+    tipo_do_destino: str = ""
 
 
 @roteador.post("/{dispositivo_id}/backup")
@@ -442,6 +447,10 @@ async def executar_backup_agora(
         parametros["destino"] = pedido.destino
     if pedido.usar_vss:
         parametros["usar_vss"] = True
+    if pedido.destino_externo:
+        parametros["destino_externo"] = pedido.destino_externo
+    if pedido.tipo_do_destino:
+        parametros["tipo_do_destino"] = pedido.tipo_do_destino
 
     try:
         resposta = await canal.pedir_ao_dispositivo(dispositivo_id, "backup", parametros)
