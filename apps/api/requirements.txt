@@ -16,6 +16,10 @@ email-validator>=2.0.0,<3.0.0
 # Criptografia do pacote (02.C): AES-256 no padrao WinZip.
 pyzipper>=0.3.6,<1.0.0
 
+# Destino S3 compativel (02.F). O Agente e quem envia; o backend so
+# guarda a credencial cifrada no cofre e a repassa pelo canal.
+boto3>=1.35.0,<2.0.0
+
 # Os mocks de demonstracao usam Flask + Faker (tambem vem como deps do autotarefas;
 # listados aqui para garantir no container caso sejam opcionais no pacote).
 flask>=3.1.0

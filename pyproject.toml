@@ -104,6 +104,7 @@ dependencies = [
     "cryptography>=48.0.0,<49.0.0", # HMAC-SHA256 pro audit trail
     "pyzipper>=0.3.6,<1.0.0",       # ZIP com AES-256 no padrão WinZip (02.C)
     "keyring>=25.0.0,<26.0.0",      # Cofre do sistema para a chave do Agente (G.3.1)
+    "boto3>=1.35.0,<2.0.0",         # Destino S3 compatível (02.F)
 
     # === Persistência da plataforma (Card 02 / G.2) ===
     "sqlalchemy>=2.0.0,<3.0.0",     # Modelo multiempresa; Postgres em produção
@@ -140,6 +141,10 @@ dev = [
     # === Security scanners ===
     "bandit[toml]>=1.9.4,<2.0.0",   # Análise estática de segurança
     "detect-secrets>=1.5.0,<2.0.0", # Detecta credenciais em commits
+
+    # === Servidor S3 compatível para a suíte (02.F) ===
+    # Só aqui: mock nunca é o caminho apresentado ao cliente.
+    "moto[s3,server]>=5.0.0,<6.0.0",
     "safety>=3.7.0,<4.0.0",         # Vulnerabilidades em deps
 
     # === Pre-commit hooks ===
@@ -328,7 +333,7 @@ pretty = true
 
 # Tests podem ter type hints opcionais (pra rapidez)
 [[tool.mypy.overrides]]
-module = ["authlib.*", "keyring.*", "pyzipper.*"]
+module = ["authlib.*", "keyring.*", "pyzipper.*", "boto3.*", "botocore.*", "moto.*"]
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]

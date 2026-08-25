@@ -29,6 +29,7 @@ from autotarefas.tasks.backup import BackupTask
 
 from . import destinos as mod_destinos
 from . import raizes, vss
+from . import s3 as mod_s3
 from .comandos import Contexto
 
 #: Onde os pacotes ficam quando o pedido nao diz outra coisa.
@@ -53,6 +54,9 @@ class Pedido:
     #: Para onde COPIAR o pacote depois de pronto. Vazio = fica so na maquina.
     destino_externo: Path | None = None
     tipo_do_destino: mod_destinos.TipoDeDestino | None = None
+    #: Destino em nuvem compativel com S3. A credencial chega pelo canal
+    #: autenticado, e usada, e some com o processo — nunca e gravada aqui.
+    destino_s3: mod_s3.Credencial | None = None
 
 
 def _destino_padrao(configuracao_raizes: tuple[str, ...]) -> Path:
@@ -108,6 +112,35 @@ def montar_pedido(parametros: dict[str, Any], contexto: Contexto) -> Pedido:
             if parametros.get("tipo_do_destino")
             else None
         ),
+        destino_s3=_credencial_s3(parametros.get("s3")),
+    )
+
+
+def _credencial_s3(bruta: Any) -> mod_s3.Credencial | None:
+    """
+    Le a credencial de nuvem do pedido, sem inventar valor nenhum.
+
+    Campo obrigatorio faltando vira recusa com o nome do campo. Preencher com
+    padrao silencioso levaria o pacote a um balde que ninguem escolheu.
+    """
+    if not bruta:
+        return None
+    if not isinstance(bruta, dict):
+        msg = "credencial de nuvem em formato invalido"
+        raise BackupRecusado(msg)
+
+    faltando = [campo for campo in ("balde", "chave", "segredo") if not bruta.get(campo)]
+    if faltando:
+        msg = f"credencial de nuvem incompleta: falta {', '.join(faltando)}"
+        raise BackupRecusado(msg)
+
+    return mod_s3.Credencial(
+        endpoint=str(bruta.get("endpoint", "")),
+        regiao=str(bruta.get("regiao", "")),
+        balde=str(bruta["balde"]),
+        chave=str(bruta["chave"]),
+        segredo=str(bruta["segredo"]),
+        prefixo=str(bruta.get("prefixo", "")),
     )
 
 
@@ -217,14 +250,27 @@ async def executar_backup(parametros: dict[str, Any], contexto: Contexto) -> dic
         ficha = await asyncio.to_thread(executar, pedido)
         ficha["instantaneo"] = False
 
+    caminho_local = ficha.pop("_caminho_local")
+    entregas: list[dict[str, Any]] = []
+
     if destino is not None:
         await contexto.relatar({"etapa": "entregando", "destino": destino.descricao})
-        ficha["entrega"] = await asyncio.to_thread(
-            mod_destinos.entregar, ficha.pop("_caminho_local"), destino
-        )
-    else:
-        ficha.pop("_caminho_local", None)
-        ficha["entrega"] = None
+        entregas.append(await asyncio.to_thread(mod_destinos.entregar, caminho_local, destino))
+
+    if pedido.destino_s3 is not None:
+        await contexto.relatar({"etapa": "enviando", "destino": pedido.destino_s3.descricao})
+        try:
+            entregas.append(
+                await asyncio.to_thread(mod_s3.enviar, caminho_local, pedido.destino_s3)
+            )
+        except mod_s3.EnvioRecusado as erro:
+            raise BackupRecusado(str(erro)) from erro
+
+    # `entrega` continua sendo a primeira, para nao quebrar quem ja le esse
+    # campo; `entregas` traz todas. `null` ali segue sendo informacao: e o que
+    # distingue "o pacote esta so nesta maquina" de "o pacote saiu daqui".
+    ficha["entrega"] = entregas[0] if entregas else None
+    ficha["entregas"] = entregas
 
     await contexto.relatar({"etapa": "concluido", "arquivos": ficha["arquivos"]})
     return ficha

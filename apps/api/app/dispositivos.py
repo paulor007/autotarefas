@@ -34,6 +34,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import DateTime, ForeignKey, String, select
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
+from . import cofre
 from .db import repositorio as repo
 from .db.models import (
     Artefato,
@@ -398,6 +399,11 @@ class PedidoDeBackup(BaseModel):
     #: primeiro arquivo, e confere a copia DEPOIS de gravar.
     destino_externo: str = ""
     tipo_do_destino: str = ""
+    #: Enviar tambem para a nuvem configurada no cofre desta organizacao. A
+    #: credencial NAO vem no pedido: ela sai do cofre no servidor e viaja pelo
+    #: canal autenticado. Se viesse daqui, o navegador teria que guardar a
+    #: chave de nuvem do cliente.
+    enviar_para_nuvem: bool = False
 
 
 @roteador.post("/{dispositivo_id}/backup")
@@ -451,6 +457,13 @@ async def executar_backup_agora(
         parametros["destino_externo"] = pedido.destino_externo
     if pedido.tipo_do_destino:
         parametros["tipo_do_destino"] = pedido.tipo_do_destino
+    if pedido.enviar_para_nuvem:
+        try:
+            parametros["s3"] = credencial_de_nuvem(sessao, contexto)
+        except cofre.CofreTrancado as erro:
+            return _falhou(sessao, execucao, erro, status.HTTP_409_CONFLICT)
+        except cofre.SegredoAusente as erro:
+            return _falhou(sessao, execucao, erro, status.HTTP_409_CONFLICT)
 
     try:
         resposta = await canal.pedir_ao_dispositivo(dispositivo_id, "backup", parametros)
@@ -485,6 +498,47 @@ def _falhou(sessao: Session, execucao: Execucao, erro: Exception, codigo: int) -
         {"execucao_id": execucao.id, "ok": False, "erro": str(erro), "detail": str(erro)},
         status_code=codigo,
     )
+
+
+#: Nomes dos segredos de nuvem no cofre da organizacao. Fixos de proposito:
+#: a tela grava com estes nomes e o backup le com estes nomes, sem inventar
+#: convencao no meio do caminho.
+SEGREDOS_DE_NUVEM = (
+    "s3.endpoint",
+    "s3.regiao",
+    "s3.balde",
+    "s3.chave",
+    "s3.segredo",
+    "s3.prefixo",
+)
+
+#: Os que nao podem faltar. Endpoint vazio significa Amazon S3; prefixo vazio
+#: significa raiz do balde. Balde, chave e segredo nao tem substituto.
+OBRIGATORIOS_DE_NUVEM = ("s3.balde", "s3.chave", "s3.segredo")
+
+
+def credencial_de_nuvem(sessao: Session, contexto: repo.Contexto) -> dict[str, str]:
+    """
+    Le a credencial de nuvem do cofre desta organizacao.
+
+    Ela sai daqui e vai para o Agente pelo canal autenticado — nunca passa
+    pelo navegador. Se passasse, a chave de nuvem do cliente ficaria na tela
+    dele a cada configuracao, e no histórico do navegador junto.
+    """
+    faltando = [
+        nome for nome in OBRIGATORIOS_DE_NUVEM if not cofre.existe(sessao, contexto, nome=nome)
+    ]
+    if faltando:
+        msg = "destino em nuvem nao configurado nesta organizacao: falta " + ", ".join(
+            nome.removeprefix("s3.") for nome in faltando
+        )
+        raise cofre.SegredoAusente(msg)
+
+    valores: dict[str, str] = {}
+    for nome in SEGREDOS_DE_NUVEM:
+        if cofre.existe(sessao, contexto, nome=nome):
+            valores[nome.removeprefix("s3.")] = cofre.revelar(sessao, contexto, nome=nome)
+    return valores
 
 
 def _fechar(
