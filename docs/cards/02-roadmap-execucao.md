@@ -32,7 +32,7 @@ Uma capacidade só entra depois que a trilha G entrega o lugar onde ela mora.
 | **G.5.1** | Raízes autorizadas, com consentimento **na própria máquina** | G.4.2 | ✅ implementada |
 | **G.5.2** | Backup executado pelo Agente, com streaming (arquivo grande) | G.5.1 | ✅ implementada |
 | **G.5.3** | Destinos reais: disco local, disco externo, pasta de rede | G.5.2 | ✅ implementada |
-| **G.6** | Telas de operação: dispositivos, pastas, política, destino | G.5.3 | a fazer |
+| **G.6** | Telas de operação: dispositivos, pastas, política | G.5.3 | ✅ implementada — política e destino vêm com 02.E |
 | **G.7** | Saúde do dispositivo, histórico, artefatos e notificações | G.6 | a fazer |
 | **G.8** | Empacotamento: serviço do Windows, instalador, download guiado | G.5.2 | a fazer |
 
@@ -178,6 +178,31 @@ Registradas aqui para não se perderem, e **não** contadas como feitas.
 Tudo o que **não** depende disso está implementado e testado: sem elevação, o
 Agente **recusa** o instantâneo com o motivo — não tenta, não finge e não cai
 em silêncio para o modo antigo. Esse caminho tem teste.
+
+---
+
+## 2.9 O que a G.6 entregou, e o que ficou para a 02.E
+
+A G.6 entrega as telas do que **já existe**: primeiro acesso, entrada,
+organização, dispositivos (parear, ver conexão, consultar pastas autorizadas,
+executar agora, revogar).
+
+A tela de **política** — horário, retenção, retry, notificação — ficou para a
+02.E, e isso é decisão, não atraso. Desenhar a tela antes do motor produziria
+campos que não configuram nada: exatamente o "botão sem função" que o produto
+recusa. Quando o agendamento existir, a tela nasce sobre ele.
+
+Três regras de honestidade estão nos testes da tela, não só no código:
+
+- **"Conectado" vem da presença, não do cadastro.** Máquina cadastrada e
+  desligada aparece como desligada.
+- **Máquina desligada não é erro.** O servidor responde 409 e a tela diz "está
+  desligada" — tratar como falha faria a tela acusar problema toda noite.
+- **Sem provedor de identidade, não há botão de entrar.** A tela diz o que
+  falta configurar.
+
+E autorizar pasta **não** acontece na tela: ela mostra o que foi autorizado e
+diz onde autorizar. O consentimento é dado na própria máquina.
 
 ---
 

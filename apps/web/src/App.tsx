@@ -6,6 +6,8 @@ import ExecutionPanel from "./components/ExecutionPanel";
 import Footer from "./components/Footer";
 import Hero from "./components/Hero";
 import Navbar from "./components/Navbar";
+import Painel from "./components/Painel";
+import SectionHeader from "./components/SectionHeader";
 import StatusBar from "./components/StatusBar";
 import TerminalView, { type TerminalLine } from "./components/TerminalView";
 import { useExecution } from "./hooks/useExecution";
@@ -183,6 +185,17 @@ export default function App() {
           />
         </>
       ) : null}
+      {/* A partir daqui e a plataforma: organizacao, dispositivos e execucao
+          na maquina do cliente. O que esta acima continua sendo o Live aberto,
+          com upload avulso e execucao em espaco isolado — sao dois modos, e a
+          tela nao mistura os dois. */}
+      <section id="empresa" className="container-page py-16">
+        <SectionHeader
+          title="Backup nas suas máquinas"
+          subtitle="Pastas do computador, com o Agente instalado e pareado"
+        />
+        <Painel />
+      </section>
       <Footer />
     </div>
   );

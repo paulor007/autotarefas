@@ -5,6 +5,7 @@ const LINKS: [string, string][] = [
   ["Execução", "#execucao"],
   ["Terminal", "#terminal"],
   ["Artefatos", "#artefatos"],
+  ["Sua empresa", "#empresa"],
 ];
 
 export default function Navbar({ online }: { online: boolean }) {
