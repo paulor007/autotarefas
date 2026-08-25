@@ -38,6 +38,12 @@ Três regras valem para todos:
 
 ---
 
+## Roadmap de execução do Card 02
+
+A matriz consolidada de etapas, dependências, ordem de execução e a decisão de
+identidade (OIDC) estão em
+**[02-roadmap-execucao.md](02-roadmap-execucao.md)**.
+
 ## Estado das subetapas do Card 02
 
 Detalhamento, dependências e critérios de aceite na seção 21 do documento do
