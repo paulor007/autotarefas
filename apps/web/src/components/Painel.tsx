@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 
 import Dispositivos from "./Dispositivos";
 import Historico from "./Historico";
+import Politicas from "./Politicas";
 import PrimeiroAcesso from "./PrimeiroAcesso";
 import {
   conviteDaUrl,
@@ -111,6 +112,8 @@ export default function Painel() {
       </header>
 
       <Dispositivos papel={papel} />
+
+      <Politicas papel={papel} />
 
       <section>
         <h2 className="text-lg font-semibold text-fg">Histórico</h2>

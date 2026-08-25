@@ -315,6 +315,91 @@ export function restaurarNoDispositivo(
   });
 }
 
+/** Configuração de uma política, no formato que o núcleo valida. */
+export interface ConfiguracaoDePolitica {
+  origens: string[];
+  destino: { tipo: string; caminho: string };
+  agendamento: {
+    tipo: string;
+    hora: string;
+    dia_da_semana: number;
+    dia_do_mes: number;
+  };
+  retencao: { diarias: number; semanais: number; mensais: number };
+  retry: { tentativas: number; espera_inicial_min: number };
+  notificacao: { quando: string; emails: string[] };
+  usar_vss: boolean;
+  cifrar: boolean;
+  assinar: boolean;
+  verificar: boolean;
+  incremental: boolean;
+}
+
+/** Uma política gravada, com o que o servidor conclui sobre ela. */
+export interface Politica {
+  id: string;
+  nome: string;
+  dispositivo_id: string;
+  ativa: boolean;
+  configuracao: ConfiguracaoDePolitica;
+  /** Falso quando o pacote fica só na própria máquina. */
+  protege_de_verdade: boolean;
+  criada_em: string;
+  atualizada_em: string;
+}
+
+/** O que aconteceu ao tentar mandar a política para a máquina. */
+export interface Sincronizacao {
+  aplicada: boolean;
+  motivo?: string;
+  politicas?: number;
+  proximas?: { id: string; proxima: string }[];
+}
+
+export function listarPoliticas(): Promise<{ politicas: Politica[] }> {
+  return pedir("/api/politicas");
+}
+
+/**
+ * Cria a política e tenta aplicá-la na mesma operação.
+ *
+ * A resposta traz `sincronizacao`: máquina desligada devolve "pendente", e não
+ * erro. A diferença entre "vai valer" e "está valendo" é a diferença entre ter
+ * backup hoje à noite e descobrir amanhã que não teve.
+ */
+export function criarPolitica(pedido: {
+  nome: string;
+  dispositivo_id: string;
+  ativa?: boolean;
+  configuracao: Partial<ConfiguracaoDePolitica>;
+}): Promise<Politica & { sincronizacao: Sincronizacao }> {
+  return pedir("/api/politicas", {
+    method: "POST",
+    body: JSON.stringify(pedido),
+  });
+}
+
+export function alterarPolitica(
+  id: string,
+  pedido: {
+    nome: string;
+    dispositivo_id: string;
+    ativa?: boolean;
+    configuracao: Partial<ConfiguracaoDePolitica>;
+  },
+): Promise<Politica & { sincronizacao: Sincronizacao }> {
+  return pedir(`/api/politicas/${encodeURIComponent(id)}`, {
+    method: "PUT",
+    body: JSON.stringify(pedido),
+  });
+}
+
+export function removerPolitica(
+  id: string,
+): Promise<{ removida: string; sincronizacao: Sincronizacao }> {
+  return pedir(`/api/politicas/${encodeURIComponent(id)}`, { method: "DELETE" });
+}
+
 /** O que vem dentro do pacote do Agente, para a tela dizer antes de baixar. */
 export interface FichaDoInstalador {
   nome: string;

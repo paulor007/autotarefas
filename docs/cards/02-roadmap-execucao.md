@@ -32,10 +32,11 @@ Uma capacidade só entra depois que a trilha G entrega o lugar onde ela mora.
 | **G.5.1** | Raízes autorizadas, com consentimento **na própria máquina** | G.4.2 | ✅ implementada |
 | **G.5.2** | Backup executado pelo Agente, com streaming (arquivo grande) | G.5.1 | ✅ implementada |
 | **G.5.3** | Destinos reais: disco local, disco externo, pasta de rede | G.5.2 | ✅ implementada |
-| **G.6** | Telas de operação: dispositivos, pastas, política | G.5.3 | ✅ implementada — política e destino vêm com 02.E |
+| **G.6** | Telas de operação: dispositivos e pastas | G.5.3 | ✅ implementada — a tela de política ficou para a G.7.4 |
 | **G.7.1** | Diário de execuções no Agente e sincronização do histórico | G.6 | ✅ implementada |
 | **G.7.2** | Pacotes resolvidos pelo nome: listagem e restauração sem caminho local | G.7.1 | ✅ implementada |
 | **G.7.3** | Telas de histórico, artefatos e restauração guiada | G.7.2 | ✅ implementada |
+| **G.7.4** | Tela de política: origens, destino, horário, retenção, retry, avisos | G.7.3 | ✅ implementada |
 | **G.8.1** | O Agente sobe sozinho: registro no Agendador de Tarefas | G.5.2 | ✅ implementada |
 | **G.8.2** | Pacote do Agente com só o que ele usa, baixável pelo Live | G.8.1 | ✅ implementada |
 | **G.8.3** | Instalação guiada na tela: baixar, rodar, parear | G.8.2 · G.7.3 | ✅ implementada |
@@ -432,6 +433,36 @@ instalador que funciona.
 Limitação real, registrada: **o pacote exige Python 3.13 instalado**. Não há
 executável único (PyInstaller) nesta versão. Isso está dito na primeira tela e no
 LEIA-ME, e não escondido atrás de "instale e pronto".
+
+---
+
+## 2.16 A tela de política, e por que ela faltava
+
+A matriz dizia que a G.6 tinha entregue "telas de operação: dispositivos, pastas,
+política". As duas primeiras existiam; a terceira, não. Criar uma política de
+backup exigia chamar a API na mão — ou seja, o produto tinha um requisito de
+linha de comando escondido no meio do caminho, contra a regra mais dura do card:
+o cliente não deve precisar de CLI para a operação normal.
+
+Isso foi encontrado ao montar a homologação e está corrigido na G.7.4. A linha
+da G.6 na matriz também foi corrigida: dizia mais do que ela entregou.
+
+A tela cobre, num formulário só, o que a política precisa: pastas de origem
+(vindas do dispositivo, não digitadas), destino e caminho, frequência e hora,
+retenção GFS, tentativas e espera de retry, avisos por e-mail, e as opções de
+como copiar — incremental, cifra, assinatura, verificação e VSS.
+
+Quatro coisas ela se recusa a esconder:
+
+1. **"Só nesta máquina" não é backup.** Quando o destino é esse, a tela diz — e
+   continua deixando salvar, porque é um começo legítimo. O que não pode é a
+   pessoa achar que está protegida.
+2. **"Vai valer" não é "está valendo".** Máquina desligada recebe a política na
+   próxima conexão, e a tela diz isso em vez de fingir que já aplicou.
+3. **Máquina sem pasta autorizada não copiaria nada** — e o botão de salvar fica
+   desabilitado, em vez de gravar uma política que nunca vai produzir pacote.
+4. **Agendamento desligado é dito como desligado.** "Só executa quando alguém
+   manda" é escolha válida; confundi-la com backup automático não é.
 
 ---
 
