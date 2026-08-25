@@ -14,6 +14,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import shutil
+import time
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -38,6 +39,10 @@ from . import (
     uploads,
 )
 from .config import settings
+from .db.atual import banco, definir_banco
+from .identidade import bootstrap
+from .identidade import rotas as rotas_identidade
+from .identidade.sessao_web import segredo_e_efemero
 
 _CLEANUP_INTERVAL_S = 300
 _HTTP_ACCEPTED = 202
@@ -76,8 +81,31 @@ async def _cleanup_loop() -> None:
             jobs.sweep_expired(settings.workspace_ttl_min)
 
 
+def _preparar_plataforma() -> None:
+    """
+    Sobe o banco e, se nao houver organizacao nenhuma, emite o convite.
+
+    O convite vai para o **console**, e nao para a tela: e a unica parte do
+    fluxo que exige provar acesso a maquina onde o servico roda.
+    """
+    with banco().sessao() as sessao:
+        vazio = bootstrap.esta_vazio(sessao)
+    if vazio:
+        convite = bootstrap.emitir(agora_s=time.time())
+        # `print` de proposito, e nao log: o convite tem que aparecer no
+        # console de quem subiu o servico. Um log com nivel configuravel
+        # poderia estar desligado justo na hora em que o dono precisa dele.
+        print(bootstrap.linha_do_console(convite, settings.public_base_url))  # noqa: T201
+    if segredo_e_efemero():
+        print(  # noqa: T201 — ver acima
+            "  [aviso] SESSION_SECRET nao definido: as sessoes nao sobrevivem "
+            "ao reinicio do servico.\n"
+        )
+
+
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
+    _preparar_plataforma()
     demo_servers.start()
     cleanup = asyncio.create_task(_cleanup_loop())
     try:
@@ -91,6 +119,8 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         # bastante para tocar o loop depois que ele fechou.
         await _encerrar_tarefas(_background_tasks | spreadsheets.pending_tasks())
         demo_servers.stop()
+        bootstrap.descartar()
+        definir_banco(None)
 
 
 async def _encerrar_tarefas(tarefas: set[asyncio.Task[None]]) -> None:
@@ -115,6 +145,7 @@ app.add_middleware(
 # Jornada guiada de planilhas (1.8B-2B). Endpoints proprios: o /api/run
 # generico continua servindo os cards antigos, sem payload inflado.
 app.include_router(spreadsheets.router)
+app.include_router(rotas_identidade.roteador)
 
 
 @app.get("/api/health")

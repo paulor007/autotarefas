@@ -18,6 +18,7 @@ from pathlib import Path
 
 from sqlalchemy import Engine, create_engine, event
 from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.pool import StaticPool
 
 from .models import Base
 
@@ -36,6 +37,10 @@ def _e_sqlite(url: str) -> bool:
     return url.startswith("sqlite")
 
 
+def _e_memoria(url: str) -> bool:
+    return _e_sqlite(url) and ":memory:" in url
+
+
 def criar_motor(url: str | None = None) -> Engine:
     """
     Cria o motor com os ajustes que cada banco exige.
@@ -52,6 +57,12 @@ def criar_motor(url: str | None = None) -> Engine:
     argumentos: dict[str, object] = {}
     if _e_sqlite(endereco):
         argumentos["connect_args"] = {"check_same_thread": False}
+    if _e_memoria(endereco):
+        # SQLite em memoria cria um banco NOVO por conexao. Com o pool padrao,
+        # a tabela criada numa conexao some na proxima — e o servidor, que
+        # atende em varias threads, veria "no such table". `StaticPool` mantem
+        # uma conexao so, entao o banco e um so.
+        argumentos["poolclass"] = StaticPool
 
     motor = create_engine(endereco, future=True, **argumentos)
 

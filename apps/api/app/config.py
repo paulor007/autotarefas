@@ -84,6 +84,41 @@ class Settings:
         )
     )
 
+    # ============================================================
+    # Plataforma (G.2): banco, sessao e identidade
+    # ============================================================
+
+    #: Onde os dados moram. PostgreSQL em producao, SQLite no resto.
+    database_url: str = field(default_factory=lambda: os.environ.get("DATABASE_URL", "").strip())
+    #: Segredo que assina o cookie de sessao. Sem ele o servico sorteia um a
+    #: cada partida — a sessao nao sobrevive ao reinicio, e isso e avisado no
+    #: console. Nunca ha um segredo fixo embutido no codigo: um valor padrao
+    #: publicado no repositorio seria o mesmo que nao assinar nada.
+    session_secret: str = field(
+        default_factory=lambda: os.environ.get("SESSION_SECRET", "").strip()
+    )
+    #: Quanto tempo a sessao vale, em horas.
+    session_hours: int = field(default_factory=lambda: _env_int("SESSION_HOURS", 12))
+    #: `Secure` no cookie. Desligado so em desenvolvimento local, porque
+    #: `Secure` sem HTTPS impede o navegador de guardar o cookie.
+    cookie_secure: bool = field(default_factory=lambda: _env_bool("COOKIE_SECURE", False))
+    #: Endereco publico do Live, usado para montar o retorno do provedor OIDC.
+    public_base_url: str = field(
+        default_factory=lambda: os.environ.get("PUBLIC_BASE_URL", "http://localhost:5173").strip()
+    )
+
+    #: Provedor OIDC. Vazio = nenhum provedor configurado; a tela de entrada
+    #: diz isso em vez de mostrar um botao que nao funciona.
+    oidc_issuer: str = field(default_factory=lambda: os.environ.get("OIDC_ISSUER", "").strip())
+    oidc_client_id: str = field(
+        default_factory=lambda: os.environ.get("OIDC_CLIENT_ID", "").strip()
+    )
+    oidc_client_secret: str = field(
+        default_factory=lambda: os.environ.get("OIDC_CLIENT_SECRET", "").strip()
+    )
+    #: Minutos de validade do link de bootstrap de primeira execucao.
+    bootstrap_minutes: int = field(default_factory=lambda: _env_int("BOOTSTRAP_MINUTES", 30))
+
     # CORS para desenvolvimento (Vite). Em producao o front e servido pelo mesmo host.
     cors_origins: tuple[str, ...] = field(
         default_factory=lambda: tuple(
@@ -94,6 +129,11 @@ class Settings:
             if o.strip()
         )
     )
+
+    @property
+    def oidc_configurado(self) -> bool:
+        """Ha provedor de identidade utilizavel?"""
+        return bool(self.oidc_issuer and self.oidc_client_id and self.oidc_client_secret)
 
 
 settings = Settings()

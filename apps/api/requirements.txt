@@ -5,6 +5,13 @@ python-multipart>=0.0.32
 # Persistencia da plataforma (G.2). PostgreSQL em producao, SQLite em
 # desenvolvimento e na suite; o driver do Postgres entra no container.
 sqlalchemy>=2.0.0,<3.0.0
+psycopg[binary]>=3.2.0; sys_platform != 'win32'
+
+# Identidade (G.2.2): cliente OIDC, assinatura de cookie e validacao de
+# e-mail. O AutoTarefas e Relying Party; nunca provedor de identidade.
+authlib>=1.3.0,<2.0.0
+itsdangerous>=2.2.0,<3.0.0
+email-validator>=2.0.0,<3.0.0
 
 # Os mocks de demonstracao usam Flask + Faker (tambem vem como deps do autotarefas;
 # listados aqui para garantir no container caso sejam opcionais no pacote).

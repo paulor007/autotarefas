@@ -27,3 +27,12 @@ os.environ.setdefault(
 # ao atingir MAX_WORKSPACES, todo run passa a responder 503 ("servidor
 # ocupado"). Cada sessao de testes comeca do zero.
 shutil.rmtree(os.environ["WORKSPACES_ROOT"], ignore_errors=True)
+
+# A plataforma (G.2) sobe um banco na partida do servico. Sem esta linha, a
+# suite criaria `autotarefas.db` na raiz do repositorio e um teste enxergaria
+# o dado do outro — que e exatamente o que os testes de isolamento medem.
+os.environ.setdefault("DATABASE_URL", "sqlite:///:memory:")
+
+# Segredo fixo so na suite: sem ele cada processo sorteia um, e o cookie
+# emitido num teste nao seria lido no seguinte.
+os.environ.setdefault("SESSION_SECRET", "suite-de-testes-nao-e-producao")  # nosec B105
