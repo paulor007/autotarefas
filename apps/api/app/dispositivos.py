@@ -389,6 +389,10 @@ class PedidoDeBackup(BaseModel):
     #: caminho que nao esteja autorizado la, venha ele daqui ou nao.
     origens: list[str] = Field(default_factory=list)
     destino: str = ""
+    #: Ler de um instantaneo de volume, para copiar arquivo aberto. O Agente
+    #: RECUSA quando nao tem privilegio, em vez de cair para o modo antigo em
+    #: silencio — o pacote sairia sem a planilha aberta, marcado como sucesso.
+    usar_vss: bool = False
 
 
 @roteador.post("/{dispositivo_id}/backup")
@@ -436,6 +440,8 @@ async def executar_backup_agora(
         parametros["origens"] = pedido.origens
     if pedido.destino:
         parametros["destino"] = pedido.destino
+    if pedido.usar_vss:
+        parametros["usar_vss"] = True
 
     try:
         resposta = await canal.pedir_ao_dispositivo(dispositivo_id, "backup", parametros)

@@ -43,7 +43,7 @@ Uma capacidade só entra depois que a trilha G entrega o lugar onde ela mora.
 | **02.A** | Segurança de caminhos, ciclos, ressalvas visíveis | — | ✅ `90193f5`, `5870838` |
 | **02.B** | Assinatura HMAC com chave externa — autenticidade | 02.A · **G.2.3** | ✅ implementada |
 | **02.C** | Criptografia AES e gestão da senha | 02.B · G.2.3 | ✅ implementada |
-| **02.D** | VSS para arquivo aberto | **G.5.2** (só existe no Agente) | a fazer |
+| **02.D** | VSS para arquivo aberto | **G.5.2** (só existe no Agente) | ✅ implementada · teste com elevação pendente |
 | **02.E** | Agendamento, retry/backoff, notificações, retenção GFS | G.5.2 · **G.6** | a fazer |
 | **02.F** | Destino externo e conector S3 compatível | 02.C · G.5.3 | a fazer |
 | **02.H** | Restauração guiada pela interface | 02.B · G.6 | a fazer |
@@ -162,6 +162,21 @@ criptografia onde não há.
 
 Perder a chave mestra é perder os segredos já cifrados. Isso é propositado, e o
 comando avisa antes.
+
+---
+
+## 2.8 Verificações que exigem privilégio ou credencial
+
+Registradas aqui para não se perderem, e **não** contadas como feitas.
+
+| O quê | Por que não roda na suíte | Como verificar |
+| --- | --- | --- |
+| **Instantâneo de volume (VSS) real** | Criar instantâneo é operação administrativa do Windows; a suíte roda sem elevação | Rodar `pytest apps/agente/tests/test_vss.py` num terminal **como administrador**. Os dois testes de `TestComElevacao` deixam de ser pulados |
+| **Login OIDC contra provedor real** | Exige `client_id`/`client_secret` registrados na conta do proprietário | Registrar um cliente OAuth no Google ou no Entra e configurar `OIDC_*` |
+
+Tudo o que **não** depende disso está implementado e testado: sem elevação, o
+Agente **recusa** o instantâneo com o motivo — não tenta, não finge e não cai
+em silêncio para o modo antigo. Esse caminho tem teste.
 
 ---
 

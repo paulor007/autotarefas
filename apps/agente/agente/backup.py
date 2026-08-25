@@ -20,14 +20,14 @@ vazio": vira recusa com o motivo.
 from __future__ import annotations
 
 import asyncio
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 from autotarefas.tasks.backup import BackupTask
 
-from . import raizes
+from . import raizes, vss
 from .comandos import Contexto
 
 #: Onde os pacotes ficam quando o pedido nao diz outra coisa.
@@ -47,6 +47,8 @@ class Pedido:
     excluir: tuple[str, ...] = ()
     manter: int = 0
     com_data: bool = True
+    #: Tentar instantaneo de volume para copiar arquivo aberto.
+    usar_vss: bool = False
 
 
 def _destino_padrao(configuracao_raizes: tuple[str, ...]) -> Path:
@@ -93,6 +95,7 @@ def montar_pedido(parametros: dict[str, Any], contexto: Contexto) -> Pedido:
         excluir=tuple(str(item) for item in parametros.get("excluir") or ()),
         manter=int(parametros.get("manter") or 0),
         com_data=bool(parametros.get("com_data", True)),
+        usar_vss=bool(parametros.get("usar_vss", False)),
     )
 
 
@@ -143,6 +146,37 @@ def executar(pedido: Pedido) -> dict[str, Any]:
     }
 
 
+def executar_com_instantaneo(pedido: Pedido) -> dict[str, Any]:
+    """
+    Roda o backup lendo de uma foto do volume, e nao do disco vivo.
+
+    E o que faz a planilha aberta no Excel entrar no pacote. Todas as origens
+    precisam estar no MESMO volume: uma foto cobre um volume, e tirar varias
+    ao mesmo tempo daria fotos de instantes diferentes — o pacote pareceria
+    consistente sem ser.
+
+    O caminho gravado dentro do pacote continua sendo o do disco vivo. Quem
+    for restaurar nao pode receber caminhos com o nome interno do instantaneo,
+    que nao existem mais depois que ele e apagado.
+    """
+    volumes = {vss.volume_de(origem) for origem in pedido.origens}
+    if len(volumes) > 1:
+        msg = (
+            "instantaneo de volume cobre um disco por vez; estas pastas estao "
+            f"em {len(volumes)} discos diferentes. Crie uma politica por disco."
+        )
+        raise BackupRecusado(msg)
+
+    volume = volumes.pop()
+    with vss.instantaneo_de(volume) as foto:
+        origens_na_foto = [foto.mapear(origem) for origem in pedido.origens]
+        na_foto = replace(pedido, origens=tuple(origens_na_foto))
+        ficha = executar(na_foto)
+
+    ficha["instantaneo"] = True
+    return ficha
+
+
 async def executar_backup(parametros: dict[str, Any], contexto: Contexto) -> dict[str, Any]:
     """
     Executor do comando `backup`.
@@ -154,7 +188,17 @@ async def executar_backup(parametros: dict[str, Any], contexto: Contexto) -> dic
     pedido = montar_pedido(parametros, contexto)
     await contexto.relatar({"etapa": "iniciando", "origens": len(pedido.origens)})
 
-    ficha = await asyncio.to_thread(executar, pedido)
+    if pedido.usar_vss:
+        # Recusa explicita, e nao queda silenciosa para o modo antigo: quem
+        # pediu instantaneo pediu porque tem arquivo aberto, e receber um
+        # pacote sem ele "com sucesso" e pior do que receber o motivo.
+        motivo = vss.motivo_de_indisponibilidade()
+        if motivo:
+            raise BackupRecusado(motivo)
+        ficha = await asyncio.to_thread(executar_com_instantaneo, pedido)
+    else:
+        ficha = await asyncio.to_thread(executar, pedido)
+        ficha["instantaneo"] = False
 
     await contexto.relatar({"etapa": "concluido", "arquivos": ficha["arquivos"]})
     return ficha
@@ -166,5 +210,6 @@ __all__ = [
     "Pedido",
     "executar",
     "executar_backup",
+    "executar_com_instantaneo",
     "montar_pedido",
 ]
