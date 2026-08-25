@@ -103,6 +103,9 @@ dependencies = [
     # === Segurança / criptografia ===
     "cryptography>=48.0.0,<49.0.0", # HMAC-SHA256 pro audit trail
 
+    # === Persistência da plataforma (Card 02 / G.2) ===
+    "sqlalchemy>=2.0.0,<3.0.0",     # Modelo multiempresa; Postgres em produção
+
 ]
 
 # ------------------------------------------------------------

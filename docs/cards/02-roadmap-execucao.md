@@ -22,7 +22,7 @@ Uma capacidade só entra depois que a trilha G entrega o lugar onde ela mora.
 | **G.0** | `live_demo` → `apps/web` + `apps/api` | — | ✅ `9c77a3b` |
 | **G.1** | Nome do card, modelo de capacidades, linguagem honesta | G.0 | ✅ `b671270` |
 | **G.1.1** | Correções da homologação manual da G.1 | G.1 | ✅ `19d1064` |
-| **G.2.1** | Modelo de dados multiempresa e persistência | G.1 | a fazer |
+| **G.2.1** | Modelo de dados multiempresa e persistência | G.1 | ✅ implementada |
 | **G.2.2** | Identidade: OIDC Relying Party + sessão + guarda de organização | G.2.1 | a fazer |
 | **G.2.3** | Cofre de segredos com chave mestra externa | G.2.1 | a fazer |
 | **G.3.1** | Esqueleto do Agente: processo, configuração local, par de chaves Ed25519 | G.2.1 | a fazer |
@@ -132,6 +132,15 @@ A decisão **H-3** é PostgreSQL. A camada de persistência usa SQLAlchemy com
 suíte. Nenhum SQL específico de fornecedor é escrito, e o esquema é o mesmo nos
 dois. Exigir um PostgreSQL de pé para rodar teste travaria a suíte sem ganho de
 verdade.
+
+---
+
+## 2.6 Limitação registrada — migração de esquema
+
+O esquema é criado por `create_all`. Enquanto o formato ainda muda a cada
+subetapa, migração versionada seria retrabalho a cada commit. Quando as tabelas
+estabilizarem (previsto ao fim da G.6), entra migração versionada. Registrado
+como limitação, não como decisão definitiva.
 
 ---
 

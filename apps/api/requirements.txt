@@ -2,6 +2,10 @@ fastapi>=0.138.0
 uvicorn[standard]>=0.34.0
 python-multipart>=0.0.32
 
+# Persistencia da plataforma (G.2). PostgreSQL em producao, SQLite em
+# desenvolvimento e na suite; o driver do Postgres entra no container.
+sqlalchemy>=2.0.0,<3.0.0
+
 # Os mocks de demonstracao usam Flask + Faker (tambem vem como deps do autotarefas;
 # listados aqui para garantir no container caso sejam opcionais no pacote).
 flask>=3.1.0
