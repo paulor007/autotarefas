@@ -36,7 +36,9 @@ Uma capacidade só entra depois que a trilha G entrega o lugar onde ela mora.
 | **G.7.1** | Diário de execuções no Agente e sincronização do histórico | G.6 | ✅ implementada |
 | **G.7.2** | Pacotes resolvidos pelo nome: listagem e restauração sem caminho local | G.7.1 | ✅ implementada |
 | **G.7.3** | Telas de histórico, artefatos e restauração guiada | G.7.2 | ✅ implementada |
-| **G.8** | Empacotamento: serviço do Windows, instalador, download guiado | G.5.2 | a fazer |
+| **G.8.1** | O Agente sobe sozinho: registro no Agendador de Tarefas | G.5.2 | ✅ implementada |
+| **G.8.2** | Pacote do Agente com só o que ele usa, baixável pelo Live | G.8.1 | ✅ implementada |
+| **G.8.3** | Instalação guiada na tela: baixar, rodar, parear | G.8.2 · G.7.3 | ✅ implementada |
 
 ### 1.2 Capacidades do Card 02
 
@@ -379,6 +381,57 @@ vai restaurar.
 Detalhe pequeno que muda a experiência: o erro que o Agente devolve carrega o
 nome da exceção (`ProtecaoBloqueou: ...`), útil no log da máquina e inútil na
 tela. A interface mostra só a frase — que é a parte que diz o que resolver.
+
+---
+
+## 2.15 Como o Agente chega na máquina do cliente
+
+Três coisas precisavam ser verdade para "instale o Agente" deixar de significar
+"clone o repositório".
+
+**Ele sobe sozinho.** Um Agente que só roda enquanto alguém deixa um terminal
+aberto não é backup automático — é backup manual com passos a mais. O registro é
+feito no **Agendador de Tarefas do Windows**, e não como serviço do Windows, por
+três motivos concretos:
+
+- serviço exige elevação sempre, inclusive para instalar, e isso trava a
+  instalação de uma micro empresa na primeira tela;
+- serviço roda como SYSTEM, que não enxerga mapeamento de rede do usuário — e
+  pasta de rede é justamente um dos destinos do produto;
+- o Agendador cobre os dois casos: **ao entrar** no Windows (sem elevação, que é
+  o computador de escritório ligado de manhã) e **ao ligar** a máquina (com
+  elevação, para quem quiser backup antes de alguém logar).
+
+Fora do Windows, cada função recusa dizendo o motivo. Dizer "instalado" onde nada
+foi instalado seria a pior mentira possível aqui: o cliente iria embora achando
+que o backup roda sozinho.
+
+**O pacote leva só o que o Agente usa.** Isto exigiu uma mudança no núcleo:
+`autotarefas/tasks/__init__.py` passou a importar sob demanda (PEP 562). Antes,
+`import autotarefas.tasks.backup` arrastava `pandas`, `playwright`, `bs4` e
+`openpyxl` — e o instalador teria que listar tudo isso. Uma máquina de escritório
+que faz backup não deve precisar de navegador automatizado para copiar uma pasta.
+Resultado medido: **441 KB, 152 arquivos**, e `requisitos.txt` com 11 pacotes.
+
+Também foi corrigido um risco silencioso: `websockets` era usado direto pelo
+Agente mas vinha de carona no `uvicorn[standard]`. Um Agente instalado sem o
+servidor ficaria sem o próprio transporte. Agora é dependência declarada.
+
+**O download é real, e a tela diz o que vem.** O ZIP é montado na hora, a partir
+do código que aquele servidor está rodando — guardar um pronto criaria a chance
+de o cliente baixar uma versão mais velha que o servidor com quem vai conversar.
+A tela mostra tamanho, número de arquivos e o requisito de Python **antes** do
+clique; requisito escondido até o meio do caminho vira armadilha.
+
+O que **não** entra no pacote importa mais que o que entra: nenhum `.env`, banco,
+chave, `agente.json`, teste ou `__pycache__`. Segredo distribuído não se recolhe.
+Há teste que varre a lista de nomes, e outro que **extrai o ZIP numa pasta vazia
+e executa o Agente** — a diferença entre um arquivo com o conteúdo certo e um
+instalador que funciona.
+
+Limitação real, registrada: **o pacote exige Python 3.13 instalado**. Não há
+executável único (PyInstaller) nesta versão. Isso está dito na primeira tela e no
+LEIA-ME, e não escondido atrás de "instale e pronto".
 
 ---
 

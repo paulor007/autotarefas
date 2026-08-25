@@ -34,6 +34,7 @@ from . import (
     dispositivos,
     engine,
     historico,
+    instalador,
     jobs,
     politicas,
     ratelimit,
@@ -161,6 +162,7 @@ app.include_router(dispositivos.roteador)
 app.include_router(canal.roteador)
 app.include_router(politicas.roteador)
 app.include_router(historico.roteador)
+app.include_router(instalador.roteador)
 
 
 def _capacidades() -> list[str]:

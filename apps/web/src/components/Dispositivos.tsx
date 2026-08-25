@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 
+import InstalarAgente from "./InstalarAgente";
 import Restauracao from "./Restauracao";
 
 import {
@@ -144,19 +145,7 @@ export default function Dispositivos({ papel }: Props) {
         )}
       </div>
 
-      {codigo && (
-        <div className="mt-3 rounded-lg border border-signal/40 bg-signal/5 px-4 py-3">
-          <p className="text-sm text-fg">
-            Digite este código no Agente, na máquina que você quer proteger:
-          </p>
-          <p className="mt-1 font-mono text-2xl tracking-widest text-fg">
-            {codigo.codigo}
-          </p>
-          <p className="mt-1 text-[0.8rem] text-muted">
-            Vale por {codigo.validade_minutos} minutos e serve uma vez só.
-          </p>
-        </div>
-      )}
+      {codigo && <InstalarAgente codigo={codigo} />}
 
       {erro && (
         <p className="mt-3 rounded-lg border border-danger/40 bg-danger/5 px-3 py-2 text-sm text-danger">

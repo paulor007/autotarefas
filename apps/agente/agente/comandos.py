@@ -141,12 +141,18 @@ async def executar_estado(_parametros: dict[str, Any], contexto: Contexto) -> di
     autorizado. Um dispositivo pareado sem pasta autorizada nao copia nada, e
     isso precisa aparecer como fato, nao como suposicao.
     """
+    from . import instalacao
     from .pareamento import VERSAO
 
     return {
         "versao_agente": VERSAO,
         "raizes": list(contexto.configuracao.raizes),
         "pode_copiar": bool(contexto.configuracao.raizes),
+        # Perguntado ao sistema toda vez. Um Agente que so roda enquanto alguem
+        # deixa o terminal aberto nao faz backup automatico — e a tela precisa
+        # dizer isso em vez de mostrar "conectado" e deixar a pessoa concluir o
+        # resto sozinha.
+        "sobe_sozinho": instalacao.situacao().registrada,
     }
 
 

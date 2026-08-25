@@ -315,6 +315,27 @@ export function restaurarNoDispositivo(
   });
 }
 
+/** O que vem dentro do pacote do Agente, para a tela dizer antes de baixar. */
+export interface FichaDoInstalador {
+  nome: string;
+  tamanho_bytes: number;
+  arquivos: number;
+  precisa_de_python: string;
+}
+
+/** Endereço do pacote do Agente. É um download de verdade, não um link morto. */
+export const ENDERECO_DO_INSTALADOR = "/api/agente/instalador";
+
+/**
+ * Tamanho e conteúdo do pacote, antes de baixar.
+ *
+ * Um botão de download que não diz o tamanho nem o que vem dentro pede um ato
+ * de fé que ninguém deveria ter que dar.
+ */
+export function fichaDoInstalador(): Promise<FichaDoInstalador> {
+  return pedir(`${ENDERECO_DO_INSTALADOR}/ficha`);
+}
+
 /** Lê o convite da URL de primeiro acesso, quando houver. */
 export function conviteDaUrl(busca: string = window.location.search): string {
   return new URLSearchParams(busca).get("convite") ?? "";

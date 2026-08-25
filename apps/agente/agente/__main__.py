@@ -141,6 +141,65 @@ def servico(pasta_de_configuracao: Path | None) -> None:
         click.echo("Agente encerrado.")
 
 
+@cli.command(name="instalar-servico")
+@click.option(
+    "--ao-ligar",
+    is_flag=True,
+    default=False,
+    help="Sobe junto com a maquina, antes de alguem entrar. Exige administrador.",
+)
+@click.option(
+    "--pasta-de-configuracao",
+    type=click.Path(file_okay=False, path_type=Path),
+    default=None,
+)
+def instalar_servico(ao_ligar: bool, pasta_de_configuracao: Path | None) -> None:
+    """
+    Faz o Agente subir sozinho, sem ninguem abrir terminal.
+
+    Sem isto, "backup automatico" seria backup manual com passos a mais: o
+    agendador so dispara enquanto o processo estiver no ar.
+    """
+    from . import instalacao
+
+    local, _ = _local(pasta_de_configuracao)
+    if not local.carregar().pareado:
+        click.echo("[ERRO] este dispositivo nao esta pareado. Rode 'parear' primeiro.", err=True)
+        sys.exit(_SAIDA_PROBLEMA)
+
+    try:
+        resultado = instalacao.instalar(ao_ligar=ao_ligar, pasta_de_configuracao=local.pasta)
+    except instalacao.InstalacaoRecusada as erro:
+        click.echo(f"[ERRO] {erro}", err=True)
+        sys.exit(_SAIDA_PROBLEMA)
+
+    click.echo(resultado.detalhe)
+    click.echo("")
+    click.echo("O backup passa a rodar no horario mesmo com o navegador fechado.")
+    if not ao_ligar:
+        # Dito em voz alta: e a diferenca entre "roda de madrugada" e "roda
+        # depois que alguem liga o computador e entra".
+        click.echo(
+            "Modo atual: dispara AO ENTRAR no Windows. Para rodar com a maquina "
+            "ligada e ninguem logado, use --ao-ligar num terminal de administrador."
+        )
+
+
+@cli.command(name="desinstalar-servico")
+def desinstalar_servico() -> None:
+    """Tira o Agente do Agendador. Nao apaga configuracao, chave nem pacote."""
+    from . import instalacao
+
+    try:
+        resultado = instalacao.desinstalar()
+    except instalacao.InstalacaoRecusada as erro:
+        click.echo(f"[ERRO] {erro}", err=True)
+        sys.exit(_SAIDA_PROBLEMA)
+
+    click.echo(resultado.detalhe)
+    click.echo("O Agente nao sobe mais sozinho. O backup agendado para de acontecer.")
+
+
 @cli.command(name="estado")
 @click.option(
     "--pasta-de-configuracao",
@@ -161,6 +220,14 @@ def estado(pasta_de_configuracao: Path | None) -> None:
         click.echo(f"Impressao:      {ident.carregar(guarda).impressao}")
     except ident.SemIdentidade:
         click.echo("Impressao:      (sem identidade nesta maquina)")
+
+    from . import instalacao
+
+    servico_registrado = instalacao.situacao()
+    click.echo(
+        "Sobe sozinho:   "
+        + ("SIM" if servico_registrado.registrada else "NAO - o backup agendado nao acontece")
+    )
 
     if configuracao.raizes:
         click.echo(f"Pastas autorizadas ({len(configuracao.raizes)}):")

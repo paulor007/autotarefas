@@ -312,7 +312,10 @@ describe("Dispositivos", () => {
     expect(screen.getByText(/depende do Agente instalado/i)).toBeTruthy();
   });
 
-  it("mostra o código de pareamento com o prazo", async () => {
+  it("parear leva ao roteiro de instalação, com o código dentro do comando", async () => {
+    // O código sozinho não instala nada. Quem vai proteger a máquina precisa do
+    // pacote, do comando e do prazo — e o prazo importa porque o código serve
+    // uma vez só.
     mockRotas({
       "/api/dispositivos": { corpo: { dispositivos: [] } },
       "/api/agente/conectados": { corpo: { conectados: [], total_conectados: 0 } },
@@ -321,6 +324,14 @@ describe("Dispositivos", () => {
           codigo: "ABCD-EFGH",
           expira_em: "2026-08-25T10:10:00+00:00",
           validade_minutos: 10,
+        },
+      },
+      "/api/agente/instalador/ficha": {
+        corpo: {
+          nome: "autotarefas-agente.zip",
+          tamanho_bytes: 451000,
+          arquivos: 152,
+          precisa_de_python: "3.13",
         },
       },
     });
@@ -335,9 +346,9 @@ describe("Dispositivos", () => {
       screen.getByRole("button", { name: /Parear nova máquina/i }),
     );
 
-    await waitFor(() => {
-      expect(screen.getByText("ABCD-EFGH")).toBeTruthy();
-    });
+    const comando = await screen.findByText(/instalar\.ps1/);
+    expect(comando.textContent).toContain("ABCD-EFGH");
     expect(screen.getByText(/serve uma vez só/i)).toBeTruthy();
+    expect(screen.getByRole("link", { name: /baixar o agente/i })).toBeTruthy();
   });
 });

@@ -84,6 +84,10 @@ dependencies = [
 
     # === Network ===
     "httpx>=0.28.1,<1.0.0",         # Cliente HTTP moderno (substitui requests)
+    "websockets>=13.0,<16.0",       # Canal de saida do Agente (G.4.1). Declarado
+                                    # direto: vinha de carona no uvicorn[standard],
+                                    # e um Agente instalado sem o servidor ficaria
+                                    # sem o proprio transporte.
 
     # === Resiliência ===
     "tenacity>=9.1.4,<10.0.0",
