@@ -31,7 +31,7 @@ from apps.api.app import canal as canal_servidor
 from apps.api.app import dispositivos
 from apps.api.app.db import repositorio as repo
 from apps.api.app.db.atual import definir_banco
-from apps.api.app.db.models import Papel
+from apps.api.app.db.models import Artefato, Execucao, Papel, ResultadoExecucao
 from apps.api.app.db.sessao import Banco
 from apps.api.app.identidade.sessao_web import COOKIE_SESSAO, SessaoWeb, escrever_sessao
 
@@ -373,3 +373,80 @@ class TestComandosPeloCanal:
             resposta = http.post(f"/api/dispositivos/{dispositivo_id}/consultar")
 
         assert resposta.status_code == HTTP_NOT_FOUND
+
+    def test_backup_de_ponta_a_ponta_pelo_live(
+        self, banco: Banco, servidor: str, identidade: ident.Identidade, tmp_path: Path
+    ) -> None:
+        """
+        O fluxo que o Card 02 existe para entregar.
+
+        Uma pessoa clica no Live; o comando atravessa o canal; o Agente copia
+        pastas autorizadas NA MAQUINA; o pacote fica la; o servidor guarda a
+        ficha e a execucao. Nenhum arquivo sobe.
+        """
+        pasta = tmp_path / "dados"
+        pasta.mkdir()
+        (pasta / "contrato.txt").write_text("contrato importante", encoding="utf-8")
+        (pasta / "nota.txt").write_text("nota fiscal", encoding="utf-8")
+
+        dispositivo_id, contexto, _ = self._com_agente_no_ar(
+            banco, servidor, identidade, pasta_autorizada=pasta
+        )
+        destino = tmp_path / "saida" / "pacote.zip"
+        cookie = _sessao_de(banco, contexto)
+
+        with self._cliente_http(servidor) as http:
+            http.cookies.set(COOKIE_SESSAO, cookie)
+            resposta = http.post(
+                f"/api/dispositivos/{dispositivo_id}/backup",
+                json={"destino": str(destino)},
+            )
+
+        assert resposta.status_code == HTTP_OK, resposta.text
+        corpo = resposta.json()
+        assert corpo["ok"] is True
+        assert corpo["pacote"] == "pacote.zip"
+
+        # O pacote existe NA MAQUINA e confere.
+        assert destino.is_file()
+        from autotarefas.tasks.backup import verify_backup
+
+        assert verify_backup(destino).ok is True
+
+        # E o servidor guardou a ficha, sem o conteudo e sem o caminho local.
+        with banco.sessao() as sessao:
+            execucao = sessao.get(Execucao, corpo["execucao_id"])
+            assert execucao is not None
+            assert execucao.resultado is ResultadoExecucao.SUCESSO
+            assert execucao.arquivos_incluidos == 2
+            artefatos = list(sessao.execute(repo.escopo(Artefato, contexto)).scalars())
+
+        assert len(artefatos) == 1
+        assert artefatos[0].nome == "pacote.zip"
+        assert artefatos[0].sha256
+        assert str(tmp_path) not in artefatos[0].localizacao
+
+    def test_backup_com_dispositivo_desligado_registra_a_falha(
+        self, banco: Banco, servidor: str, identidade: ident.Identidade
+    ) -> None:
+        """
+        A execucao e gravada antes de o comando sair.
+
+        Sem registro, "mandei fazer backup e nada aconteceu" viraria uma
+        conversa sem evidencia nenhuma.
+        """
+        contexto = _organizacao(banco)
+        dispositivo_id = _parear(banco, contexto, identidade)
+        cookie = _sessao_de(banco, contexto)
+
+        with self._cliente_http(servidor) as http:
+            http.cookies.set(COOKIE_SESSAO, cookie)
+            resposta = http.post(f"/api/dispositivos/{dispositivo_id}/backup", json={})
+
+        assert resposta.status_code == HTTP_CONFLICT
+        with banco.sessao() as sessao:
+            execucoes = list(sessao.execute(repo.escopo(Execucao, contexto)).scalars())
+
+        assert len(execucoes) == 1
+        assert execucoes[0].resultado is ResultadoExecucao.FALHA
+        assert "canal aberto" in execucoes[0].ressalva

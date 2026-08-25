@@ -290,7 +290,15 @@ class BackupTask(BaseTask):
 
     #: Ate este tamanho, o arquivo e lido na memoria antes de entrar no
     #: pacote; acima disso, vai para um temporario em disco. Ver `_escrever`.
-    _SPOOL_LIMIT: ClassVar[int] = 16 * 1024 * 1024
+    #:
+    #: Eram 16 MB, calibrados para o mundo do envio pelo navegador, onde nada
+    #: passa de 10 MB. Com o Agente copiando midia da maquina do cliente, esse
+    #: teto virava o pico de memoria por arquivo — medido em 12,8 MB para um
+    #: arquivo de 12 MB. Dois megabytes cobrem praticamente todo documento de
+    #: escritorio (Word, Excel, PDF) sem tocar o disco, e mantem o pico
+    #: pequeno para o resto. O custo e uma gravacao temporaria a mais em
+    #: arquivo medio; o ZIP ja esta indo para o disco de qualquer forma.
+    _SPOOL_LIMIT: ClassVar[int] = 2 * 1024 * 1024
 
     def __init__(  # noqa: PLR0913 - opcionais keyword-only, uma decisao cada
         self,

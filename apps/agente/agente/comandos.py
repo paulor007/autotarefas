@@ -148,8 +148,13 @@ async def executar_estado(_parametros: dict[str, Any], contexto: Contexto) -> di
 
 def registro_padrao() -> Registro:
     """Executores que todo Agente conhece."""
+    # Import tardio: `backup` importa este modulo para o `Contexto`, e um
+    # import no topo fecharia o ciclo.
+    from .backup import executar_backup
+
     registro = Registro()
     registro.registrar("estado", executar_estado)
+    registro.registrar("backup", executar_backup)
     return registro
 
 

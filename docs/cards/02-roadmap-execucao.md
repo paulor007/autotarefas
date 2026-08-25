@@ -30,7 +30,7 @@ Uma capacidade só entra depois que a trilha G entrega o lugar onde ela mora.
 | **G.4.1** | Canal WSS de saída: autenticação por assinatura, heartbeat, reconexão | G.3.2 | ✅ implementada |
 | **G.4.2** | Protocolo de comandos e telemetria (fila, entrega, idempotência) | G.4.1 | ✅ implementada |
 | **G.5.1** | Raízes autorizadas, com consentimento **na própria máquina** | G.4.2 | ✅ implementada |
-| **G.5.2** | Backup executado pelo Agente, com streaming (arquivo grande) | G.5.1 | a fazer |
+| **G.5.2** | Backup executado pelo Agente, com streaming (arquivo grande) | G.5.1 | ✅ implementada |
 | **G.5.3** | Destinos reais: disco local, disco externo, pasta de rede | G.5.2 | a fazer |
 | **G.6** | Telas de operação: dispositivos, pastas, política, destino | G.5.3 | a fazer |
 | **G.7** | Saúde do dispositivo, histórico, artefatos e notificações | G.6 | a fazer |

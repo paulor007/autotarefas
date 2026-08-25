@@ -29,13 +29,30 @@ from datetime import datetime, timedelta
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, status
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import DateTime, ForeignKey, String, select
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
 from .db import repositorio as repo
-from .db.models import Base, Dispositivo, EstadoDispositivo, Papel, agora, em_utc, novo_id
-from .identidade.dependencias import ContextoAdministrador, ContextoAtual, SessaoBanco
+from .db.models import (
+    Artefato,
+    Base,
+    Dispositivo,
+    EstadoDispositivo,
+    Execucao,
+    Papel,
+    ResultadoExecucao,
+    agora,
+    em_utc,
+    novo_id,
+)
+from .identidade.dependencias import (
+    ContextoAdministrador,
+    ContextoAtual,
+    ContextoOperador,
+    SessaoBanco,
+)
 
 #: Alfabeto do codigo: sem 0/O, 1/I/L, que sao os pares que a pessoa troca ao
 #: ler de uma tela e digitar em outra maquina.
@@ -363,6 +380,143 @@ async def consultar_dispositivo(
         raise HTTPException(status_code=status.HTTP_504_GATEWAY_TIMEOUT, detail=str(erro)) from erro
 
     return {"dispositivo_id": dispositivo_id, "estado": resposta}
+
+
+class PedidoDeBackup(BaseModel):
+    """O que a tela manda ao pedir um backup agora."""
+
+    #: Vazio = usa as pastas autorizadas na maquina. O Agente recusa qualquer
+    #: caminho que nao esteja autorizado la, venha ele daqui ou nao.
+    origens: list[str] = Field(default_factory=list)
+    destino: str = ""
+
+
+@roteador.post("/{dispositivo_id}/backup")
+async def executar_backup_agora(
+    dispositivo_id: str,
+    pedido: PedidoDeBackup,
+    contexto: ContextoOperador,
+    sessao: SessaoBanco,
+) -> JSONResponse:
+    """
+    Pede ao dispositivo um backup agora, e registra a execucao.
+
+    A execucao e gravada ANTES de o comando sair, e fechada quando a resposta
+    chega. Se o servidor cair no meio, sobra uma execucao "em andamento" — o
+    que e verdade — em vez de nenhum registro de que alguem mandou copiar.
+    """
+    from . import canal
+
+    dispositivo = sessao.execute(
+        repo.escopo(Dispositivo, contexto).where(Dispositivo.id == dispositivo_id)
+    ).scalar_one_or_none()
+    if dispositivo is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="dispositivo nao encontrado"
+        )
+
+    execucao = Execucao(
+        organizacao_id=contexto.organizacao_id,
+        dispositivo_id=dispositivo_id,
+        origem="manual",
+        resultado=ResultadoExecucao.EM_ANDAMENTO,
+    )
+    sessao.add(execucao)
+    sessao.flush()
+    repo.registrar(
+        sessao,
+        contexto,
+        acao="backup.pedido",
+        alvo=dispositivo.nome,
+        dispositivo_id=dispositivo_id,
+    )
+
+    parametros: dict[str, Any] = {}
+    if pedido.origens:
+        parametros["origens"] = pedido.origens
+    if pedido.destino:
+        parametros["destino"] = pedido.destino
+
+    try:
+        resposta = await canal.pedir_ao_dispositivo(dispositivo_id, "backup", parametros)
+    except canal.DispositivoDesconectado as erro:
+        return _falhou(sessao, execucao, erro, status.HTTP_409_CONFLICT)
+    except canal.SemResposta as erro:
+        return _falhou(sessao, execucao, erro, status.HTTP_504_GATEWAY_TIMEOUT)
+
+    if not resposta.get("ok"):
+        _fechar(sessao, execucao, ResultadoExecucao.FALHA, str(resposta.get("erro", "")))
+        return JSONResponse(
+            {"execucao_id": execucao.id, "ok": False, "erro": resposta.get("erro", "")}
+        )
+
+    _registrar_pacote(sessao, contexto, execucao, resposta)
+    return JSONResponse(
+        {"execucao_id": execucao.id, "ok": True, "pacote": resposta.get("pacote", "")}
+    )
+
+
+def _falhou(sessao: Session, execucao: Execucao, erro: Exception, codigo: int) -> JSONResponse:
+    """
+    Fecha a execucao como falha e responde — sem levantar.
+
+    Levantar `HTTPException` aqui desfaria a gravacao: a sessao da requisicao
+    reverte tudo quando a excecao sobe, e o registro da tentativa sumiria
+    junto. "Mandei fazer backup e nada aconteceu" viraria uma conversa sem
+    evidencia nenhuma.
+    """
+    _fechar(sessao, execucao, ResultadoExecucao.FALHA, str(erro))
+    return JSONResponse(
+        {"execucao_id": execucao.id, "ok": False, "erro": str(erro), "detail": str(erro)},
+        status_code=codigo,
+    )
+
+
+def _fechar(
+    sessao: Session, execucao: Execucao, resultado: ResultadoExecucao, ressalva: str
+) -> None:
+    """Encerra a execucao com o desfecho e o motivo."""
+    execucao.resultado = resultado
+    execucao.terminada_em = agora()
+    execucao.ressalva = ressalva
+    sessao.flush()
+
+
+def _registrar_pacote(
+    sessao: Session,
+    contexto: repo.Contexto,
+    execucao: Execucao,
+    resposta: dict[str, Any],
+) -> None:
+    """
+    Guarda a ficha do pacote. O conteudo fica na maquina do cliente (H-4).
+
+    `COM_RESSALVA` e um desfecho proprio: backup que copiou quase tudo nao e
+    sucesso nem falha, e chamar de sucesso esconderia o que ficou de fora.
+    """
+    nao_lidos = resposta.get("nao_lidos") or []
+    _fechar(
+        sessao,
+        execucao,
+        ResultadoExecucao.COM_RESSALVA if nao_lidos else ResultadoExecucao.SUCESSO,
+        f"{len(nao_lidos)} arquivo(s) nao entraram no pacote" if nao_lidos else "",
+    )
+    execucao.arquivos_incluidos = int(resposta.get("arquivos", 0))
+    execucao.bytes_copiados = int(resposta.get("tamanho_bytes", 0))
+
+    sessao.add(
+        Artefato(
+            organizacao_id=contexto.organizacao_id,
+            execucao_id=execucao.id,
+            nome=str(resposta.get("pacote", "")),
+            tamanho_bytes=int(resposta.get("tamanho_bytes", 0)),
+            sha256=str(resposta.get("sha256", "")),
+            # Onde o pacote esta, do ponto de vista do DISPOSITIVO. Nunca um
+            # caminho do servidor, e nunca o caminho completo da maquina.
+            localizacao="dispositivo",
+        )
+    )
+    sessao.flush()
 
 
 @roteador.post("/{dispositivo_id}/revogar")
