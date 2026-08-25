@@ -33,7 +33,8 @@ Uma capacidade só entra depois que a trilha G entrega o lugar onde ela mora.
 | **G.5.2** | Backup executado pelo Agente, com streaming (arquivo grande) | G.5.1 | ✅ implementada |
 | **G.5.3** | Destinos reais: disco local, disco externo, pasta de rede | G.5.2 | ✅ implementada |
 | **G.6** | Telas de operação: dispositivos, pastas, política | G.5.3 | ✅ implementada — política e destino vêm com 02.E |
-| **G.7** | Saúde do dispositivo, histórico, artefatos e notificações | G.6 | a fazer |
+| **G.7.1** | Diário de execuções no Agente e sincronização do histórico | G.6 | ✅ implementada |
+| **G.7.2** | Telas de saúde, histórico, artefatos e restauração | G.7.1 | a fazer |
 | **G.8** | Empacotamento: serviço do Windows, instalador, download guiado | G.5.2 | a fazer |
 
 ### 1.2 Capacidades do Card 02
@@ -264,6 +265,50 @@ Limite conhecido: a guarda confere o pacote **mais recente** da pasta, e não se
 aquele backup cobre exatamente os arquivos que serão substituídos. Cobrir isso
 exigiria comparar o manifesto com o destino arquivo a arquivo; hoje não é feito,
 e por isso não pode ser dito que é.
+
+---
+
+## 2.12 Como o backup de madrugada chega ao Live
+
+O agendamento roda na máquina, com o navegador fechado — e, muitas vezes, com a
+internet caída. Essa é a hora em que o backup mais importa e em que menos gente
+está olhando.
+
+Se o registro da execução dependesse de contar ao servidor, esse backup **não
+existiria** no histórico. O Live mostraria uma noite vazia para uma noite em que
+o backup foi feito, e o cliente concluiria — com razão — que não pode confiar na
+tela.
+
+Por isso o caminho é este, nesta ordem:
+
+1. o Agente executa a política e **grava o resultado em disco**, no diário
+   (`execucoes.jsonl`), antes de qualquer tentativa de envio;
+2. quando o canal volta, ele manda o que ainda não foi entregue;
+3. o servidor grava e **confirma** os identificadores que aceitou;
+4. só a confirmação marca o registro como entregue no diário.
+
+Detalhes que sustentam isso:
+
+- **O identificador nasce na máquina.** É ele que torna o reenvio inofensivo:
+  mandar de novo depois de uma queda no meio do envio não vira duas linhas no
+  histórico. O servidor confirma o repetido também — para o Agente, "já está
+  gravado" e "acabou de ser gravado" significam a mesma coisa.
+- **Uma linha JSON por execução.** Acrescentar uma linha é a operação mais
+  difícil de corromper: uma queda de energia estraga no máximo a última, e as
+  anteriores continuam legíveis.
+- **A poda nunca descarta o que não foi entregue.** Só as antigas já
+  sincronizadas saem — perder uma pendente seria perder justamente o histórico
+  que a queda de rede segurou.
+- **A execução entra na organização do dispositivo**, não na que a mensagem
+  disser, e a política citada só é aceita se for da mesma organização.
+- **Resultado desconhecido vira falha, nunca sucesso.** Um Agente mais novo pode
+  mandar algo que este servidor ainda não conhece; "backup ok" para algo que
+  ninguém sabe o que foi é pior que um erro.
+
+Prova: `apps/agente/tests/test_canal.py::TestHistoricoDoAgendamento` sobe o
+backend de verdade numa porta livre, conecta com o cliente WebSocket de
+produção e verifica que execuções gravadas offline aparecem na rota
+`/api/historico` depois da reconexão.
 
 ---
 

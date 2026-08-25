@@ -27,6 +27,8 @@ import uvicorn
 from apps.agente.agente import canal as canal_agente
 from apps.agente.agente import identidade as ident
 from apps.agente.agente.config import Configuracao
+from apps.agente.agente.diario import Diario
+from apps.agente.agente.diario import Execucao as ExecucaoDoDiario
 from apps.api.app import canal as canal_servidor
 from apps.api.app import dispositivos
 from apps.api.app.db import repositorio as repo
@@ -154,6 +156,43 @@ def _parear(banco: Banco, contexto: repo.Contexto, identidade: ident.Identidade)
             sistema="Windows 11",
             versao_agente="0.1.0",
         ).id
+
+
+def _cliente_http(servidor: str) -> httpx.Client:
+    return httpx.Client(base_url=servidor, timeout=30.0)
+
+
+def _com_agente_no_ar(
+    banco: Banco,
+    servidor: str,
+    identidade: ident.Identidade,
+    pasta_autorizada: Path | None = None,
+    diario: Diario | None = None,
+) -> tuple[str, repo.Contexto, threading.Thread]:
+    """Sobe o Agente numa thread e espera ele aparecer na presenca."""
+    contexto = _organizacao(banco)
+    dispositivo_id = _parear(banco, contexto, identidade)
+    configuracao = Configuracao(servidor=servidor, dispositivo_id=dispositivo_id)
+    if pasta_autorizada is not None:
+        configuracao = configuracao.com_raiz(pasta_autorizada)
+
+    def rodar() -> None:
+        with contextlib.suppress(Exception):
+            asyncio.run(
+                canal_agente.manter_conectado(
+                    configuracao, identidade, tentativas_maximas=1, diario=diario
+                )
+            )
+
+    thread = threading.Thread(target=rodar, daemon=True)
+    thread.start()
+
+    limite = time.monotonic() + _ESPERA_SUBIDA_S
+    while canal_servidor.presenca.de(dispositivo_id) is None and time.monotonic() < limite:
+        time.sleep(0.05)
+    if canal_servidor.presenca.de(dispositivo_id) is None:
+        pytest.skip("o Agente nao conectou a tempo")
+    return dispositivo_id, contexto, thread
 
 
 @pytest.fixture
@@ -288,50 +327,17 @@ class TestComandosPeloCanal:
     so aparece em producao.
     """
 
-    def _cliente_http(self, servidor: str) -> httpx.Client:
-        return httpx.Client(base_url=servidor, timeout=30.0)
-
-    def _com_agente_no_ar(
-        self,
-        banco: Banco,
-        servidor: str,
-        identidade: ident.Identidade,
-        pasta_autorizada: Path | None = None,
-    ) -> tuple[str, repo.Contexto, threading.Thread]:
-        """Sobe o Agente numa thread e espera ele aparecer na presenca."""
-        contexto = _organizacao(banco)
-        dispositivo_id = _parear(banco, contexto, identidade)
-        configuracao = Configuracao(servidor=servidor, dispositivo_id=dispositivo_id)
-        if pasta_autorizada is not None:
-            configuracao = configuracao.com_raiz(pasta_autorizada)
-
-        def rodar() -> None:
-            with contextlib.suppress(Exception):
-                asyncio.run(
-                    canal_agente.manter_conectado(configuracao, identidade, tentativas_maximas=1)
-                )
-
-        thread = threading.Thread(target=rodar, daemon=True)
-        thread.start()
-
-        limite = time.monotonic() + _ESPERA_SUBIDA_S
-        while canal_servidor.presenca.de(dispositivo_id) is None and time.monotonic() < limite:
-            time.sleep(0.05)
-        if canal_servidor.presenca.de(dispositivo_id) is None:
-            pytest.skip("o Agente nao conectou a tempo")
-        return dispositivo_id, contexto, thread
-
     def test_live_pergunta_e_o_agente_responde(
         self, banco: Banco, servidor: str, identidade: ident.Identidade, tmp_path: Path
     ) -> None:
         pasta = tmp_path / "dados"
         pasta.mkdir()
-        dispositivo_id, contexto, _ = self._com_agente_no_ar(
+        dispositivo_id, contexto, _ = _com_agente_no_ar(
             banco, servidor, identidade, pasta_autorizada=pasta
         )
         cookie = _sessao_de(banco, contexto)
 
-        with self._cliente_http(servidor) as http:
+        with _cliente_http(servidor) as http:
             http.cookies.set(COOKIE_SESSAO, cookie)
             resposta = http.post(f"/api/dispositivos/{dispositivo_id}/consultar")
 
@@ -354,7 +360,7 @@ class TestComandosPeloCanal:
         dispositivo_id = _parear(banco, contexto, identidade)
         cookie = _sessao_de(banco, contexto)
 
-        with self._cliente_http(servidor) as http:
+        with _cliente_http(servidor) as http:
             http.cookies.set(COOKIE_SESSAO, cookie)
             resposta = http.post(f"/api/dispositivos/{dispositivo_id}/consultar")
 
@@ -364,11 +370,11 @@ class TestComandosPeloCanal:
     def test_uma_organizacao_nao_consulta_o_dispositivo_da_outra(
         self, banco: Banco, servidor: str, identidade: ident.Identidade
     ) -> None:
-        dispositivo_id, _, _ = self._com_agente_no_ar(banco, servidor, identidade)
+        dispositivo_id, _, _ = _com_agente_no_ar(banco, servidor, identidade)
         outra = _organizacao_extra(banco, "Oficina")
         cookie = _sessao_de(banco, outra)
 
-        with self._cliente_http(servidor) as http:
+        with _cliente_http(servidor) as http:
             http.cookies.set(COOKIE_SESSAO, cookie)
             resposta = http.post(f"/api/dispositivos/{dispositivo_id}/consultar")
 
@@ -389,13 +395,13 @@ class TestComandosPeloCanal:
         (pasta / "contrato.txt").write_text("contrato importante", encoding="utf-8")
         (pasta / "nota.txt").write_text("nota fiscal", encoding="utf-8")
 
-        dispositivo_id, contexto, _ = self._com_agente_no_ar(
+        dispositivo_id, contexto, _ = _com_agente_no_ar(
             banco, servidor, identidade, pasta_autorizada=pasta
         )
         destino = tmp_path / "saida" / "pacote.zip"
         cookie = _sessao_de(banco, contexto)
 
-        with self._cliente_http(servidor) as http:
+        with _cliente_http(servidor) as http:
             http.cookies.set(COOKIE_SESSAO, cookie)
             resposta = http.post(
                 f"/api/dispositivos/{dispositivo_id}/backup",
@@ -439,7 +445,7 @@ class TestComandosPeloCanal:
         dispositivo_id = _parear(banco, contexto, identidade)
         cookie = _sessao_de(banco, contexto)
 
-        with self._cliente_http(servidor) as http:
+        with _cliente_http(servidor) as http:
             http.cookies.set(COOKIE_SESSAO, cookie)
             resposta = http.post(f"/api/dispositivos/{dispositivo_id}/backup", json={})
 
@@ -450,3 +456,143 @@ class TestComandosPeloCanal:
         assert len(execucoes) == 1
         assert execucoes[0].resultado is ResultadoExecucao.FALHA
         assert "canal aberto" in execucoes[0].ressalva
+
+
+class TestHistoricoDoAgendamento:
+    """
+    O backup que rodou com o navegador fechado aparece no Live (G.7.1).
+
+    Este e o teste que separa "o cliente pode mandar fazer backup" de "o cliente
+    tem backup". O agendamento roda de madrugada, muitas vezes com a internet
+    caida; se o registro dependesse do envio, o Live mostraria uma noite vazia
+    para uma noite em que o backup foi feito.
+    """
+
+    @staticmethod
+    def _diario_com_execucoes(pasta: Path, quantas: int = 2) -> Diario:
+        """Simula noites de agendamento que aconteceram sem o servidor por perto."""
+        diario = Diario(pasta=pasta)
+        for numero in range(quantas):
+            diario.registrar(
+                ExecucaoDoDiario(
+                    politica_id="",
+                    politica_nome="Diaria da loja",
+                    iniciada_em=f"2026-08-2{numero}T02:00:00",
+                    terminada_em=f"2026-08-2{numero}T02:04:00",
+                    resultado="sucesso",
+                    arquivos=12,
+                    bytes_copiados=4096,
+                    artefato={
+                        "nome": f"backup_2026-08-2{numero}_0200.zip",
+                        "tamanho_bytes": 4096,
+                        "sha256": "a" * 64,
+                        "localizacao": "dispositivo",
+                    },
+                )
+            )
+        return diario
+
+    def _esperar_execucoes(
+        self, banco: Banco, contexto: repo.Contexto, quantas: int
+    ) -> list[Execucao]:
+        limite = time.monotonic() + _ESPERA_SUBIDA_S
+        while time.monotonic() < limite:
+            with banco.sessao() as sessao:
+                achadas = list(sessao.execute(repo.escopo(Execucao, contexto)).scalars())
+            if len(achadas) >= quantas:
+                return achadas
+            time.sleep(0.05)
+        return []
+
+    def test_execucoes_feitas_offline_aparecem_ao_reconectar(
+        self, banco: Banco, servidor: str, identidade: ident.Identidade, tmp_path: Path
+    ) -> None:
+        diario = self._diario_com_execucoes(tmp_path / "cfg")
+
+        _, contexto, _ = _com_agente_no_ar(banco, servidor, identidade, diario=diario)
+        execucoes = self._esperar_execucoes(banco, contexto, 2)
+
+        assert len(execucoes) == 2, "o historico do agendamento nao chegou ao servidor"
+        assert {item.resultado for item in execucoes} == {ResultadoExecucao.SUCESSO}
+        assert {item.origem for item in execucoes} == {"agendamento"}
+
+    def test_o_pacote_aparece_como_artefato_sem_caminho_local(
+        self, banco: Banco, servidor: str, identidade: ident.Identidade, tmp_path: Path
+    ) -> None:
+        """
+        A ficha do pacote sobe; o pacote e o caminho dele, nao.
+
+        O ZIP fica na maquina do cliente, e a estrutura de pastas da empresa
+        nao e assunto do servidor.
+        """
+        diario = self._diario_com_execucoes(tmp_path / "cfg", quantas=1)
+
+        _, contexto, _ = _com_agente_no_ar(banco, servidor, identidade, diario=diario)
+        self._esperar_execucoes(banco, contexto, 1)
+
+        with banco.sessao() as sessao:
+            artefatos = list(sessao.execute(repo.escopo(Artefato, contexto)).scalars())
+
+        assert len(artefatos) == 1
+        assert artefatos[0].nome.startswith("backup_2026-08-2")
+        assert artefatos[0].localizacao == "dispositivo"
+        assert str(tmp_path) not in artefatos[0].localizacao
+
+    def test_o_diario_para_de_reenviar_o_que_foi_confirmado(
+        self, banco: Banco, servidor: str, identidade: ident.Identidade, tmp_path: Path
+    ) -> None:
+        """
+        A confirmacao do servidor e o que esvazia a fila.
+
+        Sem ela, o mesmo backup voltaria a cada reconexao, para sempre.
+        """
+        diario = self._diario_com_execucoes(tmp_path / "cfg")
+
+        _, contexto, _ = _com_agente_no_ar(banco, servidor, identidade, diario=diario)
+        self._esperar_execucoes(banco, contexto, 2)
+
+        limite = time.monotonic() + _ESPERA_SUBIDA_S
+        while diario.pendentes() and time.monotonic() < limite:
+            time.sleep(0.05)
+
+        assert diario.pendentes() == []
+        assert len(diario.todas()) == 2
+
+    def test_o_historico_chega_a_tela_pela_rota(
+        self, banco: Banco, servidor: str, identidade: ident.Identidade, tmp_path: Path
+    ) -> None:
+        """O que o Live mostra vem da rota, e nao de uma consulta de teste."""
+        diario = self._diario_com_execucoes(tmp_path / "cfg")
+
+        dispositivo_id, contexto, _ = _com_agente_no_ar(banco, servidor, identidade, diario=diario)
+        self._esperar_execucoes(banco, contexto, 2)
+        cookie = _sessao_de(banco, contexto)
+
+        with _cliente_http(servidor) as http:
+            http.cookies.set(COOKIE_SESSAO, cookie)
+            resposta = http.get("/api/historico", params={"dispositivo_id": dispositivo_id})
+
+        assert resposta.status_code == HTTP_OK, resposta.text
+        execucoes = resposta.json()["execucoes"]
+        assert len(execucoes) == 2
+        assert execucoes[0]["origem"] == "agendamento"
+        assert execucoes[0]["artefatos"][0]["nome"].startswith("backup_")
+
+    def test_a_organizacao_vizinha_nao_ve_este_historico(
+        self, banco: Banco, servidor: str, identidade: ident.Identidade, tmp_path: Path
+    ) -> None:
+        """Isolamento vale para o historico como vale para o resto."""
+        diario = self._diario_com_execucoes(tmp_path / "cfg", quantas=1)
+
+        _, contexto, _ = _com_agente_no_ar(banco, servidor, identidade, diario=diario)
+        self._esperar_execucoes(banco, contexto, 1)
+
+        vizinha = _organizacao_extra(banco, "Farmacia")
+        cookie = _sessao_de(banco, vizinha)
+
+        with _cliente_http(servidor) as http:
+            http.cookies.set(COOKIE_SESSAO, cookie)
+            resposta = http.get("/api/historico")
+
+        assert resposta.status_code == HTTP_OK, resposta.text
+        assert resposta.json()["execucoes"] == []

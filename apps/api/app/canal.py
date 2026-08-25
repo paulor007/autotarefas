@@ -354,6 +354,39 @@ async def _conversar(conexao: Conexao) -> None:
         elif tipo == "resultado":
             conexao.ultima_batida = agora()
             conexao.resolver(str(mensagem.get("comando", "")), mensagem)
+        elif tipo == "execucoes":
+            conexao.ultima_batida = agora()
+            await _receber_execucoes(conexao, mensagem)
+
+
+async def _receber_execucoes(conexao: Conexao, mensagem: dict[str, Any]) -> None:
+    """
+    Grava o que o Agente executou sozinho e confirma o que entrou.
+
+    A confirmacao e o que autoriza o Agente a parar de reenviar. Sem ela, um
+    backup feito com a internet caida ficaria no diario da maquina para sempre
+    — ou, pior, seria descartado por idade antes de virar historico.
+
+    A gravacao acontece na organizacao do DISPOSITIVO, e nao na que a mensagem
+    disser. Uma maquina nao pode pendurar execucao no historico de outra
+    empresa, nem por engano nem de proposito.
+    """
+    from . import historico
+
+    itens = mensagem.get("itens")
+    if not isinstance(itens, list):
+        return
+
+    with banco().sessao() as sessao:
+        dispositivo = sessao.get(Dispositivo, conexao.dispositivo_id)
+        if dispositivo is None:
+            return
+        aceitos = historico.registrar_do_agente(
+            sessao, dispositivo, [item for item in itens if isinstance(item, dict)]
+        )
+        dispositivo.ultimo_contato = agora()
+
+    await conexao.socket.send_json({"tipo": "execucoes_recebidas", "ids": aceitos})
 
 
 async def pedir_ao_dispositivo(

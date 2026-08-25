@@ -28,6 +28,7 @@ from . import identidade as ident
 from .agendador import Agendador, PoliticaLocal
 from .backup import executar_politica
 from .config import Local
+from .diario import Diario, Execucao, agora_iso
 
 
 class Servico:
@@ -39,6 +40,7 @@ class Servico:
         self.agendador = Agendador(local=local, executar=self._executar_politica)
         self.registro = mod_comandos.registro_padrao()
         self.estado_do_canal = mod_canal.Estado()
+        self.diario = Diario(pasta=local.pasta)
 
     async def _executar_politica(self, item: PoliticaLocal) -> dict[str, Any]:
         """
@@ -47,8 +49,50 @@ class Servico:
         Reler importa: a política pode ter sido alterada entre o agendamento e
         a execução — alguém autorizou outra pasta, mudou o destino. Usar a
         cópia em memória copiaria o que era verdade horas atrás.
+
+        O resultado é gravado no diário **antes** de qualquer tentativa de
+        avisar o servidor. A internet costuma estar caída de madrugada, que é
+        justamente quando o agendamento roda; se o registro dependesse do
+        envio, esse backup não existiria no histórico do Live.
         """
-        return await executar_politica(item.politica, self.local.carregar())
+        comecou = agora_iso()
+        try:
+            ficha = await executar_politica(item.politica, self.local.carregar())
+        except Exception as erro:
+            self._anotar(item, comecou, {"ok": False, "erro": f"{type(erro).__name__}: {erro}"})
+            raise
+        self._anotar(item, comecou, ficha)
+        return ficha
+
+    def _anotar(self, item: PoliticaLocal, comecou: str, ficha: dict[str, Any]) -> None:
+        """Escreve no diário o que esta execução produziu."""
+        deu_certo = bool(ficha.get("ok", False))
+        artefato = (
+            {
+                "nome": str(ficha.get("pacote", "")),
+                "tamanho_bytes": int(ficha.get("tamanho_bytes", 0) or 0),
+                "sha256": str(ficha.get("sha256", "")),
+                # Onde o pacote está do ponto de vista do DISPOSITIVO. Nunca o
+                # caminho local do cliente: a estrutura de pastas da empresa
+                # não é assunto do servidor.
+                "localizacao": "dispositivo",
+            }
+            if deu_certo and ficha.get("pacote")
+            else None
+        )
+        self.diario.registrar(
+            Execucao(
+                politica_id=item.id,
+                politica_nome=item.nome,
+                iniciada_em=comecou,
+                terminada_em=agora_iso(),
+                resultado=_resultado(deu_certo, ficha),
+                arquivos=int(ficha.get("arquivos", 0) or 0),
+                bytes_copiados=int(ficha.get("tamanho_bytes", 0) or 0),
+                ressalva=str(ficha.get("ressalva") or ficha.get("erro") or ""),
+                artefato=artefato,
+            )
+        )
 
     async def _canal(self) -> None:
         """Mantém a conexão de saída, reconectando enquanto valer a pena."""
@@ -58,6 +102,7 @@ class Servico:
             identidade,
             estado=self.estado_do_canal,
             registro=self.registro,
+            diario=self.diario,
         )
 
     async def rodar(self, *, passadas_do_agendador: int | None = None) -> None:
@@ -114,6 +159,13 @@ class Servico:
 
         for acao, executor in originais.items():
             self.registro.registrar(acao, com_agendador(executor))
+
+
+def _resultado(deu_certo: bool, ficha: dict[str, Any]) -> str:
+    """O nome que o Live usa. "com_ressalva" nao e sucesso nem falha."""
+    if not deu_certo:
+        return "falha"
+    return "com_ressalva" if ficha.get("com_ressalva") else "sucesso"
 
 
 async def rodar_servico(local: Local, guarda: ident.Guarda) -> None:

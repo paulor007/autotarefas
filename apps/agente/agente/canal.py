@@ -28,6 +28,7 @@ from websockets.exceptions import ConnectionClosed
 from . import comandos as mod_comandos
 from . import identidade as ident
 from .config import Configuracao
+from .diario import Diario
 
 #: Espera inicial e teto da espera entre tentativas, em segundos.
 ESPERA_INICIAL_S = 1.0
@@ -143,10 +144,27 @@ async def bater_coracao(conexao: object, intervalo_s: float) -> None:
         await conexao.send(json.dumps({"tipo": "batida"}))  # type: ignore[attr-defined]
 
 
+async def enviar_execucoes(conexao: object, diario: Diario) -> int:
+    """
+    Manda ao servidor o que rodou enquanto ele nao estava alcancavel.
+
+    E o que faz um backup de madrugada, feito com a internet caida, aparecer no
+    historico quando a maquina reconecta. Sem isto, o Live mostraria uma noite
+    vazia para uma noite em que o backup foi feito — e o cliente concluiria,
+    com razao, que nao pode confiar no que a tela diz.
+    """
+    pendentes = diario.pendentes()
+    if not pendentes:
+        return 0
+    await conexao.send(json.dumps({"tipo": "execucoes", "itens": pendentes}))  # type: ignore[attr-defined]
+    return len(pendentes)
+
+
 async def atender_comandos(
     conexao: object,
     configuracao: Configuracao,
     registro: mod_comandos.Registro,
+    diario: Diario | None = None,
 ) -> None:
     """
     Le mensagens do servidor e executa os comandos, ate a conexao cair.
@@ -161,12 +179,28 @@ async def atender_comandos(
 
     contexto = mod_comandos.Contexto(configuracao=configuracao, relatar=relatar)
 
+    if diario is not None:
+        await enviar_execucoes(conexao, diario)
+
     async for bruto in conexao:  # type: ignore[attr-defined]
         try:
             mensagem = json.loads(bruto)
         except json.JSONDecodeError:
             continue
-        if not isinstance(mensagem, dict) or mensagem.get("tipo") != "comando":
+        if not isinstance(mensagem, dict):
+            continue
+
+        tipo = mensagem.get("tipo")
+        if tipo == "execucoes_recebidas":
+            # Marca no diario so o que o servidor CONFIRMOU. Marcar no envio
+            # faria um registro sumir para sempre se a conexao caisse entre o
+            # envio e a gravacao do outro lado.
+            if diario is not None:
+                diario.confirmar([str(item) for item in mensagem.get("ids") or []])
+                await enviar_execucoes(conexao, diario)
+            continue
+
+        if tipo != "comando":
             continue
         resultado = await mod_comandos.atender(mensagem, registro, contexto)
         await conexao.send(json.dumps(resultado))  # type: ignore[attr-defined]
@@ -180,6 +214,7 @@ async def manter_conectado(
     ao_conectar: Callable[[dict[str, object]], Awaitable[None]] | None = None,
     tentativas_maximas: int | None = None,
     registro: mod_comandos.Registro | None = None,
+    diario: Diario | None = None,
 ) -> Estado:
     """
     Conecta e reconecta enquanto for util tentar.
@@ -207,7 +242,7 @@ async def manter_conectado(
                 intervalo = float(str(pronto.get("intervalo_batida_s") or 20.0))
                 batidas = asyncio.create_task(bater_coracao(conexao, intervalo))
                 try:
-                    await atender_comandos(conexao, configuracao, conhecidos)
+                    await atender_comandos(conexao, configuracao, conhecidos, diario)
                 finally:
                     batidas.cancel()
                     with contextlib.suppress(asyncio.CancelledError):
@@ -240,6 +275,7 @@ __all__ = [
     "apertar_maos",
     "atender_comandos",
     "bater_coracao",
+    "enviar_execucoes",
     "manter_conectado",
     "url_do_canal",
 ]
