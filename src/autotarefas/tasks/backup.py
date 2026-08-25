@@ -69,7 +69,7 @@ from typing import Any, ClassVar
 from autotarefas.core import BaseTask, TaskResult, TaskStatus, ValidationError
 from autotarefas.core.exceptions import SecurityError
 from autotarefas.core.security import validate_filename
-from autotarefas.tasks import assinatura
+from autotarefas.tasks import assinatura, cifra
 
 #: Nome do manifesto dentro do pacote.
 MANIFEST_NAME = "MANIFESTO.csv"
@@ -736,17 +736,17 @@ class BackupTask(BaseTask):
         Grava sempre em `.parcial`: o caminho final so passa a existir depois
         que o ZIP fecha inteiro. Assim, queda de energia ou disco cheio nao
         deixam um pacote pela metade com cara de completo.
+
+        Com senha configurada, o pacote sai cifrado em AES-256 no padrao
+        WinZip — inclusive o manifesto e a assinatura, que sao entradas como
+        as outras.
         """
         entradas: list[BackupEntry] = []
         ilegiveis: list[UnreadableFile] = []
 
+        senha = cifra.senha_configurada()
         try:
-            with zipfile.ZipFile(
-                self.partial_path,
-                mode="w",
-                compression=zipfile.ZIP_DEFLATED,
-                compresslevel=6,
-            ) as zf:
+            with cifra.abrir_para_escrita(self.partial_path, senha) as zf:
                 for arquivo in files:
                     arcname = arcnames[arquivo]
                     try:
@@ -800,8 +800,7 @@ class BackupTask(BaseTask):
         toca o disco em arquivo grande.
         """
         st = arquivo.stat()
-        info = zipfile.ZipInfo(arcname, date_time=_data_do_zip(st.st_mtime))
-        info.compress_type = zipfile.ZIP_DEFLATED
+        info = cifra.nova_entrada(zf, arcname, _data_do_zip(st.st_mtime))
 
         h = hashlib.sha256()
         with tempfile.SpooledTemporaryFile(max_size=self._SPOOL_LIMIT) as buffer:
@@ -960,6 +959,8 @@ class VerifyReport:
     """Preenchido quando o pacote nem pode ser aberto."""
     authenticity: assinatura.Autenticidade = assinatura.Autenticidade.NAO_ASSINADO
     """Integridade e autenticidade sao perguntas diferentes; esta e a segunda."""
+    encrypted: bool = False
+    """O conteudo do pacote esta cifrado?"""
 
     @property
     def signed(self) -> bool:
@@ -979,6 +980,10 @@ class VerifyReport:
             "assinado": self.signed,
             "autenticidade": self.authenticity.value,
             "limite": assinatura.EXPLICACAO[self.authenticity],
+            "cifrado": self.encrypted,
+            "limite_cifra": (
+                cifra.EXPLICACAO_CIFRADO if self.encrypted else cifra.EXPLICACAO_SEM_CIFRA
+            ),
         }
 
 
@@ -1006,6 +1011,26 @@ def _ler_manifesto(zf: zipfile.ZipFile) -> tuple[dict[str, str], list[str]]:
         elif linha[0] == "NAO_LIDO":
             nao_lidos.append(linha[1])
     return esperado, nao_lidos
+
+
+def _impedimento_de_conferir(zf: zipfile.ZipFile, senha: bytes | None) -> str:
+    """
+    Motivo para nem comecar a conferir. Vazio quando da para seguir.
+
+    Os tres casos sao diferentes para quem le, e por isso nao viram uma
+    mensagem so: "informe a senha" pede uma acao, "corrompido" pede outra, e
+    "sem manifesto" diz que este pacote nem veio daqui.
+    """
+    if cifra.esta_cifrado(zf) and senha is None:
+        return f"pacote cifrado: informe a senha em {cifra.VAR_SENHA} para conferir o conteudo"
+    if zf.testzip() is not None:
+        return "o pacote esta corrompido (CRC)"
+    if MANIFEST_NAME not in zf.namelist():
+        return (
+            f"pacote sem {MANIFEST_NAME}: nao da para conferir o conteudo "
+            "(foi gerado por outra ferramenta ou por uma versao antiga)"
+        )
+    return ""
 
 
 def verify_backup(path: Path, *, buffer_size: int = 64 * 1024) -> VerifyReport:
@@ -1036,21 +1061,11 @@ def verify_backup(path: Path, *, buffer_size: int = 64 * 1024) -> VerifyReport:
         return VerifyReport(path=path, ok=False, checked=0, problem="arquivo nao encontrado")
 
     try:
-        with zipfile.ZipFile(path) as zf:
-            if zf.testzip() is not None:
-                return VerifyReport(
-                    path=path, ok=False, checked=0, problem="o pacote esta corrompido (CRC)"
-                )
-            if MANIFEST_NAME not in zf.namelist():
-                return VerifyReport(
-                    path=path,
-                    ok=False,
-                    checked=0,
-                    problem=(
-                        f"pacote sem {MANIFEST_NAME}: nao da para conferir o conteudo "
-                        "(foi gerado por outra ferramenta ou por uma versao antiga)"
-                    ),
-                )
+        senha = cifra.senha_configurada()
+        with cifra.abrir_para_leitura(path, senha) as zf:
+            impedimento = _impedimento_de_conferir(zf, senha)
+            if impedimento:
+                return VerifyReport(path=path, ok=False, checked=0, problem=impedimento)
 
             esperado, nao_lidos = _ler_manifesto(zf)
             # O manifesto e a assinatura sao metadados do proprio pacote: nao
@@ -1069,7 +1084,20 @@ def verify_backup(path: Path, *, buffer_size: int = 64 * 1024) -> VerifyReport:
             faltando = sorted(set(esperado) - presentes)
             inesperados = sorted(presentes - set(esperado))
             autenticidade = _conferir_assinatura(zf)
-    except (zipfile.BadZipFile, OSError) as exc:
+            cifrado = cifra.esta_cifrado(zf)
+    except RuntimeError as exc:
+        # `RuntimeError` e o que o zipfile levanta para senha errada. Traduzir
+        # aqui evita que a pessoa receba "Bad password for file" no lugar de
+        # uma frase que diz o que fazer.
+        return VerifyReport(
+            path=path,
+            ok=False,
+            checked=0,
+            problem=f"nao foi possivel abrir o pacote cifrado (senha incorreta?): {exc}",
+        )
+    except cifra.SenhaFraca as exc:
+        return VerifyReport(path=path, ok=False, checked=0, problem=str(exc))
+    except cifra.ERROS_DE_PACOTE as exc:
         return VerifyReport(
             path=path, ok=False, checked=0, problem=f"nao foi possivel abrir: {exc}"
         )
@@ -1092,6 +1120,7 @@ def verify_backup(path: Path, *, buffer_size: int = 64 * 1024) -> VerifyReport:
         unexpected=tuple(inesperados),
         unreadable_at_origin=tuple(nao_lidos),
         authenticity=autenticidade,
+        encrypted=cifrado,
     )
 
 

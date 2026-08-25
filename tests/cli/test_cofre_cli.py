@@ -130,3 +130,35 @@ class TestChaveDeBackup:
         """Quem nao configurar precisa saber exatamente o que perde."""
         _, saida = _rodar(["chave-de-backup"])
         assert "autenticidade nao foi" in saida
+
+
+class TestSenhaDeBackup:
+    """
+    A senha cifra o pacote; a chave o assina. Coisas diferentes.
+
+    O comando existe para que a pessoa nao invente uma senha fraca — e para
+    que ela leia, antes de guardar o pacote, o que a cifra NAO esconde.
+    """
+
+    def test_gera_senha_com_o_nome_da_variavel_certa(self) -> None:
+        from autotarefas.tasks.cifra import MINIMO_SENHA, VAR_SENHA
+
+        codigo, saida = _rodar(["senha-de-backup"])
+
+        assert codigo == 0
+        linha = next(texto for texto in saida.splitlines() if VAR_SENHA in texto)
+        assert len(linha.split("=", 1)[1].strip()) >= MINIMO_SENHA
+
+    def test_avisa_que_perder_a_senha_e_perder_o_conteudo(self) -> None:
+        _, saida = _rodar(["senha-de-backup"])
+        assert "perder o conteudo" in saida
+
+    def test_diz_que_os_nomes_continuam_visiveis(self) -> None:
+        """
+        O limite tem que aparecer onde a decisao e tomada.
+
+        Quem acha que a lista tambem esta protegida guarda o pacote no lugar
+        errado.
+        """
+        _, saida = _rodar(["senha-de-backup"])
+        assert "NOMES dos arquivos continuam visiveis" in saida

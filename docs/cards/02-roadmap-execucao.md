@@ -42,7 +42,7 @@ Uma capacidade só entra depois que a trilha G entrega o lugar onde ela mora.
 | --- | --- | --- | --- |
 | **02.A** | Segurança de caminhos, ciclos, ressalvas visíveis | — | ✅ `90193f5`, `5870838` |
 | **02.B** | Assinatura HMAC com chave externa — autenticidade | 02.A · **G.2.3** | ✅ implementada |
-| **02.C** | Criptografia AES e gestão da senha | 02.B · G.2.3 | a fazer |
+| **02.C** | Criptografia AES e gestão da senha | 02.B · G.2.3 | ✅ implementada |
 | **02.D** | VSS para arquivo aberto | **G.5.2** (só existe no Agente) | a fazer |
 | **02.E** | Agendamento, retry/backoff, notificações, retenção GFS | G.5.2 · **G.6** | a fazer |
 | **02.F** | Destino externo e conector S3 compatível | 02.C · G.5.3 | a fazer |

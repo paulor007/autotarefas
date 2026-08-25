@@ -91,6 +91,33 @@ def chave_de_backup(ctx: CLIContext) -> None:
     console.info("comprovada, porque nao ha assinatura.")
 
 
+@cofre.command(name="senha-de-backup")
+@click.pass_obj
+def senha_de_backup(ctx: CLIContext) -> None:
+    """
+    Sorteia a senha que cifra o pacote de backup.
+
+    O pacote sai em AES-256 no padrao WinZip: abre no 7-Zip e no WinRAR com
+    esta senha, sem precisar do AutoTarefas instalado. Isso importa no dia em
+    que a maquina que gerou o backup nao existe mais.
+
+    Perder a senha e perder o conteudo. Nao ha recuperacao, e nao deveria
+    haver: uma porta dos fundos para o fabricante seria uma porta dos fundos.
+    """
+    from autotarefas.tasks import cifra
+
+    console = Console(ctx)
+    senha = cifra.gerar_senha()
+
+    console.info("Senha do pacote de backup (guarde agora):")
+    console.info("")
+    console.info(f"  {cifra.VAR_SENHA}={senha}")
+    console.info("")
+    console.warning("Perder esta senha e perder o conteudo dos pacotes cifrados com ela.")
+    console.info("Os NOMES dos arquivos continuam visiveis no pacote: o padrao ZIP")
+    console.info("cifra o conteudo de cada arquivo, nao a lista.")
+
+
 @cofre.command(name="conferir")
 @click.pass_obj
 def conferir(ctx: CLIContext) -> None:

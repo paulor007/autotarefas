@@ -35,6 +35,9 @@ const INTEGRO = {
   problema: "",
   assinado: false,
   autenticidade: "nao_assinado",
+  cifrado: false,
+  limite_cifra:
+    "Pacote não cifrado: quem tiver acesso ao arquivo lê todo o conteúdo.",
   limite:
     "Detecta corrupção e alteração acidental. Não comprova autenticidade contra adulteração intencional.",
 };
@@ -202,6 +205,39 @@ describe("VerifyPackage", () => {
       expect(screen.getByText(/chave de conferência não está/i)).toBeTruthy();
     });
     expect(screen.queryByText(/NÃO confere/i)).toBeNull();
+  });
+
+  it("diz quando o pacote não está cifrado", async () => {
+    // Não cifrado é uma condição do pacote, não um detalhe técnico: muda
+    // onde a pessoa pode guardá-lo.
+    mockVerify(INTEGRO);
+    render(<VerifyPackage token="tok-1" name="backup.zip" />);
+
+    await userEvent.click(
+      screen.getByRole("button", { name: /Verificar este pacote/i }),
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText(/não cifrado/i)).toBeTruthy();
+    });
+  });
+
+  it("mostra que a cifra não esconde os nomes dos arquivos", async () => {
+    mockVerify({
+      ...INTEGRO,
+      cifrado: true,
+      limite_cifra:
+        "Pacote cifrado com AES-256 (padrão WinZip): abre no 7-Zip ou no WinRAR com a senha. Os nomes dos arquivos e das pastas continuam visíveis — o padrão ZIP cifra o conteúdo, não a lista.",
+    });
+    render(<VerifyPackage token="tok-1" name="backup.zip" />);
+
+    await userEvent.click(
+      screen.getByRole("button", { name: /Verificar este pacote/i }),
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText(/continuam visíveis/i)).toBeTruthy();
+    });
   });
 
   it("mostra erro sem derrubar a tela", async () => {

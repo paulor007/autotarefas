@@ -13,6 +13,9 @@ authlib>=1.3.0,<2.0.0
 itsdangerous>=2.2.0,<3.0.0
 email-validator>=2.0.0,<3.0.0
 
+# Criptografia do pacote (02.C): AES-256 no padrao WinZip.
+pyzipper>=0.3.6,<1.0.0
+
 # Os mocks de demonstracao usam Flask + Faker (tambem vem como deps do autotarefas;
 # listados aqui para garantir no container caso sejam opcionais no pacote).
 flask>=3.1.0

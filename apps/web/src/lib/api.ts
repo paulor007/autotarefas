@@ -91,6 +91,10 @@ export interface VerifyReport {
     | "adulterado"
     | "sem_chave"
     | "outra_chave";
+  /** O conteudo do pacote esta cifrado? */
+  cifrado: boolean;
+  /** O que a cifra protege — e o que ela nao esconde. */
+  limite_cifra: string;
 }
 
 /**

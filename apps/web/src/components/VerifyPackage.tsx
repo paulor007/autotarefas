@@ -145,6 +145,7 @@ export default function VerifyPackage({ token, name }: Props) {
           )}
 
           <p className="mt-2 text-[0.8rem] text-muted">{relatorio.limite}</p>
+          <p className="mt-1 text-[0.8rem] text-muted">{relatorio.limite_cifra}</p>
         </div>
       )}
     </div>
