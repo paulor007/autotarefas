@@ -690,14 +690,28 @@ async def listar_pacotes_do_dispositivo(
     return await _pedir_ao_dispositivo(sessao, contexto, dispositivo_id, "pacotes", {})
 
 
+class PedidoDePacote(BaseModel):
+    """O que a tela envia para so OLHAR dentro de um pacote."""
+
+    #: Nome do pacote, e nunca um caminho: quem sabe onde o arquivo esta e a
+    #: maquina. Ver `2.13` no roadmap.
+    pacote: str = Field(min_length=1, max_length=400)
+
+
 @roteador.post("/{dispositivo_id}/pacote")
 async def listar_pacote(
     dispositivo_id: str,
-    pedido: PedidoDeRestauracao,
+    pedido: PedidoDePacote,
     contexto: ContextoAtual,
     sessao: SessaoBanco,
 ) -> JSONResponse:
-    """Mostra o que ha dentro de um pacote, antes de restaurar."""
+    """
+    Mostra o que ha dentro de um pacote, antes de restaurar.
+
+    Modelo proprio, e nao o da restauracao: exigir um `destino` para uma
+    operacao que so le seria pedir uma informacao que nao vai ser usada — e a
+    tela teria que inventar um valor para preencher o campo.
+    """
     return await _pedir_ao_dispositivo(
         sessao,
         contexto,

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 
 import Dispositivos from "./Dispositivos";
+import Historico from "./Historico";
 import PrimeiroAcesso from "./PrimeiroAcesso";
 import {
   conviteDaUrl,
@@ -110,6 +111,16 @@ export default function Painel() {
       </header>
 
       <Dispositivos papel={papel} />
+
+      <section>
+        <h2 className="text-lg font-semibold text-fg">Histórico</h2>
+        <p className="mt-1 text-[0.8rem] text-muted">
+          Inclui o que rodou pelo horário agendado, com o navegador fechado.
+        </p>
+        <div className="mt-3">
+          <Historico />
+        </div>
+      </section>
     </div>
   );
 }

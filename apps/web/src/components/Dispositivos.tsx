@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 
+import Restauracao from "./Restauracao";
+
 import {
   consultarDispositivo,
   emitirCodigo,
@@ -49,6 +51,7 @@ export default function Dispositivos({ papel }: Props) {
   const [avisos, setAvisos] = useState<Record<string, string>>({});
   const [erro, setErro] = useState<string | null>(null);
   const [ocupado, setOcupado] = useState(false);
+  const [restaurando, setRestaurando] = useState("");
 
   const administra = ADMINISTRAM.has(papel);
   const opera = OPERAM.has(papel);
@@ -236,6 +239,17 @@ export default function Dispositivos({ papel }: Props) {
                     Executar backup agora
                   </button>
                 )}
+                {opera && (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setRestaurando((atual) => (atual === item.id ? "" : item.id))
+                    }
+                    className="rounded-lg border border-white/12 px-3 py-1.5 text-[0.8rem] text-fg hover:border-white/25"
+                  >
+                    Restaurar arquivos
+                  </button>
+                )}
                 {administra && item.estado !== "revogado" && (
                   <button
                     type="button"
@@ -246,6 +260,14 @@ export default function Dispositivos({ papel }: Props) {
                   </button>
                 )}
               </div>
+
+              {restaurando === item.id && (
+                <Restauracao
+                  dispositivoId={item.id}
+                  nomeDoDispositivo={item.nome}
+                  aoFechar={() => setRestaurando("")}
+                />
+              )}
             </li>
           );
         })}

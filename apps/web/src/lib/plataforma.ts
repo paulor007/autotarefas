@@ -70,6 +70,60 @@ export interface ResultadoDeBackup {
   erro?: string;
 }
 
+/** Ficha de um pacote produzido por uma execução. */
+export interface ArtefatoDaExecucao {
+  id: string;
+  nome: string;
+  tamanho_bytes: number;
+  sha256: string;
+  /** Onde o pacote está, do ponto de vista do dispositivo. Nunca um caminho. */
+  localizacao: string;
+}
+
+/** Uma rodada de backup registrada no histórico. */
+export interface Execucao {
+  id: string;
+  dispositivo_id: string;
+  politica_id: string;
+  /** `manual` veio da tela; `agendamento` rodou sozinho, na máquina. */
+  origem: string;
+  resultado:
+    "em_andamento" | "sucesso" | "com_ressalva" | "falha" | "cancelada";
+  iniciada_em: string;
+  terminada_em: string;
+  arquivos: number;
+  bytes_copiados: number;
+  ressalva: string;
+  artefatos: ArtefatoDaExecucao[];
+}
+
+/** Um pacote que existe na máquina agora. */
+export interface PacoteNaMaquina {
+  nome: string;
+  tamanho_bytes: number;
+  criado_em: string;
+}
+
+/** Um arquivo declarado dentro de um pacote. */
+export interface ItemDoPacote {
+  arquivo: string;
+  neste_pacote: string;
+  onde: string;
+}
+
+/** O que a restauração fez, e o que não fez. */
+export interface RelatorioDeRestauracao {
+  ok?: boolean;
+  erro?: string;
+  destino?: string;
+  restaurados?: string[];
+  ja_existiam?: string[];
+  recusados?: string[];
+  faltando?: string[];
+  corrompidos?: string[];
+  protecao?: string;
+}
+
 /**
  * Erro com o código HTTP preservado.
  *
@@ -183,6 +237,81 @@ export function executarBackup(
   return pedir(`/api/dispositivos/${encodeURIComponent(id)}/backup`, {
     method: "POST",
     body: JSON.stringify(pedidoDeBackup),
+  });
+}
+
+/**
+ * Histórico de execuções desta organização.
+ *
+ * Inclui o que o Agente fez sozinho, no horário agendado, com o navegador
+ * fechado. São essas linhas que provam que o backup não depende de alguém
+ * estar olhando.
+ */
+export function listarHistorico(
+  dispositivoId = "",
+): Promise<{ execucoes: Execucao[] }> {
+  const busca = dispositivoId
+    ? `?dispositivo_id=${encodeURIComponent(dispositivoId)}`
+    : "";
+  return pedir(`/api/historico${busca}`);
+}
+
+/**
+ * Pacotes que existem NAQUELA máquina, agora.
+ *
+ * Vem do dispositivo, e não do banco: o servidor guarda a ficha do artefato,
+ * mas quem sabe se o arquivo ainda está lá é a máquina. Listar do banco
+ * ofereceria para restaurar um pacote que alguém já apagou.
+ */
+export function listarPacotes(id: string): Promise<{
+  ok: boolean;
+  pacotes?: PacoteNaMaquina[];
+  tem_pasta_autorizada?: boolean;
+  erro?: string;
+}> {
+  return pedir(`/api/dispositivos/${encodeURIComponent(id)}/pacotes`, {
+    method: "POST",
+  });
+}
+
+/** O que há dentro de um pacote, antes de mexer em qualquer coisa. */
+export function listarConteudoDoPacote(
+  id: string,
+  pacote: string,
+): Promise<{
+  ok: boolean;
+  pacote?: string;
+  conteudo?: ItemDoPacote[];
+  erro?: string;
+}> {
+  return pedir(`/api/dispositivos/${encodeURIComponent(id)}/pacote`, {
+    method: "POST",
+    body: JSON.stringify({ pacote }),
+  });
+}
+
+/**
+ * Restaura arquivos de um pacote para uma pasta da máquina.
+ *
+ * O pacote vai pelo **nome**: o Live não conhece caminho nenhum da máquina, e
+ * quem resolve onde o arquivo está é o Agente. `conferir_backup` é como a tela
+ * pede a guarda de ação destrutiva sem precisar conhecer pastas.
+ */
+export function restaurarNoDispositivo(
+  id: string,
+  pedidoDeRestauracao: {
+    pacote: string;
+    destino: string;
+    anteriores?: string[];
+    apenas?: string[];
+    sobrescrever?: boolean;
+    conferir_backup?: boolean;
+    dispensar_protecao?: string;
+  },
+): Promise<RelatorioDeRestauracao> {
+  return pedir(`/api/dispositivos/${encodeURIComponent(id)}/restaurar`, {
+    method: "POST",
+    body: JSON.stringify(pedidoDeRestauracao),
   });
 }
 

@@ -35,7 +35,7 @@ Uma capacidade só entra depois que a trilha G entrega o lugar onde ela mora.
 | **G.6** | Telas de operação: dispositivos, pastas, política | G.5.3 | ✅ implementada — política e destino vêm com 02.E |
 | **G.7.1** | Diário de execuções no Agente e sincronização do histórico | G.6 | ✅ implementada |
 | **G.7.2** | Pacotes resolvidos pelo nome: listagem e restauração sem caminho local | G.7.1 | ✅ implementada |
-| **G.7.3** | Telas de saúde, histórico, artefatos e restauração guiada | G.7.2 | a fazer |
+| **G.7.3** | Telas de histórico, artefatos e restauração guiada | G.7.2 | ✅ implementada |
 | **G.8** | Empacotamento: serviço do Windows, instalador, download guiado | G.5.2 | a fazer |
 
 ### 1.2 Capacidades do Card 02
@@ -48,7 +48,7 @@ Uma capacidade só entra depois que a trilha G entrega o lugar onde ela mora.
 | **02.D** | VSS para arquivo aberto | **G.5.2** (só existe no Agente) | ✅ implementada · teste com elevação pendente |
 | **02.E** | Agendamento, retry/backoff, notificações, retenção GFS | G.5.2 · **G.6** | ✅ implementada · envio de e-mail exige SMTP no cofre |
 | **02.F** | Destino externo e conector S3 compatível | 02.C · G.5.3 | ✅ implementada · nuvem real pendente |
-| **02.H** | Restauração guiada pela interface | 02.B · G.6 | ⏳ motor, comando do Agente, rota e CLI prontos · **a tela é da G.7** |
+| **02.H** | Restauração guiada pela interface | 02.B · G.6 | ✅ implementada — tela na G.7.3 |
 | **02.I** | Incremental por arquivo, com catálogo | 02.E | ✅ implementada |
 | **02.J** | Hooks de segurança com falha fechada | G.6 | ✅ implementada |
 
@@ -347,6 +347,38 @@ para a linha de comando.
 A listagem vem **do dispositivo**, não do banco: o servidor guarda a ficha do
 artefato, mas quem sabe se o arquivo ainda está lá é a máquina. Listar do banco
 ofereceria para restaurar um pacote que alguém já apagou.
+
+---
+
+## 2.14 A tela de restauração, e o que ela se recusa a fazer
+
+Restaurar é o momento em que o backup prova que serviu — e é também o caminho
+mais curto para perder arquivo por engano. Três decisões da tela existem só para
+isso não acontecer:
+
+1. **Ver antes de mexer.** O conteúdo do pacote aparece antes de qualquer
+   escrita. Há teste que confere que nenhuma chamada de restauração sai enquanto
+   a pessoa está apenas olhando.
+2. **Preservar é o padrão.** Arquivo que já existe no destino não é tocado. Para
+   substituir é preciso marcar explicitamente — e aí a operação passa pela
+   guarda de ação destrutiva da 02.J.
+3. **O destino sai de uma lista, não de um campo livre.** Só aparecem as pastas
+   autorizadas **na própria máquina**. Pedir ao cliente que digitasse um caminho
+   seria pedir que fizesse o trabalho da CLI dentro do navegador.
+
+A tela também não arredonda o resultado. Uma restauração incompleta é anunciada
+como **INCOMPLETA**, com o que faltou, o que foi recusado por tentar sair da
+pasta e o que saiu diferente do manifesto. Uma restauração parcial que se
+apresenta como sucesso é pior do que uma que falha: a pessoa vai embora achando
+que recuperou tudo.
+
+No histórico, "com ressalva" tem cor própria — não a de sucesso. Pintar de verde
+um backup com ausências é a forma mais silenciosa de escondê-las de quem um dia
+vai restaurar.
+
+Detalhe pequeno que muda a experiência: o erro que o Agente devolve carrega o
+nome da exceção (`ProtecaoBloqueou: ...`), útil no log da máquina e inútil na
+tela. A interface mostra só a frase — que é a parte que diz o que resolver.
 
 ---
 
