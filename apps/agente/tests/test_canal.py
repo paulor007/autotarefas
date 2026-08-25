@@ -13,12 +13,14 @@ nao que uma maquina consegue mesmo se conectar.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import socket
 import threading
 import time
 from collections.abc import Iterator
 from pathlib import Path
 
+import httpx
 import pytest
 import uvicorn
 
@@ -31,9 +33,44 @@ from apps.api.app.db import repositorio as repo
 from apps.api.app.db.atual import definir_banco
 from apps.api.app.db.models import Papel
 from apps.api.app.db.sessao import Banco
+from apps.api.app.identidade.sessao_web import COOKIE_SESSAO, SessaoWeb, escrever_sessao
 
 #: Quanto esperar o servidor de teste subir antes de desistir.
 _ESPERA_SUBIDA_S = 10.0
+
+HTTP_OK = 200
+HTTP_NOT_FOUND = 404
+HTTP_CONFLICT = 409
+
+
+def _sessao_de(banco: Banco, contexto: repo.Contexto) -> str:
+    """
+    Cookie de sessao valido para aquele contexto.
+
+    Emitido diretamente, e nao pelo fluxo de login: o que este teste mede e o
+    canal do Agente, e passar pelo OIDC aqui so acrescentaria formas de o
+    teste falhar por motivo que nao e o dele.
+    """
+    del banco
+    assert contexto.usuario_id is not None
+    return escrever_sessao(
+        SessaoWeb(usuario_id=contexto.usuario_id, organizacao_id=contexto.organizacao_id)
+    )
+
+
+def _organizacao_extra(banco: Banco, nome: str) -> repo.Contexto:
+    """Outra organizacao, para provar que uma nao alcanca a outra."""
+    with banco.sessao() as sessao:
+        organizacao = repo.criar_organizacao(sessao, nome=nome, dominio=f"{nome.lower()}.com.br")
+        usuario = repo.criar_usuario(
+            sessao,
+            email=f"dono@{nome.lower()}.com.br",
+            nome="Dono",
+            emissor="bootstrap",
+            assunto=nome,
+        )
+        repo.vincular(sessao, organizacao=organizacao, usuario=usuario, papel=Papel.DONO)
+        return repo.Contexto(organizacao_id=organizacao.id, usuario_id=usuario.id, papel=Papel.DONO)
 
 
 def _porta_livre() -> int:
@@ -237,3 +274,102 @@ class TestConexaoReal:
 
         assert estado.conectado is False
         assert estado.ultimo_erro
+
+
+@pytest.mark.slow
+class TestComandosPeloCanal:
+    """
+    Comando de ponta a ponta: sai do Live, atravessa o socket, executa na
+    maquina e a resposta volta.
+
+    O pedido sai por uma rota HTTP de proposito. E o caminho que a interface
+    vai usar, e ele garante que a espera pelo resultado acontece no mesmo laco
+    de eventos do canal — detalhe que, feito errado, produz um travamento que
+    so aparece em producao.
+    """
+
+    def _cliente_http(self, servidor: str) -> httpx.Client:
+        return httpx.Client(base_url=servidor, timeout=30.0)
+
+    def _com_agente_no_ar(
+        self,
+        banco: Banco,
+        servidor: str,
+        identidade: ident.Identidade,
+        pasta_autorizada: Path | None = None,
+    ) -> tuple[str, repo.Contexto, threading.Thread]:
+        """Sobe o Agente numa thread e espera ele aparecer na presenca."""
+        contexto = _organizacao(banco)
+        dispositivo_id = _parear(banco, contexto, identidade)
+        configuracao = Configuracao(servidor=servidor, dispositivo_id=dispositivo_id)
+        if pasta_autorizada is not None:
+            configuracao = configuracao.com_raiz(pasta_autorizada)
+
+        def rodar() -> None:
+            with contextlib.suppress(Exception):
+                asyncio.run(
+                    canal_agente.manter_conectado(configuracao, identidade, tentativas_maximas=1)
+                )
+
+        thread = threading.Thread(target=rodar, daemon=True)
+        thread.start()
+
+        limite = time.monotonic() + _ESPERA_SUBIDA_S
+        while canal_servidor.presenca.de(dispositivo_id) is None and time.monotonic() < limite:
+            time.sleep(0.05)
+        if canal_servidor.presenca.de(dispositivo_id) is None:
+            pytest.skip("o Agente nao conectou a tempo")
+        return dispositivo_id, contexto, thread
+
+    def test_live_pergunta_e_o_agente_responde(
+        self, banco: Banco, servidor: str, identidade: ident.Identidade, tmp_path: Path
+    ) -> None:
+        pasta = tmp_path / "dados"
+        pasta.mkdir()
+        dispositivo_id, contexto, _ = self._com_agente_no_ar(
+            banco, servidor, identidade, pasta_autorizada=pasta
+        )
+        cookie = _sessao_de(banco, contexto)
+
+        with self._cliente_http(servidor) as http:
+            http.cookies.set(COOKIE_SESSAO, cookie)
+            resposta = http.post(f"/api/dispositivos/{dispositivo_id}/consultar")
+
+        assert resposta.status_code == HTTP_OK, resposta.text
+        estado = resposta.json()["estado"]
+        assert estado["ok"] is True
+        assert estado["pode_copiar"] is True
+        assert str(pasta.resolve()) in estado["raizes"]
+
+    def test_dispositivo_desligado_e_409_e_nao_erro(
+        self, banco: Banco, servidor: str, identidade: ident.Identidade
+    ) -> None:
+        """
+        Maquina desligada e situacao normal, nao falha do produto.
+
+        Confundir as duas faria a tela acusar erro toda noite, quando o
+        computador da loja esta simplesmente fechado.
+        """
+        contexto = _organizacao(banco)
+        dispositivo_id = _parear(banco, contexto, identidade)
+        cookie = _sessao_de(banco, contexto)
+
+        with self._cliente_http(servidor) as http:
+            http.cookies.set(COOKIE_SESSAO, cookie)
+            resposta = http.post(f"/api/dispositivos/{dispositivo_id}/consultar")
+
+        assert resposta.status_code == HTTP_CONFLICT
+        assert "canal aberto" in resposta.json()["detail"]
+
+    def test_uma_organizacao_nao_consulta_o_dispositivo_da_outra(
+        self, banco: Banco, servidor: str, identidade: ident.Identidade
+    ) -> None:
+        dispositivo_id, _, _ = self._com_agente_no_ar(banco, servidor, identidade)
+        outra = _organizacao_extra(banco, "Oficina")
+        cookie = _sessao_de(banco, outra)
+
+        with self._cliente_http(servidor) as http:
+            http.cookies.set(COOKIE_SESSAO, cookie)
+            resposta = http.post(f"/api/dispositivos/{dispositivo_id}/consultar")
+
+        assert resposta.status_code == HTTP_NOT_FOUND

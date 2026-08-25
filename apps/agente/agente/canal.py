@@ -25,6 +25,7 @@ from dataclasses import dataclass
 from websockets.asyncio.client import connect as conectar_ws
 from websockets.exceptions import ConnectionClosed
 
+from . import comandos as mod_comandos
 from . import identidade as ident
 from .config import Configuracao
 
@@ -142,6 +143,35 @@ async def bater_coracao(conexao: object, intervalo_s: float) -> None:
         await conexao.send(json.dumps({"tipo": "batida"}))  # type: ignore[attr-defined]
 
 
+async def atender_comandos(
+    conexao: object,
+    configuracao: Configuracao,
+    registro: mod_comandos.Registro,
+) -> None:
+    """
+    Le mensagens do servidor e executa os comandos, ate a conexao cair.
+
+    Cada comando roda em sequencia. Paralelismo aqui seria facil e errado: dois
+    backups simultaneos sobre as mesmas pastas disputariam disco e produziriam
+    pacotes que se contradizem.
+    """
+
+    async def relatar(dados: dict[str, object]) -> None:
+        await conexao.send(json.dumps({**dados, "tipo": "progresso"}))  # type: ignore[attr-defined]
+
+    contexto = mod_comandos.Contexto(configuracao=configuracao, relatar=relatar)
+
+    async for bruto in conexao:  # type: ignore[attr-defined]
+        try:
+            mensagem = json.loads(bruto)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(mensagem, dict) or mensagem.get("tipo") != "comando":
+            continue
+        resultado = await mod_comandos.atender(mensagem, registro, contexto)
+        await conexao.send(json.dumps(resultado))  # type: ignore[attr-defined]
+
+
 async def manter_conectado(
     configuracao: Configuracao,
     identidade: ident.Identidade,
@@ -149,6 +179,7 @@ async def manter_conectado(
     estado: Estado | None = None,
     ao_conectar: Callable[[dict[str, object]], Awaitable[None]] | None = None,
     tentativas_maximas: int | None = None,
+    registro: mod_comandos.Registro | None = None,
 ) -> Estado:
     """
     Conecta e reconecta enquanto for util tentar.
@@ -158,6 +189,10 @@ async def manter_conectado(
     """
     situacao = estado or Estado()
     endereco = url_do_canal(configuracao.servidor)
+    # O registro sobrevive as reconexoes de proposito: a memoria de comandos ja
+    # atendidos e o que impede uma reentrega, depois de a rede voltar, de virar
+    # um segundo backup.
+    conhecidos = registro if registro is not None else mod_comandos.registro_padrao()
 
     while True:
         situacao.tentativas += 1
@@ -172,8 +207,7 @@ async def manter_conectado(
                 intervalo = float(str(pronto.get("intervalo_batida_s") or 20.0))
                 batidas = asyncio.create_task(bater_coracao(conexao, intervalo))
                 try:
-                    async for _ in conexao:
-                        pass
+                    await atender_comandos(conexao, configuracao, conhecidos)
                 finally:
                     batidas.cancel()
                     with contextlib.suppress(asyncio.CancelledError):
@@ -204,6 +238,7 @@ __all__ = [
     "CanalRecusado",
     "Estado",
     "apertar_maos",
+    "atender_comandos",
     "bater_coracao",
     "manter_conectado",
     "url_do_canal",

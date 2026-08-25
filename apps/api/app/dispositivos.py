@@ -331,6 +331,40 @@ def parear_dispositivo(pedido: PedidoDePareamento, sessao: SessaoBanco) -> dict[
     }
 
 
+@roteador.post("/{dispositivo_id}/consultar")
+async def consultar_dispositivo(
+    dispositivo_id: str, contexto: ContextoAtual, sessao: SessaoBanco
+) -> dict[str, Any]:
+    """
+    Pergunta ao dispositivo o que ele sabe sobre si mesmo, agora.
+
+    Distingue tres situacoes que a tela precisa mostrar diferente:
+
+    - o dispositivo nao e desta organizacao -> 404;
+    - o dispositivo existe mas esta **desligado** -> 409, e nao erro. Maquina
+      desligada e situacao normal, nao falha;
+    - o dispositivo esta no ar mas nao respondeu no prazo -> 504.
+    """
+    from . import canal
+
+    existe = sessao.execute(
+        repo.escopo(Dispositivo, contexto).where(Dispositivo.id == dispositivo_id)
+    ).scalar_one_or_none()
+    if existe is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="dispositivo nao encontrado"
+        )
+
+    try:
+        resposta = await canal.pedir_ao_dispositivo(dispositivo_id, "estado", prazo_s=30.0)
+    except canal.DispositivoDesconectado as erro:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(erro)) from erro
+    except canal.SemResposta as erro:
+        raise HTTPException(status_code=status.HTTP_504_GATEWAY_TIMEOUT, detail=str(erro)) from erro
+
+    return {"dispositivo_id": dispositivo_id, "estado": resposta}
+
+
 @roteador.post("/{dispositivo_id}/revogar")
 def revogar_dispositivo(
     dispositivo_id: str, contexto: ContextoAdministrador, sessao: SessaoBanco

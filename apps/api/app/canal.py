@@ -16,6 +16,15 @@ entrega chaves publicas, que nao servem para se passar por dispositivo algum.
 
 O desafio e por conexao e some ao ser usado: sem isso, uma assinatura capturada
 uma vez valeria para sempre.
+
+Depois do aperto de mao, o canal transporta **comandos**. Quem pede e sempre o
+servidor; quem executa e sempre o Agente, na maquina. Cada comando leva um
+identificador proprio, e a resposta o devolve — sem isso, duas respostas que
+chegam fora de ordem seriam trocadas uma pela outra.
+
+Comando tem prazo. Um Agente que trava no meio de uma tarefa nao pode deixar a
+tela esperando para sempre: passado o prazo, a espera termina com "sem resposta
+do dispositivo", que e uma informacao util, e nao um carregando eterno.
 """
 
 from __future__ import annotations
@@ -23,6 +32,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import secrets
+import uuid
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
@@ -59,6 +69,19 @@ FECHAR_DISPOSITIVO_INATIVO = 4003
 FECHAR_PROTOCOLO = 4004
 
 
+#: Prazo padrao de um comando. Generoso: backup de pasta grande demora, e
+#: cortar cedo demais transformaria um trabalho em andamento em falha.
+PRAZO_COMANDO_S = 600.0
+
+
+class SemResposta(Exception):
+    """O dispositivo nao respondeu ao comando dentro do prazo."""
+
+
+class DispositivoDesconectado(Exception):
+    """Nao ha canal aberto com este dispositivo agora."""
+
+
 @dataclass
 class Conexao:
     """Um Agente conectado agora."""
@@ -69,6 +92,57 @@ class Conexao:
     socket: WebSocket
     conectado_em: datetime = field(default_factory=agora)
     ultima_batida: datetime = field(default_factory=agora)
+    #: Comandos aguardando resposta, por identificador.
+    pendentes: dict[str, asyncio.Future[dict[str, Any]]] = field(default_factory=dict)
+    #: Ultimo progresso recebido de cada comando. A tela le daqui.
+    progresso: dict[str, dict[str, Any]] = field(default_factory=dict)
+
+    async def pedir(
+        self,
+        acao: str,
+        parametros: dict[str, Any] | None = None,
+        *,
+        prazo_s: float = PRAZO_COMANDO_S,
+    ) -> dict[str, Any]:
+        """
+        Manda um comando e espera o resultado.
+
+        O identificador vai junto e volta na resposta. Ele tambem e o que
+        permite ao Agente reconhecer uma reentrega — comando repetido depois
+        de uma reconexao nao pode virar backup executado duas vezes.
+        """
+        identificador = uuid.uuid4().hex
+        espera: asyncio.Future[dict[str, Any]] = asyncio.get_running_loop().create_future()
+        self.pendentes[identificador] = espera
+        try:
+            await self.socket.send_json(
+                {
+                    "tipo": "comando",
+                    "id": identificador,
+                    "acao": acao,
+                    "parametros": parametros or {},
+                }
+            )
+            return await asyncio.wait_for(espera, timeout=prazo_s)
+        except TimeoutError as erro:
+            msg = f"o dispositivo nao respondeu a '{acao}' em {prazo_s:.0f}s"
+            raise SemResposta(msg) from erro
+        finally:
+            self.pendentes.pop(identificador, None)
+            self.progresso.pop(identificador, None)
+
+    def resolver(self, identificador: str, resultado: dict[str, Any]) -> bool:
+        """Entrega o resultado a quem estava esperando. False se ninguem estava."""
+        espera = self.pendentes.get(identificador)
+        if espera is None or espera.done():
+            return False
+        espera.set_result(resultado)
+        return True
+
+    def anotar_progresso(self, identificador: str, dados: dict[str, Any]) -> None:
+        """Guarda o ultimo progresso de um comando em andamento."""
+        if identificador in self.pendentes:
+            self.progresso[identificador] = dados
 
 
 class Presenca:
@@ -96,10 +170,21 @@ class Presenca:
         return anterior
 
     def sair(self, conexao: Conexao) -> None:
-        """Remove a conexao, se ela ainda for a atual daquele dispositivo."""
+        """
+        Remove a conexao, se ela ainda for a atual daquele dispositivo.
+
+        Quem estava esperando resposta e avisado na hora. Sem isto, um comando
+        enviado a uma maquina que caiu ficaria pendurado ate o prazo — e a
+        tela mostraria "executando" para um dispositivo que ja foi embora.
+        """
         atual = self._por_dispositivo.get(conexao.dispositivo_id)
         if atual is conexao:
             del self._por_dispositivo[conexao.dispositivo_id]
+        for espera in conexao.pendentes.values():
+            if not espera.done():
+                espera.set_exception(
+                    DispositivoDesconectado("o dispositivo desconectou durante o comando")
+                )
 
     def de(self, dispositivo_id: str) -> Conexao | None:
         return self._por_dispositivo.get(dispositivo_id)
@@ -250,16 +335,46 @@ async def _conversar(conexao: Conexao) -> None:
     """
     Fica ouvindo o Agente ate a conexao cair.
 
-    Por enquanto so trata batidas do coracao. O protocolo de comandos entra na
-    G.4.2 — e entra aqui, sem mudar o aperto de mao.
+    Mensagem que nao se reconhece e ignorada, e nao derruba o canal: um Agente
+    mais novo pode mandar algo que este servidor ainda nao entende, e derrubar
+    a conexao por isso quebraria a atualizacao gradual da frota.
     """
     while True:
         mensagem = await conexao.socket.receive_json()
         if not isinstance(mensagem, dict):
             continue
-        if mensagem.get("tipo") == "batida":
+        tipo = mensagem.get("tipo")
+
+        if tipo == "batida":
             conexao.ultima_batida = agora()
             await conexao.socket.send_json({"tipo": "batida", "eco": True})
+        elif tipo == "progresso":
+            conexao.ultima_batida = agora()
+            conexao.anotar_progresso(str(mensagem.get("comando", "")), mensagem)
+        elif tipo == "resultado":
+            conexao.ultima_batida = agora()
+            conexao.resolver(str(mensagem.get("comando", "")), mensagem)
+
+
+async def pedir_ao_dispositivo(
+    dispositivo_id: str,
+    acao: str,
+    parametros: dict[str, Any] | None = None,
+    *,
+    prazo_s: float = PRAZO_COMANDO_S,
+) -> dict[str, Any]:
+    """
+    Manda um comando ao dispositivo e devolve o resultado.
+
+    `DispositivoDesconectado` quando nao ha canal aberto — e diferente de
+    "falhou": a maquina pode estar simplesmente desligada, e a tela precisa
+    dizer isso em vez de acusar erro de execucao.
+    """
+    conexao = presenca.de(dispositivo_id)
+    if conexao is None:
+        msg = "nao ha canal aberto com este dispositivo"
+        raise DispositivoDesconectado(msg)
+    return await conexao.pedir(acao, parametros, prazo_s=prazo_s)
 
 
 @roteador.get("/api/agente/conectados")
@@ -306,12 +421,16 @@ __all__ = [
     "FECHAR_NAO_IDENTIFICADO",
     "FECHAR_PROTOCOLO",
     "INTERVALO_BATIDA_S",
+    "PRAZO_COMANDO_S",
     "ApertoRecusado",
     "Conexao",
     "Contexto",
+    "DispositivoDesconectado",
     "Presenca",
+    "SemResposta",
     "apertar_maos",
     "ha_agente_conectado",
+    "pedir_ao_dispositivo",
     "presenca",
     "roteador",
 ]
