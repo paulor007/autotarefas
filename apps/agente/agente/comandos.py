@@ -215,23 +215,56 @@ async def executar_situacao(_parametros: dict[str, Any], contexto: Contexto) -> 
     }
 
 
+def _achar_pacote(configuracao: Configuracao, dito: str) -> Any:
+    """
+    Caminho do pacote a partir do que o Live mandou.
+
+    O Live trabalha com **nomes**: e o que ele tem, porque foi o que veio na
+    ficha do artefato. O caminho local nunca subiu, e nao precisa subir — quem
+    resolve o nome e esta maquina.
+
+    Cai para a guarda de pastas autorizadas quando o pedido traz um caminho
+    (a linha de comando faz isso). Nos dois casos a decisao e daqui: o servidor
+    nao escolhe qual arquivo do disco o Agente abre.
+    """
+    from pathlib import Path as Caminho
+
+    from . import artefatos, raizes
+
+    if artefatos.nome_valido(dito):
+        return artefatos.achar(configuracao, dito)
+    return raizes.exigir_autorizacao(configuracao, Caminho(dito))
+
+
+async def executar_pacotes(_parametros: dict[str, Any], contexto: Contexto) -> dict[str, Any]:
+    """
+    Pacotes que existem NESTA maquina, do mais novo para o mais velho.
+
+    E o que a tela de restauracao mostra. So os nomes e os tamanhos: onde os
+    arquivos estao continua sendo assunto daqui.
+    """
+    from . import artefatos
+
+    encontrados = artefatos.listar(contexto.configuracao)
+    return {
+        "pacotes": [item.como_dicionario() for item in encontrados],
+        # Sem pasta autorizada nao ha pacote nenhum, e a tela precisa dizer
+        # isso em vez de mostrar uma lista vazia que parece "ainda nao rodou".
+        "tem_pasta_autorizada": bool(contexto.configuracao.raizes),
+    }
+
+
 async def executar_listar_pacote(parametros: dict[str, Any], contexto: Contexto) -> dict[str, Any]:
     """
     Lista o que ha dentro de um pacote, para a tela mostrar antes de restaurar.
 
-    O pacote precisa estar numa pasta autorizada NESTA maquina, como qualquer
-    outro caminho: o Live nao ganha o direito de ler um ZIP arbitrario do
-    disco do cliente so porque a operacao se chama "restaurar".
+    O pacote e resolvido NESTA maquina, pelo nome. O Live nao ganha o direito
+    de ler um ZIP arbitrario do disco do cliente so porque a operacao se chama
+    "restaurar".
     """
-    from pathlib import Path as Caminho
-
     from autotarefas.tasks.restauracao import listar_conteudo
 
-    from . import raizes
-
-    pacote = raizes.exigir_autorizacao(
-        contexto.configuracao, Caminho(str(parametros.get("pacote", "")))
-    )
+    pacote = _achar_pacote(contexto.configuracao, str(parametros.get("pacote", "")))
     return {"pacote": pacote.name, "conteudo": listar_conteudo(pacote)}
 
 
@@ -257,18 +290,17 @@ async def executar_restaurar(parametros: dict[str, Any], contexto: Contexto) -> 
     from . import raizes
 
     configuracao = contexto.configuracao
-    pacote = raizes.exigir_autorizacao(configuracao, Caminho(str(parametros.get("pacote", ""))))
-    destino = raizes.exigir_autorizacao(configuracao, Caminho(str(parametros.get("destino", ""))))
+    pacote = _achar_pacote(configuracao, str(parametros.get("pacote", "")))
     anteriores = [
-        raizes.exigir_autorizacao(configuracao, Caminho(str(item)))
-        for item in parametros.get("anteriores") or []
+        _achar_pacote(configuracao, str(item)) for item in parametros.get("anteriores") or []
     ]
 
-    # A pasta de protecao tambem e uma pasta desta maquina, e por isso passa
-    # pela mesma guarda. Sem isso, o Live poderia apontar para qualquer lugar
-    # do disco e usar a resposta para descobrir o que existe la.
-    dito = str(parametros.get("protecao") or "")
-    protecao = raizes.exigir_autorizacao(configuracao, Caminho(dito)) if dito else None
+    # O DESTINO e a unica coisa que o Live escolhe de verdade aqui, e por isso
+    # passa pela guarda de pastas autorizadas: restaurar e escrever no disco do
+    # cliente, e essa porta nao pode ser mais larga que a de ler.
+    destino = raizes.exigir_autorizacao(configuracao, Caminho(str(parametros.get("destino", ""))))
+
+    protecao = _pasta_de_protecao(configuracao, parametros)
 
     await contexto.relatar({"etapa": "restaurando", "pacote": pacote.name})
     relatorio = await _asyncio.to_thread(
@@ -284,6 +316,29 @@ async def executar_restaurar(parametros: dict[str, Any], contexto: Contexto) -> 
     return dict(relatorio.as_dict())
 
 
+def _pasta_de_protecao(configuracao: Configuracao, parametros: dict[str, Any]) -> Any:
+    """
+    Qual pasta de pacotes prova que existe backup do que sera substituido.
+
+    `conferir_backup` e o caminho da tela: ela nao conhece caminho nenhum desta
+    maquina, entao pede "confira nos meus pacotes" e o Agente resolve qual pasta
+    e essa. `protecao` com caminho e o caminho da linha de comando, e passa pela
+    guarda de pastas autorizadas como qualquer outro caminho vindo de fora.
+
+    Sem nenhum dos dois, devolve `None` — e a guarda de acao destrutiva bloqueia
+    a sobrescrita. Nao saber e bloqueio.
+    """
+    from pathlib import Path as Caminho
+
+    from . import artefatos, raizes
+
+    if parametros.get("conferir_backup"):
+        return artefatos.pasta_dos_pacotes(configuracao)
+
+    dito = str(parametros.get("protecao") or "")
+    return raizes.exigir_autorizacao(configuracao, Caminho(dito)) if dito else None
+
+
 def registro_padrao() -> Registro:
     """Executores que todo Agente conhece."""
     # Import tardio: `backup` importa este modulo para o `Contexto`, e um
@@ -295,6 +350,7 @@ def registro_padrao() -> Registro:
     registro.registrar("backup", executar_backup)
     registro.registrar("politicas", executar_politicas)
     registro.registrar("situacao", executar_situacao)
+    registro.registrar("pacotes", executar_pacotes)
     registro.registrar("listar_pacote", executar_listar_pacote)
     registro.registrar("restaurar", executar_restaurar)
     return registro
@@ -308,6 +364,7 @@ __all__ = [
     "atender",
     "executar_estado",
     "executar_listar_pacote",
+    "executar_pacotes",
     "executar_politicas",
     "executar_restaurar",
     "executar_situacao",

@@ -665,10 +665,29 @@ class PedidoDeRestauracao(BaseModel):
     #: prova que existe backup recente e conferido daquilo que sera
     #: substituido. Sem prova, o Agente bloqueia.
     protecao: str = ""
+    #: O caminho da TELA: ela nao conhece pasta nenhuma da maquina, entao pede
+    #: "confira nos meus pacotes" e o Agente resolve qual pasta e essa.
+    conferir_backup: bool = False
     #: Saida explicita da guarda, com o motivo. Fica na trilha de auditoria:
     #: uma protecao sem saida as pessoas desligam de vez, e uma saida sem
     #: registro ninguem sabe se estava ligada.
     dispensar_protecao: str = ""
+
+
+@roteador.post("/{dispositivo_id}/pacotes")
+async def listar_pacotes_do_dispositivo(
+    dispositivo_id: str,
+    contexto: ContextoAtual,
+    sessao: SessaoBanco,
+) -> JSONResponse:
+    """
+    Quais pacotes existem NAQUELA maquina, agora.
+
+    Vem do dispositivo, e nao do banco: o servidor guarda a ficha do artefato,
+    mas quem sabe se o arquivo ainda esta la e a maquina. Listar do banco
+    ofereceria para restaurar um pacote que alguem ja apagou.
+    """
+    return await _pedir_ao_dispositivo(sessao, contexto, dispositivo_id, "pacotes", {})
 
 
 @roteador.post("/{dispositivo_id}/pacote")
@@ -715,6 +734,7 @@ async def restaurar_no_dispositivo(
             "apenas": pedido.apenas,
             "sobrescrever": pedido.sobrescrever,
             "protecao": pedido.protecao,
+            "conferir_backup": pedido.conferir_backup,
             "dispensar_protecao": pedido.dispensar_protecao,
         },
         prazo_s=1800.0,

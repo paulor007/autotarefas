@@ -329,6 +329,155 @@ class TestRestauracaoProtegida:
         assert "maquina nova, sem dados" in resultado["protecao"]
 
 
+class TestPacotesPeloNome:
+    """A tela pede pacote pelo NOME; a maquina resolve onde ele esta (G.7.2).
+
+    O Live nunca recebeu o caminho local — recebeu a ficha do artefato, que tem
+    o nome. Fazer a conversa por nome fecha uma porta de brinde: o servidor nao
+    consegue apontar para um arquivo arbitrario do disco, porque nao e ele quem
+    escolhe a pasta.
+    """
+
+    @staticmethod
+    def _maquina_com_pacote(tmp_path: Any) -> tuple[Configuracao, Any, str]:
+        from datetime import datetime
+
+        from autotarefas.tasks.backup import BackupTask
+
+        raiz = tmp_path / "cliente" / "dados"
+        documentos = raiz / "docs"
+        documentos.mkdir(parents=True)
+        (documentos / "contrato.txt").write_text("do backup", encoding="utf-8")
+
+        # Ao lado da pasta autorizada, e nao dentro: e onde o Agente grava por
+        # padrao, e e la que `artefatos` procura pelo nome.
+        pacotes = tmp_path / "cliente" / "backups"
+        pacotes.mkdir()
+        nome = f"backup_{datetime.now():%Y-%m-%d_%H%M}.zip"
+        BackupTask(sources=[documentos], destination=pacotes / nome).run()
+
+        configuracao = Configuracao(servidor="https://x", dispositivo_id="d").com_raiz(raiz)
+        return configuracao, raiz, nome
+
+    def test_a_tela_lista_os_pacotes_da_maquina(self, tmp_path: Any) -> None:
+        configuracao, _, nome = self._maquina_com_pacote(tmp_path)
+
+        resultado = asyncio.run(
+            comandos.atender(
+                _comando("pacotes"), comandos.registro_padrao(), _contexto(configuracao)
+            )
+        )
+
+        assert resultado["ok"] is True
+        assert [item["nome"] for item in resultado["pacotes"]] == [nome]
+        assert resultado["tem_pasta_autorizada"] is True
+
+    def test_a_listagem_nao_devolve_caminho_local(self, tmp_path: Any) -> None:
+        configuracao, _, _ = self._maquina_com_pacote(tmp_path)
+
+        resultado = asyncio.run(
+            comandos.atender(
+                _comando("pacotes"), comandos.registro_padrao(), _contexto(configuracao)
+            )
+        )
+
+        assert str(tmp_path) not in str(resultado)
+
+    def test_sem_pasta_autorizada_a_tela_sabe_o_motivo(self) -> None:
+        """
+        Lista vazia por falta de autorizacao e lista vazia por falta de backup
+        sao coisas diferentes, e pedem acoes diferentes de quem le.
+        """
+        resultado = asyncio.run(
+            comandos.atender(
+                _comando("pacotes"), comandos.registro_padrao(), _contexto(Configuracao())
+            )
+        )
+
+        assert resultado["pacotes"] == []
+        assert resultado["tem_pasta_autorizada"] is False
+
+    def test_listar_conteudo_pelo_nome(self, tmp_path: Any) -> None:
+        configuracao, _, nome = self._maquina_com_pacote(tmp_path)
+
+        resultado = asyncio.run(
+            comandos.atender(
+                _comando("listar_pacote", pacote=nome),
+                comandos.registro_padrao(),
+                _contexto(configuracao),
+            )
+        )
+
+        assert resultado["ok"] is True
+        assert any(item["arquivo"].endswith("contrato.txt") for item in resultado["conteudo"])
+
+    def test_nome_com_travessia_e_recusado(self, tmp_path: Any) -> None:
+        """
+        Se o nome virasse caminho, a guarda de pastas autorizadas teria sido
+        contornada pela porta dos fundos.
+        """
+        configuracao, _, nome = self._maquina_com_pacote(tmp_path)
+        alheio = tmp_path / "fora.zip"
+        alheio.write_bytes(b"nao e para ler")
+
+        resultado = asyncio.run(
+            comandos.atender(
+                _comando("listar_pacote", pacote=rf"..\..\{alheio.name}"),
+                comandos.registro_padrao(),
+                _contexto(configuracao),
+            )
+        )
+
+        assert resultado["ok"] is False
+        assert nome not in resultado["erro"]
+
+    def test_restaurar_pelo_nome_recupera_o_arquivo(self, tmp_path: Any) -> None:
+        configuracao, raiz, nome = self._maquina_com_pacote(tmp_path)
+        destino = raiz / "recuperado"
+
+        resultado = asyncio.run(
+            comandos.atender(
+                _comando("restaurar", pacote=nome, destino=str(destino)),
+                comandos.registro_padrao(),
+                _contexto(configuracao),
+            )
+        )
+
+        assert resultado["ok"] is True, resultado.get("erro")
+        recuperado = next(destino.rglob("contrato.txt"))
+        assert recuperado.read_text(encoding="utf-8") == "do backup"
+
+    def test_conferir_backup_dispensa_a_tela_de_conhecer_caminhos(self, tmp_path: Any) -> None:
+        """
+        A tela nao conhece pasta nenhuma da maquina.
+
+        Ela pede "confira nos meus pacotes", e o Agente resolve qual pasta e
+        essa. Exigir um caminho da tela obrigaria o servidor a guardar caminhos
+        locais — exatamente o que o desenho evita.
+        """
+        configuracao, raiz, nome = self._maquina_com_pacote(tmp_path)
+        atual = raiz / "docs" / "contrato.txt"
+        atual.write_text("ATUAL", encoding="utf-8")
+
+        resultado = asyncio.run(
+            comandos.atender(
+                _comando(
+                    "restaurar",
+                    pacote=nome,
+                    destino=str(raiz),
+                    sobrescrever=True,
+                    conferir_backup=True,
+                ),
+                comandos.registro_padrao(),
+                _contexto(configuracao),
+            )
+        )
+
+        assert resultado["ok"] is True, resultado.get("erro")
+        assert resultado["protecao"].startswith("backup backup_")
+        assert atual.read_text(encoding="utf-8") == "do backup"
+
+
 @pytest.mark.parametrize("mensagem", [{}, {"tipo": "outra"}, {"id": "x"}])
 def test_mensagem_incompleta_nao_quebra(mensagem: dict[str, Any]) -> None:
     """Entrada malformada vira resultado de acao desconhecida, nao excecao."""

@@ -34,7 +34,8 @@ Uma capacidade só entra depois que a trilha G entrega o lugar onde ela mora.
 | **G.5.3** | Destinos reais: disco local, disco externo, pasta de rede | G.5.2 | ✅ implementada |
 | **G.6** | Telas de operação: dispositivos, pastas, política | G.5.3 | ✅ implementada — política e destino vêm com 02.E |
 | **G.7.1** | Diário de execuções no Agente e sincronização do histórico | G.6 | ✅ implementada |
-| **G.7.2** | Telas de saúde, histórico, artefatos e restauração | G.7.1 | a fazer |
+| **G.7.2** | Pacotes resolvidos pelo nome: listagem e restauração sem caminho local | G.7.1 | ✅ implementada |
+| **G.7.3** | Telas de saúde, histórico, artefatos e restauração guiada | G.7.2 | a fazer |
 | **G.8** | Empacotamento: serviço do Windows, instalador, download guiado | G.5.2 | a fazer |
 
 ### 1.2 Capacidades do Card 02
@@ -309,6 +310,43 @@ Prova: `apps/agente/tests/test_canal.py::TestHistoricoDoAgendamento` sobe o
 backend de verdade numa porta livre, conecta com o cliente WebSocket de
 produção e verifica que execuções gravadas offline aparecem na rota
 `/api/historico` depois da reconexão.
+
+---
+
+## 2.13 Por que a tela pede pacote pelo nome
+
+O Live nunca recebeu o caminho local de um pacote — recebeu a ficha do artefato,
+que tem nome, tamanho e soma. O caminho revela a estrutura de pastas da empresa,
+e mandá-lo ao servidor entregaria de graça um mapa que ninguém pediu.
+
+Então a conversa acontece por **nome**. A tela diz `backup_2026-08-25_0200.zip`;
+o Agente procura na pasta de pacotes que ele mesmo conhece e resolve para um
+caminho real. Uma consequência útil cai de brinde: o servidor **não consegue
+apontar para um arquivo arbitrário do disco**, porque não é ele quem escolhe a
+pasta.
+
+O nome é conferido antes de virar caminho. Nome com separador, com `..` ou fora
+do formato do produto é recusado sem ser usado — se o nome virasse caminho, a
+guarda de pastas autorizadas teria sido contornada pela porta dos fundos.
+
+Isso também resolve um problema real que existia: a pasta padrão de pacotes fica
+**ao lado** da primeira pasta autorizada, e não dentro dela (senão o pacote de
+hoje entraria no backup de amanhã). Como consequência, ela não passa na guarda
+de pastas autorizadas — e a restauração pela interface não teria como alcançar
+os próprios pacotes que o Agente produziu.
+
+O que continua passando pela guarda de pastas autorizadas: o **destino** da
+restauração. É a única coisa que a tela escolhe de verdade, e escrever no disco
+do cliente não pode ter porta mais larga que ler.
+
+Para a sobrescrita, a tela envia `conferir_backup` em vez de um caminho: ela não
+conhece pasta nenhuma da máquina, então pede "confira nos meus pacotes" e o
+Agente resolve qual pasta é essa. `--protecao` com caminho continua existindo
+para a linha de comando.
+
+A listagem vem **do dispositivo**, não do banco: o servidor guarda a ficha do
+artefato, mas quem sabe se o arquivo ainda está lá é a máquina. Listar do banco
+ofereceria para restaurar um pacote que alguém já apagou.
 
 ---
 
