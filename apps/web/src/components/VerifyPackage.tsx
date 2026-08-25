@@ -17,14 +17,34 @@ interface Props {
  * hash de cada arquivo, sem depender dos originais: é exatamente a situação
  * de quem um dia precisar restaurar.
  *
- * O limite vem junto com o resultado, sempre. Um resultado positivo sem a
- * ressalva de que isso não prova autenticidade seria a mesma promessa
- * exagerada que o produto recusa em todos os outros lugares.
+ * O limite vem junto com o resultado, sempre — e desde a 02.B ele depende de
+ * o pacote estar assinado. São duas perguntas diferentes:
+ *
+ * - **integridade**: o conteúdo bate com o manifesto?
+ * - **autenticidade**: a assinatura do manifesto confere com a chave externa?
+ *
+ * Sem assinatura, só a primeira tem resposta, e a tela diz isso. Anunciar
+ * "íntegro" sem essa distinção seria a promessa exagerada que o produto
+ * recusa em todos os outros lugares.
  *
  * Escopo: confere o pacote que está no servidor, na pasta desta execução —
  * o mesmo arquivo que o botão de download entrega. Não confere a cópia já
  * baixada, que o navegador guarda fora do alcance da página.
  */
+/**
+ * Uma linha curta por desfecho da assinatura.
+ *
+ * "sem chave" nunca vira "adulterado": alarme falso treina a pessoa a ignorar
+ * o alarme de verdade.
+ */
+const ROTULO_AUTENTICIDADE: Record<VerifyReport["autenticidade"], string> = {
+  nao_assinado: "Pacote não assinado — autenticidade não comprovada.",
+  autentico: "Assinatura confere: o pacote não foi alterado depois de gerado.",
+  adulterado: "A assinatura NÃO confere: o pacote foi alterado depois de assinado.",
+  sem_chave: "Pacote assinado; a chave de conferência não está disponível aqui.",
+  outra_chave: "Pacote assinado com outra chave.",
+};
+
 export default function VerifyPackage({ token, name }: Props) {
   const [relatorio, setRelatorio] = useState<VerifyReport | null>(null);
   const [conferindo, setConferindo] = useState(false);
@@ -92,6 +112,19 @@ export default function VerifyPackage({ token, name }: Props) {
               de dentro do próprio pacote.
             </p>
           )}
+
+          <p
+            className={`mt-1.5 text-[0.85rem] ${
+              relatorio.autenticidade === "autentico"
+                ? "text-ok"
+                : relatorio.autenticidade === "adulterado" ||
+                    relatorio.autenticidade === "outra_chave"
+                  ? "text-danger"
+                  : "text-muted"
+            }`}
+          >
+            {ROTULO_AUTENTICIDADE[relatorio.autenticidade]}
+          </p>
 
           {relatorio.corrompidos.length > 0 && (
             <p className="mt-1.5 text-[0.85rem] text-muted">

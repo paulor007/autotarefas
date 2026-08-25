@@ -38,17 +38,17 @@ Uma capacidade só entra depois que a trilha G entrega o lugar onde ela mora.
 
 ### 1.2 Capacidades do Card 02
 
-| Etapa | O que entrega | Depende de |
-| --- | --- | --- |
-| **02.A** | Segurança de caminhos, ciclos, ressalvas visíveis | — (✅ `90193f5`, `5870838`) |
-| **02.B** | Assinatura HMAC com chave externa — autenticidade | 02.A · **G.2.3** |
-| **02.C** | Criptografia AES e gestão da senha | 02.B · G.2.3 |
-| **02.D** | VSS para arquivo aberto | **G.5.2** (só existe no Agente) |
-| **02.E** | Agendamento, retry/backoff, notificações, retenção GFS | G.5.2 · **G.6** |
-| **02.F** | Destino externo e conector S3 compatível | 02.C · G.5.3 |
-| **02.H** | Restauração guiada pela interface | 02.B · G.6 |
-| **02.I** | Incremental por arquivo, com catálogo | 02.E |
-| **02.J** | Hooks de segurança com falha fechada | G.6 |
+| Etapa | O que entrega | Depende de | Estado |
+| --- | --- | --- | --- |
+| **02.A** | Segurança de caminhos, ciclos, ressalvas visíveis | — | ✅ `90193f5`, `5870838` |
+| **02.B** | Assinatura HMAC com chave externa — autenticidade | 02.A · **G.2.3** | ✅ implementada |
+| **02.C** | Criptografia AES e gestão da senha | 02.B · G.2.3 | a fazer |
+| **02.D** | VSS para arquivo aberto | **G.5.2** (só existe no Agente) | a fazer |
+| **02.E** | Agendamento, retry/backoff, notificações, retenção GFS | G.5.2 · **G.6** | a fazer |
+| **02.F** | Destino externo e conector S3 compatível | 02.C · G.5.3 | a fazer |
+| **02.H** | Restauração guiada pela interface | 02.B · G.6 | a fazer |
+| **02.I** | Incremental por arquivo, com catálogo | 02.E | a fazer |
+| **02.J** | Hooks de segurança com falha fechada | G.6 | a fazer |
 
 ### 1.3 Ordem de execução
 

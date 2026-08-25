@@ -62,6 +62,35 @@ def nova_chave(ctx: CLIContext) -> None:
     console.info("Defina a variavel no servidor, ou guarde-a no cofre do sistema.")
 
 
+@cofre.command(name="chave-de-backup")
+@click.pass_obj
+def chave_de_backup(ctx: CLIContext) -> None:
+    """
+    Sorteia a chave que assina o manifesto dos backups.
+
+    E uma chave diferente da mestra, e de proposito: a mestra protege o cofre
+    da plataforma; esta viaja ate a maquina que gera o pacote (o Agente) e e a
+    que prova autenticidade. Separar as duas evita que o comprometimento de
+    uma leve a outra junto.
+
+    Guarde-a no cofre. Trocar esta chave nao estraga os pacotes antigos, mas a
+    conferencia deles passa a dizer "assinado com outra chave" — que e
+    informacao correta, e nao alarme de adulteracao.
+    """
+    from autotarefas.tasks import assinatura
+
+    console = Console(ctx)
+    chave = assinatura.gerar_chave()
+
+    console.info("Chave de assinatura de backup (guarde agora):")
+    console.info("")
+    console.info(f"  {assinatura.VAR_CHAVE}={chave}")
+    console.info("")
+    console.info("Sem ela, os pacotes continuam sendo gerados e conferidos quanto a")
+    console.info("integridade. Mas a conferencia dira que a autenticidade nao foi")
+    console.info("comprovada, porque nao ha assinatura.")
+
+
 @cofre.command(name="conferir")
 @click.pass_obj
 def conferir(ctx: CLIContext) -> None:

@@ -95,3 +95,38 @@ class TestConferir:
         _, saida = _rodar(["conferir"])
 
         assert segredo not in saida
+
+
+class TestChaveDeBackup:
+    """
+    A chave de assinatura e separada da mestra, e de proposito.
+
+    A mestra protege o cofre no servidor; esta viaja ate a maquina que gera o
+    pacote. Comprometer uma nao pode entregar a outra.
+    """
+
+    def test_gera_chave_com_o_nome_da_variavel_certa(self) -> None:
+        from autotarefas.tasks.assinatura import VAR_CHAVE as VAR_BACKUP
+
+        codigo, saida = _rodar(["chave-de-backup"])
+
+        assert codigo == 0
+        assert VAR_BACKUP in saida
+        linha = next(texto for texto in saida.splitlines() if VAR_BACKUP in texto)
+        valor = linha.split("=", 1)[1].strip()
+        assert len(base64.urlsafe_b64decode(valor)) >= 32
+
+    def test_e_diferente_da_chave_mestra(self) -> None:
+        from autotarefas.tasks.assinatura import VAR_CHAVE as VAR_BACKUP
+
+        _, backup = _rodar(["chave-de-backup"])
+        _, mestra = _rodar(["nova-chave"])
+
+        assert VAR_BACKUP in backup
+        assert VAR_BACKUP not in mestra
+        assert VAR_CHAVE not in backup
+
+    def test_explica_o_que_acontece_sem_a_chave(self) -> None:
+        """Quem nao configurar precisa saber exatamente o que perde."""
+        _, saida = _rodar(["chave-de-backup"])
+        assert "autenticidade nao foi" in saida

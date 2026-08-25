@@ -79,6 +79,18 @@ export interface VerifyReport {
   nao_lidos_na_origem: string[];
   problema: string;
   limite: string;
+  /** O pacote traz assinatura do manifesto? */
+  assinado: boolean;
+  /**
+   * O que a assinatura permite concluir. Integridade e autenticidade sao
+   * perguntas diferentes, e a tela precisa das duas para nao prometer demais.
+   */
+  autenticidade:
+    | "nao_assinado"
+    | "autentico"
+    | "adulterado"
+    | "sem_chave"
+    | "outra_chave";
 }
 
 /**

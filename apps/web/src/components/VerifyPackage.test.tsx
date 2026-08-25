@@ -33,8 +33,18 @@ const INTEGRO = {
   nao_declarados: [],
   nao_lidos_na_origem: [],
   problema: "",
+  assinado: false,
+  autenticidade: "nao_assinado",
   limite:
     "Detecta corrupção e alteração acidental. Não comprova autenticidade contra adulteração intencional.",
+};
+
+const ASSINADO = {
+  ...INTEGRO,
+  assinado: true,
+  autenticidade: "autentico",
+  limite:
+    "Assinatura confere: o pacote saiu de quem tem a chave e o conteúdo não foi alterado depois.",
 };
 
 describe("VerifyPackage", () => {
@@ -126,6 +136,72 @@ describe("VerifyPackage", () => {
     expect(
       screen.getByText(/Confere o pacote no servidor, antes do download/),
     ).toBeTruthy();
+  });
+
+  it("diz que o pacote não foi assinado quando não foi", async () => {
+    mockVerify(INTEGRO);
+    render(<VerifyPackage token="tok-1" name="backup.zip" />);
+
+    await userEvent.click(
+      screen.getByRole("button", { name: /Verificar este pacote/i }),
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText(/não assinado/i)).toBeTruthy();
+    });
+  });
+
+  it("mostra que a assinatura confere quando o pacote é assinado", async () => {
+    mockVerify(ASSINADO);
+    render(<VerifyPackage token="tok-1" name="backup.zip" />);
+
+    await userEvent.click(
+      screen.getByRole("button", { name: /Verificar este pacote/i }),
+    );
+
+    await waitFor(() => {
+      // Texto do rótulo, não o do limite: os dois falam de assinatura, e
+      // casar pelos dois tornaria o teste ambíguo.
+      expect(
+        screen.getByText(/não foi alterado depois de gerado/i),
+      ).toBeTruthy();
+    });
+  });
+
+  it("recusa o pacote quando a assinatura não confere", async () => {
+    // O caso que a 02.B existe para pegar: hashes batendo porque o atacante
+    // recalculou o manifesto, e mesmo assim o pacote é recusado.
+    mockVerify({
+      ...ASSINADO,
+      integro: false,
+      autenticidade: "adulterado",
+      corrompidos: [],
+    });
+    render(<VerifyPackage token="tok-1" name="backup.zip" />);
+
+    await userEvent.click(
+      screen.getByRole("button", { name: /Verificar este pacote/i }),
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText(/assinatura NÃO confere/i)).toBeTruthy();
+    });
+    expect(screen.getByText(/não confie nele para restaurar/i)).toBeTruthy();
+  });
+
+  it("sem a chave, não acusa adulteração", async () => {
+    // Alarme falso treina a pessoa a ignorar o alarme de verdade.
+    mockVerify({ ...ASSINADO, autenticidade: "sem_chave" });
+    render(<VerifyPackage token="tok-1" name="backup.zip" />);
+
+    await userEvent.click(
+      screen.getByRole("button", { name: /Verificar este pacote/i }),
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText(/chave de conferência não está/i)).toBeTruthy();
+    });
+    expect(screen.queryByText(/NÃO confere/i)).toBeNull();
   });
 
   it("mostra erro sem derrubar a tela", async () => {

@@ -5,6 +5,15 @@ Backup que ninguem confere e fe, nao garantia. E a conferencia tem que
 funcionar no dia em que o original ja nao existe — por isso ela le o
 `MANIFESTO.csv` que esta DENTRO do pacote, e nao a pasta de origem.
 
+Duas perguntas diferentes, e as duas sao respondidas:
+
+- **integridade** — o conteudo bate com o que o manifesto declarou?
+- **autenticidade** — a assinatura do manifesto confere com a chave externa?
+
+Sem assinatura, so a primeira tem resposta, e isso e dito em voz alta: quem
+alterar um arquivo e recalcular o manifesto passa pela conferencia de
+integridade, porque a chave dela viaja dentro do proprio pacote.
+
 Uso:
     autotarefas verificar backups/contabilidade_2026-08-20_1730.zip
 """
@@ -17,6 +26,7 @@ import click
 
 from autotarefas.cli.console import Console
 from autotarefas.cli.context import CLIContext
+from autotarefas.tasks.assinatura import Autenticidade
 from autotarefas.tasks.backup import VerifyReport, verify_backup
 
 #: Quantos arquivos com problema listar antes de resumir.
@@ -27,6 +37,47 @@ _EXIT_PROBLEMA = 1
 
 #: Saida 2 = nem deu para conferir (nao abriu, sem manifesto).
 _EXIT_FALHA = 2
+
+
+#: O que dizer sobre a assinatura, em texto de terminal (sem acento e sem
+#: travessao: o console do Windows abre em cp1252 e estraga os dois).
+_AUTENTICIDADE: dict[Autenticidade, str] = {
+    Autenticidade.NAO_ASSINADO: (
+        "Pacote NAO assinado: isto confere corrupcao e alteracao acidental, "
+        "nao adulteracao intencional."
+    ),
+    Autenticidade.AUTENTICO: (
+        "Assinatura confere: o pacote saiu de quem tem a chave e nao foi alterado depois."
+    ),
+    Autenticidade.ADULTERADO: (
+        "ASSINATURA NAO CONFERE: o pacote foi alterado depois de assinado, ou "
+        "a assinatura foi forjada."
+    ),
+    Autenticidade.SEM_CHAVE: (
+        "Pacote assinado, mas sem a chave aqui para conferir. Integridade "
+        "conferida; autenticidade, nao. Defina AUTOTAREFAS_BACKUP_KEY."
+    ),
+    Autenticidade.OUTRA_CHAVE: (
+        "Pacote assinado com OUTRA chave. Confira qual chave estava em uso quando ele foi gerado."
+    ),
+}
+
+
+def _relatar_assinatura(console: Console, relatorio: VerifyReport) -> None:
+    """
+    Diz o que a assinatura permite (ou nao permite) concluir.
+
+    Sempre aparece, inclusive no caso bom: um "integro" sozinho promete mais
+    do que foi provado quando o pacote nem assinado esta.
+    """
+    frase = _AUTENTICIDADE[relatorio.authenticity]
+    console.info("")
+    if relatorio.authenticity is Autenticidade.AUTENTICO:
+        console.success(frase)
+    elif relatorio.authenticity in {Autenticidade.ADULTERADO, Autenticidade.OUTRA_CHAVE}:
+        console.error(frase)
+    else:
+        console.warning(frase)
 
 
 def _listar(console: Console, titulo: str, itens: tuple[str, ...]) -> None:
@@ -44,6 +95,8 @@ def _listar(console: Console, titulo: str, itens: tuple[str, ...]) -> None:
 def _relatar(console: Console, relatorio: VerifyReport) -> None:
     """Traduz o relatorio para o que a pessoa precisa saber."""
     console.info(f"Arquivos conferidos: {relatorio.checked}")
+
+    _relatar_assinatura(console, relatorio)
 
     _listar(console, "Conteudo diferente do declarado", relatorio.corrupted)
     _listar(console, "Declarados no manifesto e ausentes do pacote", relatorio.missing)
@@ -92,7 +145,7 @@ def verificar(ctx: CLIContext, pacote: Path) -> None:
         return
 
     console.info("")
-    console.error("Pacote com problemas — NAO confie nele para restaurar.")
+    console.error("Pacote com problemas: NAO confie nele para restaurar.")
     raise click.exceptions.Exit(_EXIT_PROBLEMA)
 
 

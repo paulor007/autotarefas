@@ -304,24 +304,17 @@ def verify(token: str, name: str) -> JSONResponse:
     cada arquivo — nao depende dos originais, que e justamente a situacao de
     quem precisa restaurar.
 
-    Limite honesto, repetido na tela: isto detecta corrupcao e alteracao
-    acidental. NAO prova autenticidade contra quem tenha acesso de escrita ao
-    arquivo, porque a chave da conferencia viaja dentro do proprio pacote.
+    O limite vem do proprio relatorio, e nao de um texto fixo aqui: desde a
+    02.B ele depende de o pacote estar assinado ou nao. Um texto fixo dizendo
+    "nao comprova autenticidade" continuaria aparecendo em pacote assinado,
+    negando uma garantia que passou a existir — e um fixo dizendo o contrario
+    prometeria o que nao ha em pacote sem assinatura.
     """
     path = engine.resolve_artifact(token, name)
     if path is None:
         return JSONResponse({"detail": "arquivo nao encontrado"}, status_code=404)
 
-    relatorio = verify_backup(path)
-    return JSONResponse(
-        {
-            **relatorio.as_dict(),
-            "limite": (
-                "Detecta corrupção e alteração acidental. Não comprova "
-                "autenticidade contra adulteração intencional."
-            ),
-        }
-    )
+    return JSONResponse(verify_backup(path).as_dict())
 
 
 # Front-end buildado (Vite) - montado automaticamente quando existir (Fase 2/deploy).

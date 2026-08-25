@@ -69,6 +69,7 @@ from typing import Any, ClassVar
 from autotarefas.core import BaseTask, TaskResult, TaskStatus, ValidationError
 from autotarefas.core.exceptions import SecurityError
 from autotarefas.core.security import validate_filename
+from autotarefas.tasks import assinatura
 
 #: Nome do manifesto dentro do pacote.
 MANIFEST_NAME = "MANIFESTO.csv"
@@ -757,15 +758,30 @@ class BackupTask(BaseTask):
                         ilegiveis.append(UnreadableFile(arcname, _motivo(exc)))
 
                 self._escrever_pastas_vazias(zf, arcnames, pastas)
-                zf.writestr(
-                    MANIFEST_NAME,
-                    self._manifesto(entradas, ilegiveis, started_at, links=links),
+                manifesto = self._manifesto(entradas, ilegiveis, started_at, links=links).encode(
+                    "utf-8"
                 )
+                zf.writestr(MANIFEST_NAME, manifesto)
+                self._assinar(zf, manifesto)
         except OSError:
             self._discard_partial()
             raise
 
         return entradas, ilegiveis
+
+    def _assinar(self, zf: zipfile.ZipFile, manifesto: bytes) -> None:
+        """
+        Assina o manifesto, quando ha chave configurada.
+
+        Assinar e opcional de proposito: sem chave, o pacote continua util e a
+        conferencia diz que a autenticidade nao foi comprovada. Recusar-se a
+        fazer backup por falta de chave trocaria um risco por outro pior — o
+        de nao ter copia nenhuma.
+        """
+        chave = assinatura.chave_configurada()
+        if chave is None:
+            return
+        zf.writestr(assinatura.NOME_ASSINATURA, assinatura.assinar(manifesto, chave))
 
     def _escrever(self, zf: zipfile.ZipFile, arquivo: Path, arcname: str) -> BackupEntry:
         """
@@ -942,6 +958,13 @@ class VerifyReport:
     """Ficaram de fora quando o backup foi feito (ja era sabido)."""
     problem: str = ""
     """Preenchido quando o pacote nem pode ser aberto."""
+    authenticity: assinatura.Autenticidade = assinatura.Autenticidade.NAO_ASSINADO
+    """Integridade e autenticidade sao perguntas diferentes; esta e a segunda."""
+
+    @property
+    def signed(self) -> bool:
+        """O pacote traz assinatura?"""
+        return self.authenticity is not assinatura.Autenticidade.NAO_ASSINADO
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -953,6 +976,9 @@ class VerifyReport:
             "nao_declarados": list(self.unexpected),
             "nao_lidos_na_origem": list(self.unreadable_at_origin),
             "problema": self.problem,
+            "assinado": self.signed,
+            "autenticidade": self.authenticity.value,
+            "limite": assinatura.EXPLICACAO[self.authenticity],
         }
 
 
@@ -995,11 +1021,16 @@ def verify_backup(path: Path, *, buffer_size: int = 64 * 1024) -> VerifyReport:
     Um backup que ninguem confere e fe, nao garantia. Com isto, da para
     conferir de tempos em tempos, ANTES do dia em que ele e necessario.
 
-    LIMITE, que precisa ficar dito: isto detecta CORRUPCAO e alteracao
-    acidental. Nao detecta adulteracao intencional — quem alterar um arquivo
-    e recalcular o manifesto passa por aqui sem ser notado, porque a chave da
-    conferencia viaja dentro do proprio pacote. Autenticidade so com
-    assinatura de chave externa.
+    E uma quarta, quando o pacote foi assinado: a assinatura do manifesto
+    confere com a chave externa? Sem assinatura, o limite antigo continua
+    valendo por inteiro — quem alterar um arquivo e recalcular o manifesto
+    passa despercebido, porque a chave da conferencia viaja dentro do proprio
+    pacote. Com assinatura, esse caminho fecha: recalcular o manifesto nao
+    produz uma assinatura valida para quem nao tem a chave.
+
+    O desfecho da assinatura vem em `authenticity`, e a frase que o acompanha
+    em `as_dict()["limite"]` — sempre junto do resultado, para que nenhum
+    "integro" apareca sozinho prometendo mais do que provou.
     """
     if not path.is_file():
         return VerifyReport(path=path, ok=False, checked=0, problem="arquivo nao encontrado")
@@ -1022,8 +1053,12 @@ def verify_backup(path: Path, *, buffer_size: int = 64 * 1024) -> VerifyReport:
                 )
 
             esperado, nao_lidos = _ler_manifesto(zf)
+            # O manifesto e a assinatura sao metadados do proprio pacote: nao
+            # constam do manifesto, e listar os dois como "nao declarados"
+            # faria todo pacote assinado parecer defeituoso.
+            metadados = {MANIFEST_NAME, assinatura.NOME_ASSINATURA}
             presentes = {
-                nome for nome in zf.namelist() if nome != MANIFEST_NAME and not nome.endswith("/")
+                nome for nome in zf.namelist() if nome not in metadados and not nome.endswith("/")
             }
 
             corrompidos = [
@@ -1033,19 +1068,47 @@ def verify_backup(path: Path, *, buffer_size: int = 64 * 1024) -> VerifyReport:
             ]
             faltando = sorted(set(esperado) - presentes)
             inesperados = sorted(presentes - set(esperado))
+            autenticidade = _conferir_assinatura(zf)
     except (zipfile.BadZipFile, OSError) as exc:
         return VerifyReport(
             path=path, ok=False, checked=0, problem=f"nao foi possivel abrir: {exc}"
         )
 
+    # Assinatura que nao confere derruba o pacote, mesmo com todos os hashes
+    # batendo: hash conferindo com manifesto recalculado e exatamente o cenario
+    # da adulteracao intencional. Ja `SEM_CHAVE` nao derruba nada — significa
+    # que a autenticidade nao pode ser avaliada aqui, e nao que ha problema.
+    suspeito = autenticidade in {
+        assinatura.Autenticidade.ADULTERADO,
+        assinatura.Autenticidade.OUTRA_CHAVE,
+    }
+
     return VerifyReport(
         path=path,
-        ok=not (corrompidos or faltando or inesperados),
+        ok=not (corrompidos or faltando or inesperados or suspeito),
         checked=len(esperado),
         corrupted=tuple(corrompidos),
         missing=tuple(faltando),
         unexpected=tuple(inesperados),
         unreadable_at_origin=tuple(nao_lidos),
+        authenticity=autenticidade,
+    )
+
+
+def _conferir_assinatura(zf: zipfile.ZipFile) -> assinatura.Autenticidade:
+    """Confere a assinatura do manifesto, se o pacote tiver uma."""
+    if assinatura.NOME_ASSINATURA not in zf.namelist():
+        return assinatura.Autenticidade.NAO_ASSINADO
+    try:
+        chave = assinatura.chave_configurada()
+    except assinatura.ChaveInvalida:
+        # Chave configurada mas ilegivel e o mesmo que nao ter chave: da para
+        # conferir integridade, nao autenticidade.
+        chave = None
+    return assinatura.conferir(
+        zf.read(assinatura.NOME_ASSINATURA).decode("utf-8"),
+        zf.read(MANIFEST_NAME),
+        chave,
     )
 
 
