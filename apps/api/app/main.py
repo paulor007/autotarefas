@@ -30,6 +30,7 @@ from autotarefas.tasks.backup import verify_backup
 from . import (
     catalog,
     demo_servers,
+    dispositivos,
     engine,
     jobs,
     ratelimit,
@@ -146,6 +147,7 @@ app.add_middleware(
 # generico continua servindo os cards antigos, sem payload inflado.
 app.include_router(spreadsheets.router)
 app.include_router(rotas_identidade.roteador)
+app.include_router(dispositivos.roteador)
 
 
 @app.get("/api/health")

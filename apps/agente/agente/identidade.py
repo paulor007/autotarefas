@@ -44,6 +44,13 @@ CONTA_CHAVE = "chave-do-dispositivo"
 #: Nome do arquivo de fallback, dentro da pasta de configuracao do Agente.
 ARQUIVO_CHAVE = "dispositivo.chave"
 
+#: Desliga o cofre do sistema operacional. Existe por dois motivos concretos:
+#: a suite nao pode escrever no Credential Manager da maquina de quem roda os
+#: testes, e um Agente para servidor Linux sem sessao grafica nao tem cofre
+#: nenhum para usar. Sem esta valvula, testar o caminho de arquivo exigiria
+#: sujar o cofre real — e foi o que aconteceu antes de ela existir.
+VAR_SEM_COFRE = "AUTOTAREFAS_AGENTE_SEM_COFRE"
+
 
 class SemIdentidade(Exception):
     """Nao ha chave privada nesta maquina."""
@@ -68,6 +75,8 @@ class Guarda:
 
     def _keyring(self) -> object | None:
         if not self.usar_cofre_do_sistema:
+            return None
+        if os.environ.get(VAR_SEM_COFRE, "").strip().lower() in {"1", "true", "yes", "on"}:
             return None
         try:
             import keyring
@@ -255,6 +264,7 @@ __all__ = [
     "ARQUIVO_CHAVE",
     "CONTA_CHAVE",
     "SERVICO",
+    "VAR_SEM_COFRE",
     "Guarda",
     "Identidade",
     "SemIdentidade",

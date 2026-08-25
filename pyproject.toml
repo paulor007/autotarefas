@@ -259,6 +259,12 @@ ignore = [
     "PLR0913",
 ]
 
+# Agente: pareamento carrega servidor, codigo, guarda, config e nome. Junta-los
+# numa estrutura so esconderia justamente o que precisa ficar visivel na leitura.
+"apps/agente/agente/**" = [
+    "PLR0913",
+]
+
 # Identidade: OIDC carrega muitos parametros por natureza (client_id, segredo,
 # redirect_uri, state, nonce, verificador). Junta-los numa estrutura so
 # esconderia justamente o que precisa ficar visivel na leitura.
