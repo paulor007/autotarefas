@@ -103,6 +103,7 @@ dependencies = [
     # === Segurança / criptografia ===
     "cryptography>=48.0.0,<49.0.0", # HMAC-SHA256 pro audit trail
     "pyzipper>=0.3.6,<1.0.0",       # ZIP com AES-256 no padrão WinZip (02.C)
+    "keyring>=25.0.0,<26.0.0",      # Cofre do sistema para a chave do Agente (G.3.1)
 
     # === Persistência da plataforma (Card 02 / G.2) ===
     "sqlalchemy>=2.0.0,<3.0.0",     # Modelo multiempresa; Postgres em produção
@@ -240,6 +241,17 @@ ignore = [
 "apps/api/tests/**" = [
     "S101",
     "S105",   # segredo literal em teste e literal de teste, nao credencial
+    "S106",
+    "PLR2004",
+    "ANN",
+    "SLF001",
+    "PLR0913",
+]
+
+# Testes do Agente (mesmas excecoes dos demais testes)
+"apps/agente/tests/**" = [
+    "S101",
+    "S105",
     "S106",
     "PLR2004",
     "ANN",

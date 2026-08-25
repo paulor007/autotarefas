@@ -25,7 +25,7 @@ Uma capacidade só entra depois que a trilha G entrega o lugar onde ela mora.
 | **G.2.1** | Modelo de dados multiempresa e persistência | G.1 | ✅ implementada |
 | **G.2.2** | Identidade: OIDC Relying Party + sessão + guarda de organização | G.2.1 | ✅ implementada |
 | **G.2.3** | Cofre de segredos com chave mestra externa | G.2.1 | ✅ implementada |
-| **G.3.1** | Esqueleto do Agente: processo, configuração local, par de chaves Ed25519 | G.2.1 | a fazer |
+| **G.3.1** | Esqueleto do Agente: processo, configuração local, par de chaves Ed25519 | G.2.1 | ✅ implementada |
 | **G.3.2** | Pareamento por código temporário e registro do dispositivo | G.3.1 · G.2.2 | a fazer |
 | **G.4.1** | Canal WSS de saída: autenticação por assinatura, heartbeat, reconexão | G.3.2 | a fazer |
 | **G.4.2** | Protocolo de comandos e telemetria (fila, entrega, idempotência) | G.4.1 | a fazer |
