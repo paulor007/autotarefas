@@ -28,6 +28,7 @@ import click
 
 from autotarefas.cli.console import Console
 from autotarefas.cli.context import CLIContext
+from autotarefas.tasks.hooks import ProtecaoBloqueou
 from autotarefas.tasks.restauracao import (
     Relatorio,
     RestauracaoRecusada,
@@ -59,6 +60,9 @@ def _listar(console: Console, pacote: Path) -> None:
 def _relatar(console: Console, relatorio: Relatorio) -> None:
     """Diz o que aconteceu, sem arredondar."""
     console.info(f"Restaurados: {len(relatorio.restaurados)}")
+
+    if relatorio.protecao:
+        console.info(f"Protecao: {relatorio.protecao}")
 
     if relatorio.ja_existiam:
         console.info("")
@@ -127,6 +131,25 @@ def _relatar(console: Console, relatorio: Relatorio) -> None:
     default=False,
     help="Substitui arquivos que ja existirem no destino. Por padrao, preserva.",
 )
+@click.option(
+    "--protecao",
+    type=click.Path(file_okay=False, path_type=Path),
+    default=None,
+    help=(
+        "Pasta de pacotes do DESTINO. Com --sobrescrever, a substituicao so "
+        "acontece se houver ali backup recente e conferido."
+    ),
+)
+@click.option(
+    "--dispensar-protecao",
+    "dispensar_protecao",
+    default="",
+    metavar="MOTIVO",
+    help=(
+        "Sobrescreve sem apresentar backup. Exige o motivo, que fica registrado "
+        "no relatorio da restauracao."
+    ),
+)
 @click.pass_obj
 def restaurar(
     ctx: CLIContext,
@@ -136,6 +159,8 @@ def restaurar(
     apenas: tuple[str, ...],
     anteriores: tuple[Path, ...],
     sobrescrever: bool,
+    protecao: Path | None,
+    dispensar_protecao: str,
 ) -> None:
     """Restaura os arquivos de um pacote gerado pelo AutoTarefas."""
     console = Console(ctx)
@@ -160,7 +185,16 @@ def restaurar(
             anteriores=list(anteriores),
             apenas=list(apenas) or None,
             sobrescrever=sobrescrever,
+            protecao=protecao,
+            dispensar_protecao=dispensar_protecao,
         )
+    except ProtecaoBloqueou as erro:
+        console.error(str(erro))
+        console.info(
+            "Nada foi alterado. Aponte a pasta de pacotes do destino com --protecao, "
+            "ou use --dispensar-protecao MOTIVO para assumir a substituicao."
+        )
+        raise click.exceptions.Exit(_EXIT_FALHA) from None
     except RestauracaoRecusada as erro:
         console.error(str(erro))
         raise click.exceptions.Exit(_EXIT_FALHA) from None

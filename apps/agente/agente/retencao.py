@@ -21,17 +21,13 @@ Duas regras que evitam estrago:
 
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass
 from datetime import date, datetime
 from pathlib import Path
 from typing import TypedDict
 
 from autotarefas.tasks.politica import Retencao
-
-#: Nome que o produto gera: `backup_2026-08-25_0230.zip`. O padrão é fechado
-#: de propósito — é ele que decide o que pode ser apagado.
-PADRAO = re.compile(r"^backup_(\d{4})-(\d{2})-(\d{2})_(\d{2})(\d{2})\.zip$")
+from autotarefas.tasks.retencao_nomes import PADRAO, data_do_nome, listar_pacotes
 
 
 @dataclass(frozen=True)
@@ -64,22 +60,12 @@ def listar(pasta: Path) -> list[Pacote]:
     pasta para outro disco atualiza a data de modificação de tudo, e a
     retenção passaria a achar que todos os pacotes são de hoje.
     """
-    if not pasta.is_dir():
-        return []
-
     encontrados: list[Pacote] = []
-    for arquivo in pasta.iterdir():
-        casou = PADRAO.match(arquivo.name)
-        if casou is None or not arquivo.is_file():
-            continue
-        ano, mes, dia, hora, minuto = (int(parte) for parte in casou.groups())
-        try:
-            quando = datetime(ano, mes, dia, hora, minuto)
-        except ValueError:
-            continue
-        encontrados.append(Pacote(caminho=arquivo, quando=quando))
-
-    return sorted(encontrados, key=lambda item: item.quando, reverse=True)
+    for arquivo in listar_pacotes(pasta):
+        quando = data_do_nome(arquivo.name)
+        if quando is not None:
+            encontrados.append(Pacote(caminho=arquivo, quando=quando))
+    return encontrados
 
 
 def decidir(pacotes: list[Pacote], regra: Retencao) -> tuple[list[Pacote], list[Pacote]]:

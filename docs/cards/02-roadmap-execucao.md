@@ -46,9 +46,9 @@ Uma capacidade só entra depois que a trilha G entrega o lugar onde ela mora.
 | **02.D** | VSS para arquivo aberto | **G.5.2** (só existe no Agente) | ✅ implementada · teste com elevação pendente |
 | **02.E** | Agendamento, retry/backoff, notificações, retenção GFS | G.5.2 · **G.6** | ✅ implementada · envio de e-mail exige SMTP no cofre |
 | **02.F** | Destino externo e conector S3 compatível | 02.C · G.5.3 | ✅ implementada · nuvem real pendente |
-| **02.H** | Restauração guiada pela interface | 02.B · G.6 | ✅ implementada |
+| **02.H** | Restauração guiada pela interface | 02.B · G.6 | ⏳ motor, comando do Agente, rota e CLI prontos · **a tela é da G.7** |
 | **02.I** | Incremental por arquivo, com catálogo | 02.E | ✅ implementada |
-| **02.J** | Hooks de segurança com falha fechada | G.6 | a fazer |
+| **02.J** | Hooks de segurança com falha fechada | G.6 | ✅ implementada |
 
 ### 1.3 Ordem de execução
 
@@ -220,6 +220,50 @@ com números que não existem.
 Consequência que a tela precisa dizer: um pacote incremental **não se sustenta
 sozinho**. Ele depende dos pacotes anteriores que o manifesto cita, e a
 conferência informa quais são. O padrão continua sendo o backup completo.
+
+---
+
+## 2.11 A guarda de ação destrutiva, e a saída que fica registrada
+
+Restaurar por cima de arquivos existentes é a operação que não se desfaz. A
+regra da 02.J é curta: **antes de substituir, prove que existe backup recente e
+conferido daquilo**.
+
+O que a guarda faz com cada situação:
+
+| Situação | Decisão |
+| --- | --- |
+| Backup recente, conferido, com a corrente completa | libera |
+| Backup mais velho que 26 h | bloqueia, dizendo a idade e o limite |
+| Backup que não confere com o manifesto | bloqueia, dizendo o que não conferiu |
+| Pacote incremental sem os anteriores na pasta | bloqueia, nomeando os que faltam |
+| Nenhum pacote reconhecido na pasta | bloqueia, pedindo um backup |
+| Pasta que não existe, ou que não deu para ler | **bloqueia** |
+
+A última linha é a que separa uma proteção de um enfeite. Liberar "porque
+provavelmente está tudo bem" transformaria a guarda numa formalidade que só
+funciona quando não era necessária.
+
+**A idade vem da data no nome do pacote**, não da data do arquivo. Copiar a
+pasta de backups para outro disco atualiza a data de modificação de tudo, e a
+guarda passaria a achar que há backup de hoje quando o mais novo é de janeiro.
+
+**A saída existe, e é registrada.** `--dispensar-protecao MOTIVO` na linha de
+comando, `dispensar_protecao` no pedido do Live: a substituição acontece e o
+motivo entra no relatório da restauração, que vira registro de auditoria no
+servidor. Uma proteção sem saída as pessoas desligam de vez; uma saída sem
+registro ninguém sabe se estava ligada.
+
+**Quem decide é o Agente**, na máquina. A pasta de proteção passa pela mesma
+guarda de pastas autorizadas que o pacote e o destino — o Live não ganha o
+direito de apontar para qualquer lugar do disco só porque o parâmetro se chama
+"proteção". Se a decisão dependesse de o servidor lembrar de enviar o parâmetro
+certo, ela seria uma convenção, e convenção não segura ninguém.
+
+Limite conhecido: a guarda confere o pacote **mais recente** da pasta, e não se
+aquele backup cobre exatamente os arquivos que serão substituídos. Cobrir isso
+exigiria comparar o manifesto com o destino arquivo a arquivo; hoje não é feito,
+e por isso não pode ser dito que é.
 
 ---
 

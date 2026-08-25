@@ -242,6 +242,12 @@ async def executar_restaurar(parametros: dict[str, Any], contexto: Contexto) -> 
     Origem E destino passam pela guarda de pastas autorizadas. Restaurar e
     escrever no disco do cliente — a operacao mais perigosa que o Agente faz —,
     e nao pode ter uma porta mais larga que a de ler.
+
+    Quando o pedido inclui `sobrescrever`, a substituicao passa ainda pela
+    guarda de acao destrutiva: `protecao` aponta a pasta de pacotes do
+    DESTINO, e sem backup recente e conferido ali a operacao nao acontece. A
+    saida explicita e `dispensar_protecao`, com o motivo — que volta no
+    relatorio para virar registro no servidor.
     """
     import asyncio as _asyncio
     from pathlib import Path as Caminho
@@ -258,6 +264,12 @@ async def executar_restaurar(parametros: dict[str, Any], contexto: Contexto) -> 
         for item in parametros.get("anteriores") or []
     ]
 
+    # A pasta de protecao tambem e uma pasta desta maquina, e por isso passa
+    # pela mesma guarda. Sem isso, o Live poderia apontar para qualquer lugar
+    # do disco e usar a resposta para descobrir o que existe la.
+    dito = str(parametros.get("protecao") or "")
+    protecao = raizes.exigir_autorizacao(configuracao, Caminho(dito)) if dito else None
+
     await contexto.relatar({"etapa": "restaurando", "pacote": pacote.name})
     relatorio = await _asyncio.to_thread(
         restaurar,
@@ -266,6 +278,8 @@ async def executar_restaurar(parametros: dict[str, Any], contexto: Contexto) -> 
         anteriores=anteriores,
         apenas=list(parametros.get("apenas") or []) or None,
         sobrescrever=bool(parametros.get("sobrescrever", False)),
+        protecao=protecao,
+        dispensar_protecao=str(parametros.get("dispensar_protecao") or ""),
     )
     return dict(relatorio.as_dict())
 

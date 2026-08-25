@@ -661,6 +661,14 @@ class PedidoDeRestauracao(BaseModel):
     #: Substituir o que ja existir no destino. Padrao: preservar. Restaurar
     #: por cima e decisao de quem esta ali, e por isso e explicita.
     sobrescrever: bool = False
+    #: Pasta de pacotes do DESTINO, na maquina. Com `sobrescrever`, e ela que
+    #: prova que existe backup recente e conferido daquilo que sera
+    #: substituido. Sem prova, o Agente bloqueia.
+    protecao: str = ""
+    #: Saida explicita da guarda, com o motivo. Fica na trilha de auditoria:
+    #: uma protecao sem saida as pessoas desligam de vez, e uma saida sem
+    #: registro ninguem sabe se estava ligada.
+    dispensar_protecao: str = ""
 
 
 @roteador.post("/{dispositivo_id}/pacote")
@@ -706,6 +714,8 @@ async def restaurar_no_dispositivo(
             "anteriores": pedido.anteriores,
             "apenas": pedido.apenas,
             "sobrescrever": pedido.sobrescrever,
+            "protecao": pedido.protecao,
+            "dispensar_protecao": pedido.dispensar_protecao,
         },
         prazo_s=1800.0,
     )

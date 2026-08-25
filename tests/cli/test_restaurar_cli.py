@@ -18,9 +18,25 @@ from autotarefas.tasks.backup import BackupTask
 from autotarefas.tasks.catalogo import NOME, Catalogo
 
 
+def _agora_como_nome() -> str:
+    """Nome de pacote com a data de agora, para a guarda aceita-lo como recente."""
+    from datetime import datetime
+
+    return f"backup_{datetime.now():%Y-%m-%d_%H%M}.zip"
+
+
 def _rodar(argumentos: list[str]) -> tuple[int, str]:
     resultado = CliRunner().invoke(restaurar, argumentos, obj=CLIContext())
     return resultado.exit_code, resultado.output
+
+
+def _corrido(saida: str) -> str:
+    """A saida numa linha so.
+
+    O console quebra linha na largura do terminal, e uma frase partida no
+    meio faria o teste falhar por causa da largura, nao do conteudo.
+    """
+    return " ".join(saida.split())
 
 
 @pytest.fixture
@@ -115,3 +131,92 @@ class TestRestaurar:
 
         assert codigo == 2
         assert "nao confere" in saida
+
+
+class TestProtecao:
+    """A guarda de acao destrutiva, vista da linha de comando (02.J)."""
+
+    def test_sobrescrever_sem_protecao_e_bloqueado_e_nao_toca_no_arquivo(
+        self, pacote: Path, tmp_path: Path
+    ) -> None:
+        """
+        Falha fechada tambem aqui.
+
+        Passar `--sobrescrever` sem apresentar backup do destino nao substitui
+        nada: o arquivo atual continua exatamente como estava.
+        """
+        destino = tmp_path / "recuperado"
+        (destino / "dados").mkdir(parents=True)
+        atual = destino / "dados" / "contrato.txt"
+        atual.write_text("ATUAL", encoding="utf-8")
+
+        codigo, saida = _rodar([str(pacote), "--para", str(destino), "--sobrescrever"])
+
+        assert codigo == 2
+        assert "Nada foi alterado" in _corrido(saida)
+        assert "--protecao" in _corrido(saida)
+        assert atual.read_text(encoding="utf-8") == "ATUAL"
+
+    def test_com_backup_recente_do_destino_sobrescreve(self, pacote: Path, tmp_path: Path) -> None:
+        destino = tmp_path / "recuperado"
+        (destino / "dados").mkdir(parents=True)
+        atual = destino / "dados" / "contrato.txt"
+        atual.write_text("ATUAL", encoding="utf-8")
+
+        pacotes = tmp_path / "backups-do-destino"
+        pacotes.mkdir()
+        BackupTask(sources=[destino], destination=pacotes / _agora_como_nome()).run()
+
+        codigo, saida = _rodar(
+            [str(pacote), "--para", str(destino), "--sobrescrever", "--protecao", str(pacotes)]
+        )
+
+        assert codigo == 0
+        assert "Protecao: backup" in _corrido(saida)
+        assert atual.read_text(encoding="utf-8") == "contrato"
+
+    def test_dispensa_explicita_libera_e_aparece_na_saida(
+        self, pacote: Path, tmp_path: Path
+    ) -> None:
+        """
+        A saida existe, e fica registrada.
+
+        Uma protecao sem saida as pessoas desligam de vez; uma saida sem
+        registro ninguem sabe se estava ligada.
+        """
+        destino = tmp_path / "recuperado"
+        (destino / "dados").mkdir(parents=True)
+        (destino / "dados" / "contrato.txt").write_text("ATUAL", encoding="utf-8")
+
+        codigo, saida = _rodar(
+            [
+                str(pacote),
+                "--para",
+                str(destino),
+                "--sobrescrever",
+                "--dispensar-protecao",
+                "maquina nova, sem dados",
+            ]
+        )
+
+        assert codigo == 0
+        assert "protecao dispensada" in _corrido(saida)
+        assert "maquina nova, sem dados" in _corrido(saida)
+
+    def test_protecao_com_backup_velho_bloqueia(self, pacote: Path, tmp_path: Path) -> None:
+        destino = tmp_path / "recuperado"
+        (destino / "dados").mkdir(parents=True)
+        atual = destino / "dados" / "contrato.txt"
+        atual.write_text("ATUAL", encoding="utf-8")
+
+        pacotes = tmp_path / "backups-do-destino"
+        pacotes.mkdir()
+        BackupTask(sources=[destino], destination=pacotes / "backup_2020-01-01_0300.zip").run()
+
+        codigo, saida = _rodar(
+            [str(pacote), "--para", str(destino), "--sobrescrever", "--protecao", str(pacotes)]
+        )
+
+        assert codigo == 2
+        assert "e o limite e 26h" in _corrido(saida)
+        assert atual.read_text(encoding="utf-8") == "ATUAL"

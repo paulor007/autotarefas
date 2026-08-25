@@ -37,6 +37,12 @@ from pathlib import Path, PurePosixPath, PureWindowsPath
 from autotarefas.tasks import assinatura as mod_assinatura
 from autotarefas.tasks import cifra as mod_cifra
 from autotarefas.tasks.backup import MANIFEST_NAME, verify_backup
+from autotarefas.tasks.hooks import (
+    AcaoDestrutiva,
+    Veredito,
+    conferir,
+    liberar_com_registro,
+)
 
 #: Buffer de leitura e escrita. O mesmo motivo do backup: arquivo grande não
 #: pode passar pela memória.
@@ -64,6 +70,8 @@ class Relatorio:
     """Estão em pacotes anteriores que não foram informados."""
     corrompidos: list[str] = field(default_factory=list)
     """O conteúdo restaurado não bateu com o manifesto."""
+    protecao: str = ""
+    """O que a guarda de ação destrutiva decidiu, quando houve sobrescrita."""
 
     @property
     def completa(self) -> bool:
@@ -84,6 +92,7 @@ class Relatorio:
             "faltando": self.faltando,
             "corrompidos": self.corrompidos,
             "completa": self.completa,
+            "protecao": self.protecao,
         }
 
 
@@ -194,13 +203,17 @@ def _conferir_pacote(caminho: Path) -> None:
         raise RestauracaoRecusada(msg)
 
 
-def restaurar(
+def restaurar(  # noqa: PLR0913 — pacote, destino, corrente, filtro,
+    # sobrescrever e a dispensa da protecao sao seis decisoes distintas de
+    # quem restaura; agrupa-las esconderia justamente as perigosas.
     pacote: Path,
     destino: Path,
     *,
     anteriores: list[Path] | None = None,
     apenas: list[str] | None = None,
     sobrescrever: bool = False,
+    protecao: Path | None = None,
+    dispensar_protecao: str = "",
 ) -> Relatorio:
     """
     Restaura o conteúdo do pacote na pasta de destino.
@@ -211,6 +224,13 @@ def restaurar(
 
     `apenas` restaura um subconjunto (restauração de amostra, que é como se
     testa um backup sem mexer no que está em produção).
+
+    `sobrescrever` é destrutivo, e por isso passa pela guarda: com `protecao`
+    apontando para a pasta de pacotes do DESTINO, a substituição só acontece
+    se houver backup recente e conferido daquilo. `dispensar_protecao` é a
+    saída explícita, e o motivo entra no relatório — uma proteção sem saída as
+    pessoas desligam de vez; uma saída sem registro ninguém sabe se estava
+    ligada.
     """
     if not pacote.is_file():
         msg = f"pacote nao encontrado: {pacote.name}"
@@ -220,8 +240,14 @@ def restaurar(
     for anterior in anteriores or []:
         _conferir_pacote(anterior)
 
+    protecao_dita = ""
+    if sobrescrever:
+        veredito = _guardar_a_sobrescrita(protecao, dispensar_protecao)
+        veredito.exigir()
+        protecao_dita = veredito.motivo
+
     destino.mkdir(parents=True, exist_ok=True)
-    relatorio = Relatorio(destino=destino)
+    relatorio = Relatorio(destino=destino, protecao=protecao_dita)
     senha = mod_cifra.senha_configurada()
     filtro = set(apenas) if apenas else None
 
@@ -240,6 +266,28 @@ def restaurar(
         )
 
     return relatorio
+
+
+def _guardar_a_sobrescrita(protecao: Path | None, dispensa: str) -> Veredito:
+    """
+    Decide se a substituição pode acontecer.
+
+    Sem `protecao` informada e sem dispensa, a guarda **bloqueia**: não saber
+    se existe backup é o caso em que a proteção mais importa, e liberar aí
+    seria transformá-la numa formalidade.
+    """
+    if dispensa:
+        return liberar_com_registro(AcaoDestrutiva.SOBRESCREVER_NA_RESTAURACAO, dispensa)
+    if protecao is None:
+        return Veredito(
+            liberado=False,
+            motivo=(
+                "sobrescrever arquivos existentes exige backup recente e conferido "
+                "do destino. Informe a pasta de pacotes do destino, ou dispense a "
+                "protecao explicitamente dizendo o motivo."
+            ),
+        )
+    return conferir(AcaoDestrutiva.SOBRESCREVER_NA_RESTAURACAO, protecao)
 
 
 def _restaurar_deste_pacote(

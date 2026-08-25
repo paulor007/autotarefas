@@ -23,6 +23,7 @@ import pytest
 from autotarefas.tasks import assinatura
 from autotarefas.tasks.backup import BackupTask
 from autotarefas.tasks.catalogo import NOME, Catalogo
+from autotarefas.tasks.hooks import ProtecaoBloqueou
 from autotarefas.tasks.restauracao import (
     RestauracaoRecusada,
     caminho_seguro,
@@ -157,18 +158,66 @@ class TestNaoSobrescrever:
 
         assert restaurar(pacote, destino).completa is True
 
-    def test_com_permissao_explicita_sobrescreve(self, origem: Path, tmp_path: Path) -> None:
+    def test_sobrescrever_sem_prova_de_backup_e_bloqueado(
+        self, origem: Path, tmp_path: Path
+    ) -> None:
+        """
+        Substituir arquivos é destrutivo, e a guarda falha fechada.
+
+        Não saber se existe backup do destino é justamente o caso em que a
+        proteção mais importa; liberar aí a transformaria numa formalidade.
+        """
         pacote = _empacotar(origem, tmp_path / "p1.zip")
         destino = tmp_path / "restaurado"
         (destino / "dados").mkdir(parents=True)
         (destino / "dados" / "contrato.txt").write_text("ATUAL", encoding="utf-8")
 
-        relatorio = restaurar(pacote, destino, sobrescrever=True)
+        with pytest.raises(ProtecaoBloqueou, match="backup recente"):
+            restaurar(pacote, destino, sobrescrever=True)
+
+        assert (destino / "dados" / "contrato.txt").read_text(encoding="utf-8") == "ATUAL"
+
+    def test_com_backup_recente_do_destino_sobrescreve(self, origem: Path, tmp_path: Path) -> None:
+        pacote = _empacotar(origem, tmp_path / "p1.zip")
+        destino = tmp_path / "restaurado"
+        (destino / "dados").mkdir(parents=True)
+        (destino / "dados" / "contrato.txt").write_text("ATUAL", encoding="utf-8")
+
+        # Backup do DESTINO, com o nome que o produto gera.
+        protecao = tmp_path / "protecao"
+        _empacotar(destino, protecao / _agora_como_nome())
+
+        relatorio = restaurar(pacote, destino, sobrescrever=True, protecao=protecao)
 
         assert "dados/contrato.txt" in relatorio.restaurados
         assert (destino / "dados" / "contrato.txt").read_text(
             encoding="utf-8"
         ) == "contrato importante"
+
+    def test_dispensa_explicita_libera_e_fica_registrada(
+        self, origem: Path, tmp_path: Path
+    ) -> None:
+        """
+        Uma proteção sem saída as pessoas desligam de vez.
+
+        Uma saída sem registro vira uma proteção que ninguém sabe se estava
+        ligada — por isso o motivo entra no relatório.
+        """
+        pacote = _empacotar(origem, tmp_path / "p1.zip")
+        destino = tmp_path / "restaurado"
+        (destino / "dados").mkdir(parents=True)
+        (destino / "dados" / "contrato.txt").write_text("ATUAL", encoding="utf-8")
+
+        relatorio = restaurar(
+            pacote,
+            destino,
+            sobrescrever=True,
+            dispensar_protecao="maquina nova, nao ha o que preservar",
+        )
+
+        assert "dados/contrato.txt" in relatorio.restaurados
+        assert "maquina nova" in relatorio.protecao
+        assert "dispensada" in relatorio.protecao
 
 
 class TestPacoteRuim:
@@ -331,3 +380,10 @@ class TestPacoteCifrado:
 
         with pytest.raises(RestauracaoRecusada, match="cifrado"):
             restaurar(pacote, tmp_path / "restaurado")
+
+
+def _agora_como_nome() -> str:
+    """Nome de pacote com a data de agora, no formato que a guarda reconhece."""
+    from datetime import datetime
+
+    return f"backup_{datetime.now():%Y-%m-%d_%H%M}.zip"

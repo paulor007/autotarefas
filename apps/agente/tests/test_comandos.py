@@ -204,6 +204,131 @@ class TestEstado:
         assert resultado["raizes"] == []
 
 
+class TestRestauracaoProtegida:
+    """A guarda de acao destrutiva, pedida pelo Live (02.J).
+
+    O Agente e quem escreve no disco do cliente. Se a protecao dependesse de o
+    servidor lembrar de mandar o parametro certo, ela seria uma convencao — e
+    uma convencao nao segura ninguem. Aqui ela e decidida na maquina.
+    """
+
+    @staticmethod
+    def _cenario(tmp_path: Any) -> tuple[Configuracao, Any, Any]:
+        from autotarefas.tasks.backup import BackupTask
+
+        raiz = tmp_path / "cliente"
+        origem = raiz / "dados"
+        origem.mkdir(parents=True)
+        (origem / "contrato.txt").write_text("do backup", encoding="utf-8")
+
+        pacote = raiz / "p1.zip"
+        BackupTask(sources=[origem], destination=pacote).run()
+
+        (origem / "contrato.txt").write_text("ATUAL", encoding="utf-8")
+
+        configuracao = Configuracao(servidor="https://x", dispositivo_id="d").com_raiz(raiz)
+        return configuracao, pacote, raiz
+
+    def test_sobrescrever_sem_protecao_e_bloqueado_e_o_arquivo_fica(self, tmp_path: Any) -> None:
+        configuracao, pacote, raiz = self._cenario(tmp_path)
+
+        resultado = asyncio.run(
+            comandos.atender(
+                _comando(
+                    "restaurar",
+                    pacote=str(pacote),
+                    destino=str(raiz),
+                    sobrescrever=True,
+                ),
+                comandos.registro_padrao(),
+                _contexto(configuracao),
+            )
+        )
+
+        assert resultado["ok"] is False
+        assert "ProtecaoBloqueou" in resultado["erro"]
+        atual = (raiz / "dados" / "contrato.txt").read_text(encoding="utf-8")
+        assert atual == "ATUAL"
+
+    def test_com_backup_recente_do_destino_sobrescreve(self, tmp_path: Any) -> None:
+        from datetime import datetime
+
+        from autotarefas.tasks.backup import BackupTask
+
+        configuracao, pacote, raiz = self._cenario(tmp_path)
+        pacotes = raiz / "backups-do-destino"
+        pacotes.mkdir()
+        nome = f"backup_{datetime.now():%Y-%m-%d_%H%M}.zip"
+        BackupTask(sources=[raiz / "dados"], destination=pacotes / nome).run()
+
+        resultado = asyncio.run(
+            comandos.atender(
+                _comando(
+                    "restaurar",
+                    pacote=str(pacote),
+                    destino=str(raiz),
+                    sobrescrever=True,
+                    protecao=str(pacotes),
+                ),
+                comandos.registro_padrao(),
+                _contexto(configuracao),
+            )
+        )
+
+        assert resultado["ok"] is True
+        assert resultado["protecao"].startswith("backup backup_")
+        atual = (raiz / "dados" / "contrato.txt").read_text(encoding="utf-8")
+        assert atual == "do backup"
+
+    def test_pasta_de_protecao_fora_das_raizes_e_recusada(self, tmp_path: Any) -> None:
+        """
+        A pasta de protecao passa pela mesma guarda de pastas autorizadas.
+
+        Sem isso, o Live poderia apontar para qualquer lugar do disco e usar a
+        resposta para descobrir o que existe la.
+        """
+        configuracao, pacote, raiz = self._cenario(tmp_path)
+        fora = tmp_path / "fora"
+        fora.mkdir()
+
+        resultado = asyncio.run(
+            comandos.atender(
+                _comando(
+                    "restaurar",
+                    pacote=str(pacote),
+                    destino=str(raiz),
+                    sobrescrever=True,
+                    protecao=str(fora),
+                ),
+                comandos.registro_padrao(),
+                _contexto(configuracao),
+            )
+        )
+
+        assert resultado["ok"] is False
+        assert "autorizada" in resultado["erro"]
+
+    def test_dispensa_explicita_libera_e_volta_no_relatorio(self, tmp_path: Any) -> None:
+        configuracao, pacote, raiz = self._cenario(tmp_path)
+
+        resultado = asyncio.run(
+            comandos.atender(
+                _comando(
+                    "restaurar",
+                    pacote=str(pacote),
+                    destino=str(raiz),
+                    sobrescrever=True,
+                    dispensar_protecao="maquina nova, sem dados",
+                ),
+                comandos.registro_padrao(),
+                _contexto(configuracao),
+            )
+        )
+
+        assert resultado["ok"] is True
+        assert "maquina nova, sem dados" in resultado["protecao"]
+
+
 @pytest.mark.parametrize("mensagem", [{}, {"tipo": "outra"}, {"id": "x"}])
 def test_mensagem_incompleta_nao_quebra(mensagem: dict[str, Any]) -> None:
     """Entrada malformada vira resultado de acao desconhecida, nao excecao."""
