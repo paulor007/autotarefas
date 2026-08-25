@@ -309,7 +309,7 @@ pretty = true
 
 # Tests podem ter type hints opcionais (pra rapidez)
 [[tool.mypy.overrides]]
-module = ["authlib.*"]
+module = ["authlib.*", "keyring.*"]
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]

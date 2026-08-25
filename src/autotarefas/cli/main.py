@@ -17,6 +17,7 @@ import click
 from autotarefas import __version__
 from autotarefas.cli.commands.analisar import analisar
 from autotarefas.cli.commands.backup import backup
+from autotarefas.cli.commands.cofre import cofre
 from autotarefas.cli.commands.comparar import comparar
 from autotarefas.cli.commands.conciliar import conciliar
 from autotarefas.cli.commands.corrigir import corrigir
@@ -88,6 +89,7 @@ def cli(
 
 cli.add_command(analisar)
 cli.add_command(backup)
+cli.add_command(cofre)
 cli.add_command(comparar)
 cli.add_command(conciliar)
 cli.add_command(corrigir)

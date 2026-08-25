@@ -24,7 +24,7 @@ Uma capacidade só entra depois que a trilha G entrega o lugar onde ela mora.
 | **G.1.1** | Correções da homologação manual da G.1 | G.1 | ✅ `19d1064` |
 | **G.2.1** | Modelo de dados multiempresa e persistência | G.1 | ✅ implementada |
 | **G.2.2** | Identidade: OIDC Relying Party + sessão + guarda de organização | G.2.1 | ✅ implementada |
-| **G.2.3** | Cofre de segredos com chave mestra externa | G.2.1 | a fazer |
+| **G.2.3** | Cofre de segredos com chave mestra externa | G.2.1 | ✅ implementada |
 | **G.3.1** | Esqueleto do Agente: processo, configuração local, par de chaves Ed25519 | G.2.1 | a fazer |
 | **G.3.2** | Pareamento por código temporário e registro do dispositivo | G.3.1 · G.2.2 | a fazer |
 | **G.4.1** | Canal WSS de saída: autenticação por assinatura, heartbeat, reconexão | G.3.2 | a fazer |
@@ -141,6 +141,27 @@ O esquema é criado por `create_all`. Enquanto o formato ainda muda a cada
 subetapa, migração versionada seria retrabalho a cada commit. Quando as tabelas
 estabilizarem (previsto ao fim da G.6), entra migração versionada. Registrado
 como limitação, não como decisão definitiva.
+
+---
+
+## 2.7 Chave mestra — o que o dono precisa guardar
+
+O cofre de segredos (chave de assinatura do manifesto, senha de criptografia,
+credenciais de destino) e protegido por uma **chave mestra que o produto nunca
+guarda**. Ela vem de `AUTOTAREFAS_MASTER_KEY` ou do cofre do sistema
+operacional.
+
+```bash
+autotarefas cofre nova-chave
+```
+
+Sem a chave, o cofre fica **trancado** e quem depende dele falha com mensagem
+clara. Não há queda silenciosa para uma chave embutida: chave embutida em
+código publicado não protege nada, e daria a falsa impressão de que há
+criptografia onde não há.
+
+Perder a chave mestra é perder os segredos já cifrados. Isso é propositado, e o
+comando avisa antes.
 
 ---
 
