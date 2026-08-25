@@ -25,6 +25,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from autotarefas.tasks import catalogo as mod_catalogo
 from autotarefas.tasks.backup import BackupTask
 from autotarefas.tasks.politica import Politica as PoliticaDoNucleo
 from autotarefas.tasks.politica import TipoDeDestino as TipoDeDestinoDaPolitica
@@ -60,6 +61,8 @@ class Pedido:
     #: Destino em nuvem compativel com S3. A credencial chega pelo canal
     #: autenticado, e usada, e some com o processo — nunca e gravada aqui.
     destino_s3: mod_s3.Credencial | None = None
+    #: Copiar so o que mudou, com catalogo ao lado dos pacotes.
+    incremental: bool = False
 
 
 def _destino_padrao(configuracao_raizes: tuple[str, ...]) -> Path:
@@ -116,6 +119,7 @@ def montar_pedido(parametros: dict[str, Any], contexto: Contexto) -> Pedido:
             else None
         ),
         destino_s3=_credencial_s3(parametros.get("s3")),
+        incremental=bool(parametros.get("incremental", False)),
     )
 
 
@@ -167,10 +171,18 @@ def executar(pedido: Pedido) -> dict[str, Any]:
     alvo = _nome_do_pacote(pedido)
     alvo.parent.mkdir(parents=True, exist_ok=True)
 
+    catalogo = None
+    if pedido.incremental:
+        # O catalogo mora ao lado dos pacotes: catalogo e pacotes sao a mesma
+        # coisa para quem restaura, e separa-los criaria a situacao de ter os
+        # pacotes sem saber o que esta em qual.
+        catalogo = mod_catalogo.Catalogo(alvo.parent / mod_catalogo.NOME)
+
     tarefa = BackupTask(
         sources=list(pedido.origens),
         destination=alvo,
         exclude_patterns=list(pedido.excluir) or None,
+        catalogo=catalogo,
     )
     resultado = tarefa.run()
 
@@ -191,6 +203,8 @@ def executar(pedido: Pedido) -> dict[str, Any]:
         "excluidos_por_regra": int(dados.get("skipped_count", 0)),
         "nao_lidos": [{"arquivo": item["arquivo"], "motivo": item["motivo"]} for item in nao_lidos],
         "com_ressalva": bool(nao_lidos),
+        "incremental": bool(dados.get("incremental", False)),
+        "inalterados": int(dados.get("inalterados_count", 0)),
         # Interno: some antes de a ficha subir. O servidor nunca ve caminho
         # local do cliente.
         "_caminho_local": alvo,
@@ -318,6 +332,7 @@ async def executar_politica(
     parametros: dict[str, Any] = {
         "origens": list(politica.origens),
         "usar_vss": politica.usar_vss,
+        "incremental": politica.incremental,
     }
     if politica.destino.tipo in {
         TipoDeDestinoDaPolitica.LOCAL,
@@ -334,10 +349,18 @@ async def executar_politica(
     ficha = await executar_backup(parametros, contexto)
 
     pedido = montar_pedido(parametros, contexto)
-    limpeza = await asyncio.to_thread(
-        mod_retencao.aplicar, _pasta_dos_pacotes(pedido), politica.retencao
-    )
+    pasta = _pasta_dos_pacotes(pedido)
+    limpeza = await asyncio.to_thread(mod_retencao.aplicar, pasta, politica.retencao)
     ficha["retencao"] = limpeza
+
+    if politica.incremental:
+        # Depois da retencao, e nao antes: o catalogo tem que esquecer os
+        # pacotes que acabaram de ser apagados. Sem isto, ele apontaria para
+        # arquivos que nao existem mais, e a restauracao encontraria
+        # referencia quebrada — pior do que copiar de novo.
+        existentes = {item.caminho.name for item in mod_retencao.listar(pasta)}
+        catalogo = mod_catalogo.Catalogo(pasta / mod_catalogo.NOME)
+        ficha["catalogo_esquecidos"] = await asyncio.to_thread(catalogo.sincronizar_com, existentes)
 
     ressalvas: list[str] = []
     if ficha.get("com_ressalva"):

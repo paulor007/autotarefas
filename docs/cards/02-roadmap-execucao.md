@@ -47,7 +47,7 @@ Uma capacidade só entra depois que a trilha G entrega o lugar onde ela mora.
 | **02.E** | Agendamento, retry/backoff, notificações, retenção GFS | G.5.2 · **G.6** | ✅ implementada · envio de e-mail exige SMTP no cofre |
 | **02.F** | Destino externo e conector S3 compatível | 02.C · G.5.3 | ✅ implementada · nuvem real pendente |
 | **02.H** | Restauração guiada pela interface | 02.B · G.6 | a fazer |
-| **02.I** | Incremental por arquivo, com catálogo | 02.E | a fazer |
+| **02.I** | Incremental por arquivo, com catálogo | 02.E | ✅ implementada |
 | **02.J** | Hooks de segurança com falha fechada | G.6 | a fazer |
 
 ### 1.3 Ordem de execução
@@ -204,6 +204,22 @@ Três regras de honestidade estão nos testes da tela, não só no código:
 
 E autorizar pasta **não** acontece na tela: ela mostra o que foi autorizado e
 diz onde autorizar. O consentimento é dado na própria máquina.
+
+---
+
+## 2.10 O que o incremental **não** é
+
+Implementado: incremental **por arquivo**, com catálogo local que guarda
+tamanho, data, SHA-256 e **em qual pacote** cada arquivo está.
+
+Não implementado, e não pode ser dito que está: **deduplicação** e **delta em
+nível de bloco**. Um arquivo que muda um byte é copiado inteiro de novo — há
+teste que verifica exatamente isso, para que ninguém planeje banda de upload
+com números que não existem.
+
+Consequência que a tela precisa dizer: um pacote incremental **não se sustenta
+sozinho**. Ele depende dos pacotes anteriores que o manifesto cita, e a
+conferência informa quais são. O padrão continua sendo o backup completo.
 
 ---
 

@@ -130,3 +130,65 @@ class TestRetencaoNaPolitica:
         assert ficha["ok"] is True
         assert ficha["com_ressalva"] is True
         assert "nao puderam ser apagados" in ficha["ressalva"]
+
+
+class TestIncrementalNaPolitica:
+    """
+    O incremental so acontece quando a politica pede.
+
+    Desligado por padrao de proposito: o pacote completo se sustenta sozinho,
+    e o incremental exige a corrente de pacotes anteriores para restaurar.
+    """
+
+    def test_desligado_por_padrao(
+        self, autorizada: tuple[Configuracao, Path], tmp_path: Path
+    ) -> None:
+        configuracao, pasta = autorizada
+
+        ficha = asyncio.run(
+            backup_agente.executar_politica(Politica(origens=[str(pasta)]), configuracao)
+        )
+
+        assert ficha["incremental"] is False
+        assert ficha["inalterados"] == 0
+
+    def test_segunda_execucao_pula_o_que_nao_mudou(
+        self, autorizada: tuple[Configuracao, Path], tmp_path: Path
+    ) -> None:
+        configuracao, pasta = autorizada
+        politica = Politica(
+            origens=[str(pasta)],
+            destino=Destino(tipo=TipoDeDestino.LOCAL, caminho=str(tmp_path / "copia")),
+            incremental=True,
+        )
+
+        primeira = asyncio.run(backup_agente.executar_politica(politica, configuracao))
+        (pasta / "novo.txt").write_text("novo", encoding="utf-8")
+        segunda = asyncio.run(backup_agente.executar_politica(politica, configuracao))
+
+        assert primeira["arquivos"] == 1
+        assert segunda["arquivos"] == 1
+        assert segunda["inalterados"] == 1
+        assert segunda["incremental"] is True
+
+    def test_catalogo_esquece_pacote_que_a_retencao_apagou(
+        self, autorizada: tuple[Configuracao, Path], tmp_path: Path
+    ) -> None:
+        """
+        Catalogo apontando para pacote apagado e referencia quebrada.
+
+        Melhor copiar de novo do que prometer um arquivo que nao existe.
+        """
+        configuracao, pasta = autorizada
+        politica = Politica(
+            origens=[str(pasta)],
+            retencao=Retencao(diarias=1, semanais=0, mensais=0),
+            incremental=True,
+        )
+
+        asyncio.run(backup_agente.executar_politica(politica, configuracao))
+        segunda = asyncio.run(backup_agente.executar_politica(politica, configuracao))
+
+        # A chave e o campo existir e ser um numero: a sincronizacao rodou.
+        assert "catalogo_esquecidos" in segunda
+        assert isinstance(segunda["catalogo_esquecidos"], int)

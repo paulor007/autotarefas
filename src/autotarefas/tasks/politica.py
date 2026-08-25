@@ -194,6 +194,11 @@ class Politica(BaseModel):
     #: Assinar o manifesto com a chave do cofre. Ligado por padrão: é o que
     #: separa "não se estragou" de "ninguém mexeu".
     assinar: bool = True
+    #: Copiar só o que mudou desde o pacote anterior, usando um catálogo local.
+    #: Desligado por padrão de propósito: o pacote completo se sustenta
+    #: sozinho, e o incremental exige a corrente de pacotes anteriores para
+    #: restaurar. Quem liga precisa saber disso — e a tela diz.
+    incremental: bool = False
 
     @property
     def protege_de_verdade(self) -> bool:

@@ -70,6 +70,7 @@ from autotarefas.core import BaseTask, TaskResult, TaskStatus, ValidationError
 from autotarefas.core.exceptions import SecurityError
 from autotarefas.core.security import validate_filename
 from autotarefas.tasks import assinatura, cifra
+from autotarefas.tasks import catalogo as mod_catalogo
 
 #: Nome do manifesto dentro do pacote.
 MANIFEST_NAME = "MANIFESTO.csv"
@@ -95,6 +96,10 @@ class BackupEntry:
     sha256: str
     modified_at: str
     """Data de modificacao do original, em ISO."""
+    modificado_em_epoch: float = 0.0
+    """A mesma data, em segundos. E a forma que o catalogo compara — texto
+    ISO nao permite a folga de dois segundos que sistemas de arquivos
+    diferentes exigem."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -309,6 +314,7 @@ class BackupTask(BaseTask):
         include_default_excludes: bool = True,
         follow_links: bool = False,
         dry_run: bool = False,
+        catalogo: mod_catalogo.Catalogo | None = None,
     ) -> None:
         """
         Inicializa BackupTask.
@@ -323,11 +329,18 @@ class BackupTask(BaseTask):
                 por padrao — atalho para fora da origem colocaria dado de
                 terceiro no pacote sem ninguem perceber.
             dry_run: Se True, nao cria o ZIP — so lista o que faria.
+            catalogo: Quando informado, o backup fica INCREMENTAL: arquivo ja
+                copiado e identico nao entra no pacote de novo, e o manifesto
+                registra em qual pacote anterior ele esta. Sem catalogo, o
+                comportamento e o de sempre — pacote completo.
         """
         super().__init__(dry_run=dry_run)
         self.sources = sources
         self.destination = destination
         self.follow_links = follow_links
+        self.catalogo = catalogo
+        #: Arquivos que ficaram de fora por ja estarem num pacote anterior.
+        self.inalterados: list[mod_catalogo.Anterior] = []
 
         # SEGURANCA: valida que o nome do arquivo de destino e seguro
         try:
@@ -380,6 +393,7 @@ class BackupTask(BaseTask):
             )
 
         arcnames = self._resolve_arcnames(files_to_backup)
+        a_copiar, ja_copiados = self._separar_inalterados(files_to_backup, arcnames)
 
         if self.dry_run:
             return self._make_result(
@@ -400,10 +414,13 @@ class BackupTask(BaseTask):
 
         self.destination.parent.mkdir(parents=True, exist_ok=True)
         entradas, ilegiveis = self._build_package(
-            files_to_backup, arcnames, started_at, links=links, pastas=pastas
+            a_copiar, arcnames, started_at, links=links, pastas=pastas, ja_copiados=ja_copiados
         )
 
-        if not entradas:
+        # Com catalogo, "nenhum arquivo novo" e um desfecho legitimo e comum:
+        # a pasta nao mudou desde ontem. O pacote sai com o manifesto e as
+        # referencias, e serve para restaurar tanto quanto qualquer outro.
+        if not entradas and not ja_copiados:
             # Tudo falhou: isso e falha, nao ressalva. Um pacote vazio com
             # cara de backup seria a pior mentira possivel.
             self._discard_partial()
@@ -426,6 +443,7 @@ class BackupTask(BaseTask):
         # So agora o arquivo final passa a existir — inteiro, ou nunca.
         os.replace(self.partial_path, self.destination)
         sha256 = self._calculate_sha256(self.destination)
+        self._atualizar_catalogo(entradas, started_at)
 
         return self._make_result(
             status=TaskStatus.PARTIAL if ilegiveis else TaskStatus.SUCCESS,
@@ -444,6 +462,10 @@ class BackupTask(BaseTask):
                 "skipped_count": len(files_excluded),
                 "unreadable_count": len(ilegiveis),
                 "unreadable": [{"arquivo": u.arcname, "motivo": u.reason} for u in ilegiveis],
+                # Incremental: o que ja estava em pacote anterior e nao foi
+                # copiado de novo. Zero quando nao ha catalogo.
+                "incremental": self.catalogo is not None,
+                "inalterados_count": len(ja_copiados),
                 "size_bytes": self.destination.stat().st_size,
                 "sha256": sha256,
                 "manifest": MANIFEST_NAME,
@@ -511,6 +533,75 @@ class BackupTask(BaseTask):
             )
 
         return included, skipped, links, pastas
+
+    def _separar_inalterados(
+        self, incluidos: list[Path], arcnames: dict[Path, str]
+    ) -> tuple[list[Path], list[tuple[str, mod_catalogo.Anterior]]]:
+        """
+        Separa o que precisa entrar no pacote do que ja esta em outro.
+
+        Sem catalogo, tudo entra: o backup completo continua sendo o padrao, e
+        e ele que vale quando alguem nao configurou nada.
+        """
+        if self.catalogo is None:
+            return incluidos, []
+
+        entram: list[Path] = []
+        ja_copiados: list[tuple[str, mod_catalogo.Anterior]] = []
+
+        for arquivo in incluidos:
+            arcname = arcnames[arquivo]
+            try:
+                st = arquivo.stat()
+            except OSError:
+                # Sumiu entre a listagem e agora. Deixa entrar: quem trata
+                # arquivo ilegivel e o `_escrever`, que ja sabe virar ressalva.
+                entram.append(arquivo)
+                continue
+
+            anterior = self.catalogo.anterior(arcname)
+            decisao = mod_catalogo.decidir(
+                anterior,
+                tamanho=st.st_size,
+                modificado_em=st.st_mtime,
+                calcular_sha=lambda alvo=arquivo: self._sha_do_arquivo(alvo),
+            )
+            if decisao.entra_no_pacote or anterior is None:
+                entram.append(arquivo)
+            else:
+                ja_copiados.append((arcname, anterior))
+
+        return entram, ja_copiados
+
+    def _atualizar_catalogo(self, entradas: list[BackupEntry], started_at: datetime) -> None:
+        """
+        Anota, no catalogo, que estes arquivos passaram a morar neste pacote.
+
+        So depois de o pacote existir de verdade: registrar antes deixaria o
+        catalogo apontando para um arquivo que a falha impediu de nascer, e o
+        proximo backup pularia arquivos que nunca foram copiados.
+        """
+        if self.catalogo is None:
+            return
+
+        nome = self.destination.name
+        self.catalogo.registrar_pacote(nome, started_at.isoformat(timespec="seconds"))
+        for entrada in entradas:
+            self.catalogo.registrar(
+                entrada.arcname,
+                tamanho=entrada.size_bytes,
+                modificado_em=entrada.modificado_em_epoch,
+                sha256=entrada.sha256,
+                pacote=nome,
+            )
+
+    def _sha_do_arquivo(self, arquivo: Path) -> str:
+        """SHA-256 de um arquivo, por pedacos."""
+        digestor = hashlib.sha256()
+        with arquivo.open("rb") as origem:
+            while pedaco := origem.read(self._BUFFER_SIZE):
+                digestor.update(pedaco)
+        return digestor.hexdigest()
 
     def _andar(  # noqa: PLR0913 - a travessia carrega o estado dela junto
         self,
@@ -729,7 +820,9 @@ class BackupTask(BaseTask):
     # Montagem do pacote
     # ========================================================
 
-    def _build_package(
+    def _build_package(  # noqa: PLR0913 — cada parametro e uma parte do
+        # pacote (conteudo, nomes, data, atalhos, pastas vazias, referencias
+        # do incremental). Agrupa-los esconderia o que o pacote carrega.
         self,
         files: list[Path],
         arcnames: dict[Path, str],
@@ -737,6 +830,7 @@ class BackupTask(BaseTask):
         *,
         links: list[LinkFound],
         pastas: list[Path],
+        ja_copiados: list[tuple[str, mod_catalogo.Anterior]] | None = None,
     ) -> tuple[list[BackupEntry], list[UnreadableFile]]:
         """
         Monta o pacote no arquivo temporario.
@@ -766,9 +860,13 @@ class BackupTask(BaseTask):
                         ilegiveis.append(UnreadableFile(arcname, _motivo(exc)))
 
                 self._escrever_pastas_vazias(zf, arcnames, pastas)
-                manifesto = self._manifesto(entradas, ilegiveis, started_at, links=links).encode(
-                    "utf-8"
-                )
+                manifesto = self._manifesto(
+                    entradas,
+                    ilegiveis,
+                    started_at,
+                    links=links,
+                    ja_copiados=ja_copiados or [],
+                ).encode("utf-8")
                 zf.writestr(MANIFEST_NAME, manifesto)
                 self._assinar(zf, manifesto)
         except OSError:
@@ -825,6 +923,7 @@ class BackupTask(BaseTask):
             size_bytes=st.st_size,
             sha256=h.hexdigest(),
             modified_at=datetime.fromtimestamp(st.st_mtime, tz=UTC).isoformat(timespec="seconds"),
+            modificado_em_epoch=st.st_mtime,
         )
 
     def _escrever_pastas_vazias(
@@ -867,6 +966,7 @@ class BackupTask(BaseTask):
         started_at: datetime,
         *,
         links: list[LinkFound],
+        ja_copiados: list[tuple[str, mod_catalogo.Anterior]] | None = None,
     ) -> str:
         """
         Monta o `MANIFESTO.csv` que vai DENTRO do pacote.
@@ -884,6 +984,7 @@ class BackupTask(BaseTask):
         writer.writerow(["# gerado_em", started_at.isoformat(timespec="seconds")])
         writer.writerow(["# fontes", " | ".join(s.name for s in self.sources)])
         writer.writerow(["# arquivos", len(entradas)])
+        writer.writerow(["# inalterados", len(ja_copiados or [])])
         writer.writerow(["# nao_lidos", len(ilegiveis)])
         writer.writerow(["# atalhos", len(links)])
         writer.writerow([])
@@ -897,6 +998,21 @@ class BackupTask(BaseTask):
                     entrada.modified_at,
                     entrada.sha256,
                     "",
+                ]
+            )
+        # Linha INALTERADO: o arquivo NAO esta neste pacote, e o `motivo`
+        # diz em qual ele esta. E o que torna a restauracao possivel — sem
+        # esta referencia, o incremental produziria pacotes que ninguem
+        # consegue juntar de volta.
+        for arcname, anterior in ja_copiados or []:
+            writer.writerow(
+                [
+                    "INALTERADO",
+                    arcname,
+                    anterior.tamanho,
+                    "",
+                    anterior.sha256,
+                    f"esta em {anterior.pacote}",
                 ]
             )
         for ilegivel in ilegiveis:
@@ -963,6 +1079,11 @@ class VerifyReport:
     """Estao no pacote e nao constam do manifesto."""
     unreadable_at_origin: tuple[str, ...] = ()
     """Ficaram de fora quando o backup foi feito (ja era sabido)."""
+    unchanged: tuple[str, ...] = ()
+    """Estao num pacote ANTERIOR, nao neste. Backup incremental."""
+    chain: tuple[str, ...] = ()
+    """Pacotes anteriores que este pacote referencia. Sem eles, a restauracao
+    fica incompleta — e isso precisa aparecer, nao ser descoberto na hora."""
     problem: str = ""
     """Preenchido quando o pacote nem pode ser aberto."""
     authenticity: assinatura.Autenticidade = assinatura.Autenticidade.NAO_ASSINADO
@@ -988,6 +1109,9 @@ class VerifyReport:
             "assinado": self.signed,
             "autenticidade": self.authenticity.value,
             "limite": assinatura.EXPLICACAO[self.authenticity],
+            "incremental": bool(self.unchanged),
+            "inalterados": list(self.unchanged),
+            "pacotes_anteriores": list(self.chain),
             "cifrado": self.encrypted,
             "limite_cifra": (
                 cifra.EXPLICACAO_CIFRADO if self.encrypted else cifra.EXPLICACAO_SEM_CIFRA
@@ -1001,11 +1125,24 @@ _COLUNAS_MINIMAS = 2
 #: Posicao do sha256 na linha do manifesto.
 _COLUNA_SHA = 4
 
+#: Posicao do motivo. Em linha INALTERADO, e onde o pacote anterior e
+#: nomeado — a referencia que torna a restauracao possivel.
+_COLUNA_MOTIVO = 5
 
-def _ler_manifesto(zf: zipfile.ZipFile) -> tuple[dict[str, str], list[str]]:
-    """(sha256 por arquivo, lista do que nao foi lido na origem)."""
+
+def _ler_manifesto(
+    zf: zipfile.ZipFile,
+) -> tuple[dict[str, str], list[str], dict[str, str]]:
+    """
+    (sha256 por arquivo, nao lidos na origem, inalterados -> pacote onde estao).
+
+    `INALTERADO` e o que o backup incremental grava: o arquivo NAO esta neste
+    pacote, e a linha diz em qual ele esta. Tratar essas linhas como
+    "declarado e ausente" faria todo pacote incremental parecer defeituoso.
+    """
     esperado: dict[str, str] = {}
     nao_lidos: list[str] = []
+    inalterados: dict[str, str] = {}
     texto = zf.read(MANIFEST_NAME).decode("utf-8")
     for linha in csv.reader(io.StringIO(texto)):
         if (
@@ -1018,7 +1155,9 @@ def _ler_manifesto(zf: zipfile.ZipFile) -> tuple[dict[str, str], list[str]]:
             esperado[linha[1]] = linha[_COLUNA_SHA]
         elif linha[0] == "NAO_LIDO":
             nao_lidos.append(linha[1])
-    return esperado, nao_lidos
+        elif linha[0] == "INALTERADO":
+            inalterados[linha[1]] = linha[_COLUNA_MOTIVO] if len(linha) > _COLUNA_MOTIVO else ""
+    return esperado, nao_lidos, inalterados
 
 
 def _impedimento_de_conferir(zf: zipfile.ZipFile, senha: bytes | None) -> str:
@@ -1075,7 +1214,7 @@ def verify_backup(path: Path, *, buffer_size: int = 64 * 1024) -> VerifyReport:
             if impedimento:
                 return VerifyReport(path=path, ok=False, checked=0, problem=impedimento)
 
-            esperado, nao_lidos = _ler_manifesto(zf)
+            esperado, nao_lidos, inalterados = _ler_manifesto(zf)
             # O manifesto e a assinatura sao metadados do proprio pacote: nao
             # constam do manifesto, e listar os dois como "nao declarados"
             # faria todo pacote assinado parecer defeituoso.
@@ -1129,7 +1268,24 @@ def verify_backup(path: Path, *, buffer_size: int = 64 * 1024) -> VerifyReport:
         unreadable_at_origin=tuple(nao_lidos),
         authenticity=autenticidade,
         encrypted=cifrado,
+        unchanged=tuple(sorted(inalterados)),
+        chain=tuple(sorted(_pacotes_referenciados(inalterados))),
     )
+
+
+def _pacotes_referenciados(inalterados: dict[str, str]) -> set[str]:
+    """
+    Quais pacotes anteriores este manifesto cita.
+
+    O motivo da linha tem a forma "esta em <pacote>". Extrair o nome permite
+    dizer a quem restaura EXATAMENTE quais arquivos ele precisa ter em maos.
+    """
+    pacotes: set[str] = set()
+    for motivo in inalterados.values():
+        _, separador, nome = motivo.partition("esta em ")
+        if separador and nome.strip():
+            pacotes.add(nome.strip())
+    return pacotes
 
 
 def _conferir_assinatura(zf: zipfile.ZipFile) -> assinatura.Autenticidade:
