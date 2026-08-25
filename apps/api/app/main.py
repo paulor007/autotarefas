@@ -34,6 +34,7 @@ from . import (
     dispositivos,
     engine,
     jobs,
+    politicas,
     ratelimit,
     samples,
     spreadsheets,
@@ -141,8 +142,14 @@ app = FastAPI(title=settings.app_name, version=settings.version, lifespan=lifesp
 app.add_middleware(
     CORSMiddleware,
     allow_origins=list(settings.cors_origins),
-    allow_methods=["GET", "POST"],
+    # PUT e DELETE entram com as politicas (02.E). Sem eles, alterar ou
+    # remover uma politica falharia no navegador em desenvolvimento, onde
+    # o front roda em outra porta — e o erro de CORS nao diz o que houve.
+    allow_methods=["GET", "POST", "PUT", "DELETE"],
     allow_headers=["*"],
+    # O cookie de sessao precisa atravessar a porta do Vite em
+    # desenvolvimento; sem isto o painel nunca autentica fora de producao.
+    allow_credentials=True,
 )
 
 # Jornada guiada de planilhas (1.8B-2B). Endpoints proprios: o /api/run
@@ -151,6 +158,7 @@ app.include_router(spreadsheets.router)
 app.include_router(rotas_identidade.roteador)
 app.include_router(dispositivos.roteador)
 app.include_router(canal.roteador)
+app.include_router(politicas.roteador)
 
 
 def _capacidades() -> list[str]:

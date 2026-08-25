@@ -43,6 +43,7 @@ from .db.models import (
     EstadoDispositivo,
     Execucao,
     Papel,
+    Politica,
     ResultadoExecucao,
     agora,
     em_utc,
@@ -479,9 +480,68 @@ async def executar_backup_agora(
         )
 
     _registrar_pacote(sessao, contexto, execucao, resposta)
+    aviso = _avisar(sessao, contexto, execucao, dispositivo.nome)
     return JSONResponse(
-        {"execucao_id": execucao.id, "ok": True, "pacote": resposta.get("pacote", "")}
+        {
+            "execucao_id": execucao.id,
+            "ok": True,
+            "pacote": resposta.get("pacote", ""),
+            "aviso": aviso,
+        }
     )
+
+
+def _avisar(
+    sessao: Session, contexto: repo.Contexto, execucao: Execucao, dispositivo: str
+) -> dict[str, Any]:
+    """
+    Avisa quem a politica pediu, e registra o que aconteceu com o aviso.
+
+    Execucao manual usa a politica do dispositivo quando existe uma; sem
+    politica, nao ha destinatario e o aviso simplesmente nao acontece — o que
+    e dito, em vez de silencio.
+    """
+    from autotarefas.tasks.politica import Politica as ConfiguracaoDePolitica
+
+    from . import notificacoes
+
+    registro = (
+        sessao.execute(
+            repo.escopo(Politica, contexto)
+            .where(Politica.dispositivo_id == execucao.dispositivo_id)
+            .where(Politica.ativa.is_(True))
+        )
+        .scalars()
+        .first()
+    )
+    if registro is None:
+        return {"enviado": False, "motivo": "nenhuma politica com destinatarios"}
+
+    configuracao = ConfiguracaoDePolitica.de_json(registro.configuracao)
+    if not notificacoes.deve_avisar(configuracao.notificacao.quando, execucao.resultado):
+        return {"enviado": False, "motivo": "a politica nao pede aviso neste desfecho"}
+
+    assunto, corpo = notificacoes.texto_do_aviso(
+        dispositivo=dispositivo,
+        politica=registro.nome,
+        resultado=execucao.resultado,
+        ressalva=execucao.ressalva,
+    )
+    aviso = notificacoes.enviar(
+        sessao,
+        contexto,
+        destinatarios=list(configuracao.notificacao.emails),
+        assunto=assunto,
+        corpo=corpo,
+    )
+    notificacoes.registrar_aviso(
+        sessao,
+        contexto,
+        aviso=aviso,
+        dispositivo_id=execucao.dispositivo_id,
+        alvo=registro.nome,
+    )
+    return aviso.como_dicionario()
 
 
 def _falhou(sessao: Session, execucao: Execucao, erro: Exception, codigo: int) -> JSONResponse:

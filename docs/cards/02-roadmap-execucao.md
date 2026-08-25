@@ -44,7 +44,7 @@ Uma capacidade só entra depois que a trilha G entrega o lugar onde ela mora.
 | **02.B** | Assinatura HMAC com chave externa — autenticidade | 02.A · **G.2.3** | ✅ implementada |
 | **02.C** | Criptografia AES e gestão da senha | 02.B · G.2.3 | ✅ implementada |
 | **02.D** | VSS para arquivo aberto | **G.5.2** (só existe no Agente) | ✅ implementada · teste com elevação pendente |
-| **02.E** | Agendamento, retry/backoff, notificações, retenção GFS | G.5.2 · **G.6** | a fazer |
+| **02.E** | Agendamento, retry/backoff, notificações, retenção GFS | G.5.2 · **G.6** | ✅ implementada · envio de e-mail exige SMTP no cofre |
 | **02.F** | Destino externo e conector S3 compatível | 02.C · G.5.3 | ✅ implementada · nuvem real pendente |
 | **02.H** | Restauração guiada pela interface | 02.B · G.6 | a fazer |
 | **02.I** | Incremental por arquivo, com catálogo | 02.E | a fazer |
@@ -173,6 +173,7 @@ Registradas aqui para não se perderem, e **não** contadas como feitas.
 | --- | --- | --- |
 | **Instantâneo de volume (VSS) real** | Criar instantâneo é operação administrativa do Windows; a suíte roda sem elevação | Rodar `pytest apps/agente/tests/test_vss.py` num terminal **como administrador**. Os dois testes de `TestComElevacao` deixam de ser pulados |
 | **Login OIDC contra provedor real** | Exige `client_id`/`client_secret` registrados na conta do proprietário | Registrar um cliente OAuth no Google ou no Entra e configurar `OIDC_*` |
+| **Envio de e-mail de aviso** | Exige um servidor SMTP: endereço, remetente e, quase sempre, credencial | Guardar `smtp.servidor` e `smtp.remetente` (e `smtp.usuario`/`smtp.senha`, se houver) no cofre da organização. Sem isso, o aviso **existe no histórico** e o registro diz que o e-mail não saiu, com o motivo |
 | **Nuvem S3 real** | A suíte valida contra um servidor S3 compatível **local**, o que prova o protocolo e não a nuvem de ninguém | Guardar `s3.balde`, `s3.chave` e `s3.segredo` no cofre da organização, apontando para um endpoint autorizado, e rodar um backup com destino em nuvem |
 
 Tudo o que **não** depende disso está implementado e testado: sem elevação, o

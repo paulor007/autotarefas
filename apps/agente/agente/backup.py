@@ -26,11 +26,14 @@ from pathlib import Path
 from typing import Any
 
 from autotarefas.tasks.backup import BackupTask
+from autotarefas.tasks.politica import Politica as PoliticaDoNucleo
+from autotarefas.tasks.politica import TipoDeDestino as TipoDeDestinoDaPolitica
 
 from . import destinos as mod_destinos
 from . import raizes, vss
 from . import s3 as mod_s3
 from .comandos import Contexto
+from .config import Configuracao
 
 #: Onde os pacotes ficam quando o pedido nao diz outra coisa.
 PASTA_PADRAO = "backups"
@@ -293,6 +296,65 @@ def _preparar_destino(pedido: Pedido) -> mod_destinos.Destino | None:
         )
     except mod_destinos.DestinoRecusado as erro:
         raise BackupRecusado(str(erro)) from erro
+
+
+async def executar_politica(
+    politica: PoliticaDoNucleo,
+    configuracao: Configuracao,
+    relatar: Any = None,
+) -> dict[str, Any]:
+    """
+    Traduz uma politica em um backup, executa e aplica a retencao.
+
+    A retencao roda DEPOIS do backup e so quando ele deu certo. Rodar antes
+    apagaria a copia mais antiga para abrir espaco de um pacote que talvez nem
+    seja criado — trocar uma copia boa por nenhuma.
+
+    Falha na retencao vira ressalva, e nao falha: o pacote existe; o que nao
+    deu certo foi a faxina.
+    """
+    from . import retencao as mod_retencao
+
+    parametros: dict[str, Any] = {
+        "origens": list(politica.origens),
+        "usar_vss": politica.usar_vss,
+    }
+    if politica.destino.tipo in {
+        TipoDeDestinoDaPolitica.LOCAL,
+        TipoDeDestinoDaPolitica.EXTERNO,
+        TipoDeDestinoDaPolitica.REDE,
+    }:
+        parametros["destino_externo"] = politica.destino.caminho
+        parametros["tipo_do_destino"] = politica.destino.tipo.value
+
+    async def sem_relato(_dados: dict[str, Any]) -> None:
+        return None
+
+    contexto = Contexto(configuracao=configuracao, relatar=relatar or sem_relato)
+    ficha = await executar_backup(parametros, contexto)
+
+    pedido = montar_pedido(parametros, contexto)
+    limpeza = await asyncio.to_thread(
+        mod_retencao.aplicar, _pasta_dos_pacotes(pedido), politica.retencao
+    )
+    ficha["retencao"] = limpeza
+
+    ressalvas: list[str] = []
+    if ficha.get("com_ressalva"):
+        ressalvas.append(f"{len(ficha.get('nao_lidos', []))} arquivo(s) nao entraram")
+    if limpeza["nao_removidos"]:
+        ressalvas.append(
+            f"{len(limpeza['nao_removidos'])} pacote(s) antigo(s) nao puderam ser apagados"
+        )
+    ficha["ok"] = True
+    ficha["com_ressalva"] = bool(ressalvas)
+    ficha["ressalva"] = "; ".join(ressalvas)
+    return ficha
+
+
+def _pasta_dos_pacotes(pedido: Pedido) -> Path:
+    """Onde os pacotes desta politica ficam, para a retencao varrer."""
+    return pedido.destino if pedido.destino.suffix.lower() != ".zip" else pedido.destino.parent
 
 
 __all__ = [

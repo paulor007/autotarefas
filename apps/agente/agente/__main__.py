@@ -109,6 +109,38 @@ def revogar_pasta(pasta: Path, pasta_de_configuracao: Path | None) -> None:
         click.echo("Nenhuma pasta autorizada: este dispositivo nao copiaria nada.")
 
 
+@cli.command(name="servico")
+@click.option(
+    "--pasta-de-configuracao",
+    type=click.Path(file_okay=False, path_type=Path),
+    default=None,
+)
+def servico(pasta_de_configuracao: Path | None) -> None:
+    """
+    Roda o Agente: canal com o Live e agendador de backups.
+
+    E o que o instalador registra como servico do Windows (G.8). Enquanto ele
+    esta no ar, o backup acontece no horario — com o navegador fechado, e mesmo
+    com o servidor fora do ar, porque a politica esta gravada nesta maquina.
+    """
+    import asyncio
+
+    from .servico import rodar_servico
+
+    local, guarda = _local(pasta_de_configuracao)
+    configuracao = local.carregar()
+    if not configuracao.pareado:
+        click.echo("[ERRO] este dispositivo nao esta pareado. Rode 'parear' primeiro.", err=True)
+        sys.exit(_SAIDA_PROBLEMA)
+
+    click.echo(f"Agente no ar. Servidor: {configuracao.servidor}")
+    click.echo(f"Pastas autorizadas: {len(configuracao.raizes)}")
+    try:
+        asyncio.run(rodar_servico(local, guarda))
+    except KeyboardInterrupt:
+        click.echo("Agente encerrado.")
+
+
 @cli.command(name="estado")
 @click.option(
     "--pasta-de-configuracao",

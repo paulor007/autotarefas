@@ -1,0 +1,148 @@
+"""O servico do Agente: canal e agendador juntos (02.E).
+
+A independencia entre os dois e o que se testa aqui. Se o agendador dependesse
+do canal, o backup pararia sempre que a internet caisse — justamente quando
+ninguem esta olhando.
+"""
+
+from __future__ import annotations
+
+import asyncio
+from pathlib import Path
+from typing import Any
+
+import pytest
+
+from apps.agente.agente import identidade as ident
+from apps.agente.agente.agendador import PoliticaLocal
+from apps.agente.agente.config import Configuracao, Local
+from apps.agente.agente.servico import Servico
+from autotarefas.tasks.politica import Politica
+
+
+@pytest.fixture
+def servico(tmp_path: Path) -> Servico:
+    local = Local(pasta=tmp_path / "cfg")
+    local.gravar(Configuracao(servidor="http://127.0.0.1:9", dispositivo_id="d1"))
+    guarda = ident.Guarda(tmp_path / "cfg", usar_cofre_do_sistema=False)
+    ident.obter_ou_criar(guarda)
+    return Servico(local=local, guarda=guarda)
+
+
+class TestIndependencia:
+    def test_o_agendador_roda_mesmo_com_o_servidor_fora_do_ar(self, servico: Servico) -> None:
+        """
+        O teste que sustenta "backup com o navegador fechado".
+
+        O servidor aqui e um endereco morto: o canal nao conecta. O agendador
+        precisa rodar assim mesmo.
+        """
+        passadas = {"n": 0}
+
+        async def contar() -> list[dict[str, Any]]:
+            passadas["n"] += 1
+            return []
+
+        servico.agendador.rodada = contar  # type: ignore[method-assign]
+
+        async def dormir(_s: float) -> None:
+            return None
+
+        servico.agendador.dormir = dormir  # type: ignore[assignment]
+
+        asyncio.run(asyncio.wait_for(servico.rodar(passadas_do_agendador=3), timeout=30))
+
+        assert passadas["n"] == 3
+
+    def test_falha_no_canal_nao_cancela_o_agendador(self, servico: Servico) -> None:
+        """
+        Um canal que caiu nao pode levar o agendamento junto.
+
+        E exatamente ai que o backup mais importa.
+        """
+        passadas = {"n": 0}
+
+        async def contar() -> list[dict[str, Any]]:
+            passadas["n"] += 1
+            return []
+
+        async def canal_que_explode() -> None:
+            msg = "rede caiu"
+            raise RuntimeError(msg)
+
+        async def dormir(_s: float) -> None:
+            return None
+
+        servico.agendador.rodada = contar  # type: ignore[method-assign]
+        servico.agendador.dormir = dormir  # type: ignore[assignment]
+        servico._canal = canal_que_explode  # type: ignore[method-assign]
+
+        asyncio.run(asyncio.wait_for(servico.rodar(passadas_do_agendador=2), timeout=30))
+
+        assert passadas["n"] == 2
+
+
+class TestLigacaoComOsComandos:
+    def test_o_comando_de_politica_alcanca_o_agendador(self, servico: Servico) -> None:
+        """
+        Sem esta ligacao, o servidor mandaria a politica e ela nao seria
+        gravada em lugar nenhum — a tela diria "aplicada" e a maquina
+        continuaria sem agendamento.
+        """
+        from apps.agente.agente import comandos
+
+        servico._ensinar_o_agendador_ao_canal()
+
+        async def relatar(_d: dict[str, Any]) -> None:
+            return None
+
+        contexto = comandos.Contexto(configuracao=servico.local.carregar(), relatar=relatar)
+        mensagem = {
+            "tipo": "comando",
+            "id": "c1",
+            "acao": "politicas",
+            "parametros": {
+                "politicas": [
+                    {
+                        "id": "p1",
+                        "nome": "Diária",
+                        "configuracao": {"agendamento": {"tipo": "diario", "hora": "02:00"}},
+                    }
+                ]
+            },
+        }
+
+        resultado = asyncio.run(comandos.atender(mensagem, servico.registro, contexto))
+
+        assert resultado["ok"] is True
+        assert resultado["politicas"] == 1
+        assert servico.agendador.arquivo.is_file()
+        assert len(servico.agendador.carregar()) == 1
+
+    def test_situacao_relata_o_que_aconteceu_na_maquina(self, servico: Servico) -> None:
+        """
+        E o que o Live mostra quando a maquina reconecta.
+
+        Sem isto, um backup que rodou de madrugada com a internet caida
+        ficaria invisivel.
+        """
+        from apps.agente.agente import comandos
+
+        servico._ensinar_o_agendador_ao_canal()
+        servico.agendador.substituir([PoliticaLocal(id="p1", nome="Diária", politica=Politica())])
+        servico.agendador.politicas[0].ultimo_resultado = "sucesso"
+        servico.agendador.politicas[0].ultima_execucao = "2026-08-25T02:10:00"
+
+        async def relatar(_d: dict[str, Any]) -> None:
+            return None
+
+        contexto = comandos.Contexto(configuracao=servico.local.carregar(), relatar=relatar)
+        resultado = asyncio.run(
+            comandos.atender(
+                {"tipo": "comando", "id": "c2", "acao": "situacao", "parametros": {}},
+                servico.registro,
+                contexto,
+            )
+        )
+
+        assert resultado["politicas"][0]["ultimo_resultado"] == "sucesso"

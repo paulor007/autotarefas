@@ -1,0 +1,126 @@
+"""O serviço do Agente: canal e agendador rodando juntos, para sempre.
+
+Duas coisas acontecem ao mesmo tempo, e nenhuma pode derrubar a outra:
+
+- o **canal** mantém a conexão de saída com o Live, para receber comandos e
+  políticas;
+- o **agendador** dispara os backups no horário, lendo a política gravada no
+  disco.
+
+A independência é o ponto. Se o agendador dependesse do canal, o backup pararia
+sempre que a internet caísse — justamente quando ninguém está olhando. Se o
+canal dependesse do agendador, um backup de duas horas deixaria a máquina
+"desligada" na tela desse tempo todo.
+
+O que este módulo NÃO faz: decidir o que copiar. Isso é da política, e a
+política passa pela guarda de pastas autorizadas como qualquer outro pedido.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import contextlib
+from typing import Any
+
+from . import canal as mod_canal
+from . import comandos as mod_comandos
+from . import identidade as ident
+from .agendador import Agendador, PoliticaLocal
+from .backup import executar_politica
+from .config import Local
+
+
+class Servico:
+    """Amarra canal, agendador e execução numa coisa só."""
+
+    def __init__(self, local: Local, guarda: ident.Guarda) -> None:
+        self.local = local
+        self.guarda = guarda
+        self.agendador = Agendador(local=local, executar=self._executar_politica)
+        self.registro = mod_comandos.registro_padrao()
+        self.estado_do_canal = mod_canal.Estado()
+
+    async def _executar_politica(self, item: PoliticaLocal) -> dict[str, Any]:
+        """
+        Roda uma política agendada, lendo a configuração do disco a cada vez.
+
+        Reler importa: a política pode ter sido alterada entre o agendamento e
+        a execução — alguém autorizou outra pasta, mudou o destino. Usar a
+        cópia em memória copiaria o que era verdade horas atrás.
+        """
+        return await executar_politica(item.politica, self.local.carregar())
+
+    async def _canal(self) -> None:
+        """Mantém a conexão de saída, reconectando enquanto valer a pena."""
+        identidade = ident.carregar(self.guarda)
+        await mod_canal.manter_conectado(
+            self.local.carregar(),
+            identidade,
+            estado=self.estado_do_canal,
+            registro=self.registro,
+        )
+
+    async def rodar(self, *, passadas_do_agendador: int | None = None) -> None:
+        """
+        Sobe as duas tarefas e espera.
+
+        Uma exceção numa não cancela a outra: `gather` com `return_exceptions`
+        deixa a que sobreviveu continuar. Um canal que caiu não pode levar o
+        agendamento junto — é exatamente aí que o backup mais importa.
+        """
+        # O executor de comandos precisa alcançar o agendador para gravar as
+        # políticas que o servidor manda.
+        self._ensinar_o_agendador_ao_canal()
+
+        canal = asyncio.create_task(self._canal())
+        agendamento = asyncio.create_task(self.agendador.rodar(passadas=passadas_do_agendador))
+        tarefas = [canal, agendamento]
+
+        try:
+            if passadas_do_agendador is None:
+                # Producao: as duas rodam para sempre, e uma que morra nao
+                # cancela a outra.
+                await asyncio.gather(*tarefas, return_exceptions=True)
+            else:
+                # Execucao limitada (suite): espera o agendador terminar as
+                # passadas pedidas. O canal, por desenho, tentaria reconectar
+                # para sempre — esperar por ele seria esperar sem fim.
+                await asyncio.wait({agendamento}, return_when=asyncio.ALL_COMPLETED)
+        finally:
+            for tarefa in tarefas:
+                tarefa.cancel()
+            for tarefa in tarefas:
+                with contextlib.suppress(asyncio.CancelledError, Exception):
+                    await tarefa
+
+    def _ensinar_o_agendador_ao_canal(self) -> None:
+        """
+        Faz o `Contexto` dos comandos carregar este agendador.
+
+        O canal monta o contexto por conexão; envolver os executores aqui é o
+        que liga um ao outro sem o canal precisar conhecer o agendador.
+        """
+        agendador = self.agendador
+        originais = dict(self.registro.executores)
+
+        def com_agendador(executor: mod_comandos.Executor) -> mod_comandos.Executor:
+            async def envolvido(
+                parametros: dict[str, Any], contexto: mod_comandos.Contexto
+            ) -> dict[str, Any]:
+                contexto.agendador = agendador
+                return await executor(parametros, contexto)
+
+            return envolvido
+
+        for acao, executor in originais.items():
+            self.registro.registrar(acao, com_agendador(executor))
+
+
+async def rodar_servico(local: Local, guarda: ident.Guarda) -> None:
+    """Ponto de entrada do serviço. Em produção, não retorna."""
+    servico = Servico(local=local, guarda=guarda)
+    servico.agendador.carregar()
+    await servico.rodar()
+
+
+__all__ = ["Servico", "rodar_servico"]

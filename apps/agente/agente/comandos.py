@@ -42,6 +42,10 @@ class Contexto:
     configuracao: Configuracao
     #: Manda progresso para o servidor. Nao e obrigatorio usar.
     relatar: Callable[[dict[str, Any]], Awaitable[None]]
+    #: Agendador desta maquina, quando ha um. `None` em execucao avulsa (a
+    #: linha de comando, por exemplo), e os executores que dependem dele
+    #: precisam dizer isso em vez de fingir que guardaram a politica.
+    agendador: Any = None
 
 
 @dataclass
@@ -146,6 +150,71 @@ async def executar_estado(_parametros: dict[str, Any], contexto: Contexto) -> di
     }
 
 
+async def executar_politicas(parametros: dict[str, Any], contexto: Contexto) -> dict[str, Any]:
+    """
+    Recebe as politicas do servidor e as grava NESTA maquina.
+
+    Gravar em disco e o ponto: a partir daqui o agendamento funciona com o
+    navegador fechado, com o servidor fora do ar e depois de a maquina
+    reiniciar. Guardar so em memoria transformaria "backup agendado" em
+    "backup enquanto tudo estiver bem".
+    """
+    from autotarefas.tasks.politica import Politica
+
+    from .agendador import PoliticaLocal
+
+    if contexto.agendador is None:
+        msg = "este Agente esta rodando sem agendador; nao ha onde guardar politica"
+        raise RuntimeError(msg)
+
+    brutas = parametros.get("politicas") or []
+    politicas = [
+        PoliticaLocal(
+            id=str(item.get("id", "")),
+            nome=str(item.get("nome", "")),
+            politica=Politica.model_validate(item.get("configuracao") or {}),
+        )
+        for item in brutas
+    ]
+    contexto.agendador.substituir(politicas)
+
+    return {
+        "politicas": len(politicas),
+        "proximas": [
+            {
+                "id": item.id,
+                "proxima": item.proxima.isoformat() if item.proxima else "",
+            }
+            for item in contexto.agendador.politicas
+        ],
+    }
+
+
+async def executar_situacao(_parametros: dict[str, Any], contexto: Contexto) -> dict[str, Any]:
+    """
+    Conta como foi a ultima execucao de cada politica.
+
+    E o que o Live mostra no historico quando a maquina reconecta. Sem isto, um
+    backup que rodou de madrugada com a internet caida ficaria invisivel.
+    """
+    if contexto.agendador is None:
+        return {"politicas": []}
+
+    return {
+        "politicas": [
+            {
+                "id": item.id,
+                "nome": item.nome,
+                "proxima": item.proxima.isoformat() if item.proxima else "",
+                "ultima_execucao": item.ultima_execucao,
+                "ultimo_resultado": item.ultimo_resultado,
+                "ultima_ressalva": item.ultima_ressalva,
+            }
+            for item in contexto.agendador.politicas
+        ]
+    }
+
+
 def registro_padrao() -> Registro:
     """Executores que todo Agente conhece."""
     # Import tardio: `backup` importa este modulo para o `Contexto`, e um
@@ -155,6 +224,8 @@ def registro_padrao() -> Registro:
     registro = Registro()
     registro.registrar("estado", executar_estado)
     registro.registrar("backup", executar_backup)
+    registro.registrar("politicas", executar_politicas)
+    registro.registrar("situacao", executar_situacao)
     return registro
 
 
@@ -165,5 +236,7 @@ __all__ = [
     "Registro",
     "atender",
     "executar_estado",
+    "executar_politicas",
+    "executar_situacao",
     "registro_padrao",
 ]
