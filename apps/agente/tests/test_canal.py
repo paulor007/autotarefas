@@ -635,3 +635,74 @@ class TestHistoricoDoAgendamento:
 
         assert len(execucoes) == 1, "a execucao gravada com o canal aberto nao subiu"
         assert execucoes[0].resultado is ResultadoExecucao.SUCESSO
+
+
+class TestRevogacaoCortaDeVerdade:
+    """
+    Revogar tem que cortar AGORA, e nao na proxima conexao (G.2.5).
+
+    A suite ja provava que um dispositivo revogado nao volta a entrar. Faltava o
+    caso que aparece na vida real: a maquina **ja estava conectada**. Marcar o
+    estado no banco nao fecha um canal aberto, e uma maquina pode ficar
+    conectada por dias — entao revogar seria um rotulo na tela enquanto ela
+    continuava recebendo comando.
+    """
+
+    def test_o_canal_aberto_e_fechado_na_hora(
+        self, banco: Banco, servidor: str, identidade: ident.Identidade
+    ) -> None:
+        dispositivo_id, contexto, _ = _com_agente_no_ar(banco, servidor, identidade)
+        cookie = _sessao_de(banco, contexto)
+
+        with _cliente_http(servidor) as http:
+            http.cookies.set(COOKIE_SESSAO, cookie)
+            resposta = http.post(f"/api/dispositivos/{dispositivo_id}/revogar")
+
+        assert resposta.status_code == HTTP_OK, resposta.text
+        assert resposta.json()["desconectado"] is True
+
+        limite = time.monotonic() + _ESPERA_SUBIDA_S
+        while canal_servidor.presenca.de(dispositivo_id) is not None:
+            if time.monotonic() > limite:
+                pytest.fail("o canal do dispositivo revogado continuou aberto")
+            time.sleep(0.05)
+
+    def test_dispositivo_revogado_nao_recebe_mais_comando(
+        self, banco: Banco, servidor: str, identidade: ident.Identidade
+    ) -> None:
+        """
+        A recusa e do SERVIDOR, e nao da falta de conexao.
+
+        Sem esta conferencia, bastaria a maquina reconectar por um instante para
+        voltar a executar backup e restauracao de uma organizacao que ja a tinha
+        tirado de servico.
+        """
+        dispositivo_id, contexto, _ = _com_agente_no_ar(banco, servidor, identidade)
+        cookie = _sessao_de(banco, contexto)
+
+        with _cliente_http(servidor) as http:
+            http.cookies.set(COOKIE_SESSAO, cookie)
+            http.post(f"/api/dispositivos/{dispositivo_id}/revogar")
+            resposta = http.post(f"/api/dispositivos/{dispositivo_id}/backup", json={})
+
+        assert resposta.status_code == HTTP_CONFLICT, resposta.text
+        assert "revogado" in resposta.text
+
+    def test_revogar_maquina_desligada_diz_que_nao_havia_canal(
+        self, banco: Banco, servidor: str, identidade: ident.Identidade
+    ) -> None:
+        """
+        "Cortei agora" e "vai cortar quando ela voltar" sao coisas diferentes.
+
+        Quem revogou um notebook roubado precisa saber em qual das duas esta.
+        """
+        contexto = _organizacao(banco)
+        dispositivo_id = _parear(banco, contexto, identidade)
+        cookie = _sessao_de(banco, contexto)
+
+        with _cliente_http(servidor) as http:
+            http.cookies.set(COOKIE_SESSAO, cookie)
+            resposta = http.post(f"/api/dispositivos/{dispositivo_id}/revogar")
+
+        assert resposta.status_code == HTTP_OK, resposta.text
+        assert resposta.json()["desconectado"] is False

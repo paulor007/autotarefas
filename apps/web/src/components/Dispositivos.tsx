@@ -164,6 +164,9 @@ export default function Dispositivos({ papel }: Props) {
         {dispositivos.map((item) => {
           const online = conectados[item.id] === true;
           const estado = estados[item.id];
+          // Máquina revogada não recebe comando — o servidor recusa. Deixar
+          // os botões na tela seria oferecer uma ação que só pode falhar.
+          const emServico = item.estado !== "revogado";
           return (
             <li
               key={item.id}
@@ -178,9 +181,10 @@ export default function Dispositivos({ papel }: Props) {
                   </p>
                 </div>
                 <span
-                  className={`rounded-full px-2 py-0.5 text-[0.7rem] font-semibold ${
-                    online ? "bg-ok/15 text-ok" : "bg-white/5 text-muted"
-                  }`}
+                  className={`rounded-full px-2 py-0.5 text-[0.7rem] font-semibold ${corDoEstado(
+                    item.estado,
+                    online,
+                  )}`}
                 >
                   {rotuloDeEstado(item.estado, online)}
                 </span>
@@ -207,19 +211,29 @@ export default function Dispositivos({ papel }: Props) {
                 </div>
               )}
 
+              {!emServico && (
+                <p className="mt-2 text-[0.85rem] text-danger">
+                  Esta máquina foi revogada: ela não recebe mais comando, e o
+                  backup dela parou. O histórico continua aqui. Para voltar a
+                  usar, pareie de novo — o pareamento antigo não volta.
+                </p>
+              )}
+
               {avisos[item.id] && (
                 <p className="mt-2 text-[0.85rem] text-muted">{avisos[item.id]}</p>
               )}
 
               <div className="mt-3 flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  onClick={() => void consultar(item.id)}
-                  className="rounded-lg border border-white/12 px-3 py-1.5 text-[0.8rem] text-fg hover:border-white/25"
-                >
-                  Ver pastas autorizadas
-                </button>
-                {opera && (
+                {emServico && (
+                  <button
+                    type="button"
+                    onClick={() => void consultar(item.id)}
+                    className="rounded-lg border border-white/12 px-3 py-1.5 text-[0.8rem] text-fg hover:border-white/25"
+                  >
+                    Ver pastas autorizadas
+                  </button>
+                )}
+                {opera && emServico && (
                   <button
                     type="button"
                     onClick={() => void executar(item.id)}
@@ -228,7 +242,7 @@ export default function Dispositivos({ papel }: Props) {
                     Executar backup agora
                   </button>
                 )}
-                {opera && (
+                {opera && emServico && (
                   <button
                     type="button"
                     onClick={() =>
@@ -275,6 +289,19 @@ function rotuloDeEstado(estado: Dispositivo["estado"], online: boolean): string 
   if (estado === "revogado") return "Revogado";
   if (estado === "suspenso") return "Suspenso";
   return online ? "Conectado" : "Desligado";
+}
+
+/**
+ * A cor segue o ESTADO, e não a presença.
+ *
+ * Pintar pela presença deixava um dispositivo revogado com crachá verde: a cor
+ * dizia "em serviço" enquanto a palavra dizia "revogado", e a cor é o que se lê
+ * primeiro.
+ */
+function corDoEstado(estado: Dispositivo["estado"], online: boolean): string {
+  if (estado === "revogado") return "bg-danger/15 text-danger";
+  if (estado === "suspenso") return "bg-signal/15 text-signal";
+  return online ? "bg-ok/15 text-ok" : "bg-white/5 text-muted";
 }
 
 /**

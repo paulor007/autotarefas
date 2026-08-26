@@ -452,6 +452,16 @@ async def executar_backup_agora(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="dispositivo nao encontrado"
         )
+    if dispositivo.estado is EstadoDispositivo.REVOGADO:
+        # Antes de abrir a execucao: uma maquina revogada nao vai copiar nada, e
+        # registrar a tentativa como execucao encheria o historico de linhas que
+        # nunca tiveram chance. A recusa tambem precisa dizer o motivo CERTO —
+        # "nao ha canal aberto" mandaria a pessoa conferir o cabo de rede de uma
+        # maquina que ela mesma tirou de servico.
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="este dispositivo foi revogado; pareie novamente para voltar a usar",
+        )
 
     execucao = Execucao(
         organizacao_id=contexto.organizacao_id,
@@ -757,6 +767,13 @@ async def _pedir_ao_dispositivo(  # noqa: PLR0913 — sessao, contexto,
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="dispositivo nao encontrado"
         )
+    if existe.estado is EstadoDispositivo.REVOGADO:
+        # Sem esta linha, revogar seria enfeite: a maquina com o canal ja
+        # aberto continuaria executando backup e restauracao normalmente.
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="este dispositivo foi revogado; pareie novamente para voltar a usar",
+        )
 
     try:
         resposta = await canal.pedir_ao_dispositivo(
@@ -779,15 +796,31 @@ async def _pedir_ao_dispositivo(  # noqa: PLR0913 — sessao, contexto,
 
 
 @roteador.post("/{dispositivo_id}/revogar")
-def revogar_dispositivo(
+async def revogar_dispositivo(
     dispositivo_id: str, contexto: ContextoAdministrador, sessao: SessaoBanco
 ) -> dict[str, Any]:
-    """Tira o dispositivo de servico, sem apagar o historico dele."""
+    """
+    Tira o dispositivo de servico, e corta o que ja estava aberto.
+
+    Marcar no banco so valeria na PROXIMA conexao, e uma maquina conectada pode
+    ficar assim por dias. A chave privada esta na maquina do cliente: se o corte
+    nao acontecer aqui, ele nao acontece.
+    """
+    from . import canal
+
     try:
         dispositivo = revogar(sessao, contexto, dispositivo_id=dispositivo_id)
     except PareamentoRecusado as erro:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(erro)) from erro
-    return {"id": dispositivo.id, "estado": dispositivo.estado.value}
+
+    desconectado = await canal.presenca.expulsar(dispositivo_id, canal.FECHAR_DISPOSITIVO_INATIVO)
+    return {
+        "id": dispositivo.id,
+        "estado": dispositivo.estado.value,
+        # Dito em voz alta: e a diferenca entre "cortei agora" e "vai cortar
+        # quando a maquina tentar voltar".
+        "desconectado": desconectado,
+    }
 
 
 __all__ = [

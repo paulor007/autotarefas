@@ -189,6 +189,23 @@ class Presenca:
     def de(self, dispositivo_id: str) -> Conexao | None:
         return self._por_dispositivo.get(dispositivo_id)
 
+    async def expulsar(self, dispositivo_id: str, codigo: int) -> bool:
+        """
+        Fecha o canal de um dispositivo agora. Devolve se havia um aberto.
+
+        Existe por causa da revogacao. Marcar o dispositivo como revogado no
+        banco so vale na PROXIMA conexao — e uma maquina que ja esta conectada
+        pode ficar assim por dias. Sem isto, revogar seria um rotulo na tela
+        enquanto a maquina continuava recebendo comando.
+        """
+        conexao = self._por_dispositivo.get(dispositivo_id)
+        if conexao is None:
+            return False
+        with contextlib.suppress(Exception):
+            await conexao.socket.close(code=codigo, reason="dispositivo revogado")
+        self.sair(conexao)
+        return True
+
     def da_organizacao(self, organizacao_id: str) -> list[Conexao]:
         return [
             conexao
