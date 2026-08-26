@@ -144,6 +144,39 @@ class TestAutorizacao:
         assert passo.ok is True
         assert instalador.pastas == [str(pasta.resolve())]
 
+    def test_a_segunda_pasta_nao_apaga_a_primeira(
+        self, instalador: Assistente, tmp_path: Path
+    ) -> None:
+        """
+        Uma empresa guarda o que importa em mais de um lugar.
+
+        Documentos, a pasta do sistema de gestao, a planilha na area de
+        trabalho. Se a segunda escolha substituisse a primeira, o instalador
+        terminaria protegendo so a ultima — e ninguem perceberia ate precisar
+        restaurar a que sumiu.
+        """
+        primeira = tmp_path / "Financeiro"
+        segunda = tmp_path / "Contratos"
+        primeira.mkdir()
+        segunda.mkdir()
+
+        assert instalador.autorizar(primeira).ok is True
+        assert instalador.autorizar(segunda).ok is True
+
+        assert instalador.pastas == [str(primeira.resolve()), str(segunda.resolve())]
+
+    def test_a_mesma_pasta_duas_vezes_nao_duplica(
+        self, instalador: Assistente, tmp_path: Path
+    ) -> None:
+        """Clicar duas vezes na mesma pasta e engano comum, e nao erro."""
+        pasta = tmp_path / "Financeiro"
+        pasta.mkdir()
+
+        instalador.autorizar(pasta)
+        instalador.autorizar(pasta)
+
+        assert instalador.pastas == [str(pasta.resolve())]
+
     def test_o_seletor_bonito_nao_afrouxa_a_guarda(
         self, instalador: Assistente, tmp_path: Path
     ) -> None:

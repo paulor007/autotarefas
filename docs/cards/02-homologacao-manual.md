@@ -32,6 +32,11 @@ Ele vale 30 minutos e serve uma vez só.
 > **O que provaria mentira:** abrir `http://localhost:8000` sem o convite e
 > conseguir criar organização assim mesmo.
 
+**Se você já criou a organização antes e a sessão venceu:** o console imprime,
+a cada partida, um link de reentrada — porque sem provedor OIDC configurado ele
+é o único jeito de entrar. Vale uma vez, 30 minutos. Com OIDC configurado, nada
+é impresso e o caminho é o provedor.
+
 ---
 
 ## Parte 1 — a empresa e a máquina
@@ -78,13 +83,15 @@ Dê **dois cliques** no arquivo baixado.
 > esperado: o executável não é assinado, e assinatura exige certificado pago.
 > Está registrado como limitação.
 
-### 4. Autorizar uma pasta
+### 4. Autorizar as pastas
 
-Na mesma janela, clique em **Procurar…** e escolha a pasta.
+Na mesma janela, clique em **Adicionar pasta…** e escolha. Repita para quantas
+quiser — a lista vai crescendo.
 
-**Precisa acontecer:** a janela confirma a pasta; ao concluir, ela diz que o
-Agente vai subir junto com o Windows. No Live, o dispositivo aparece como
-**Conectado** — sem reiniciar nada.
+**Precisa acontecer:** cada pasta escolhida aparece na lista; **Concluir** só
+habilita com pelo menos uma. Ao concluir, a janela diz que o Agente vai subir
+junto com o Windows. No Live, o dispositivo aparece como **Conectado** — sem
+reiniciar nada.
 
 > **O que provaria mentira:** existir qualquer botão **no Live** que autorize
 > pasta. Não existe, e é de propósito: uma tela na nuvem não concede acesso ao
@@ -215,6 +222,28 @@ que aconteceu com a notificação — inclusive "não enviada", quando não há 
 configurado. O selo diz **Trilha íntegra**.
 
 > **O que provaria mentira:** uma linha só. Aí não houve retry, houve desistência.
+
+---
+
+## Parte 4.1 — revogar corta de verdade
+
+Este passo não estava na lista original. Ele entrou porque a primeira
+homologação encontrou um botão que não fazia o que dizia.
+
+Com a máquina **conectada**, clique em **Revogar** no dispositivo.
+
+**Precisa acontecer:**
+
+1. o crachá fica **vermelho**, escrito "Revogado";
+2. os botões de executar e restaurar **somem** — máquina revogada não recebe
+   comando;
+3. o Agente na máquina perde a conexão na hora, sem esperar reiniciar.
+
+> **O que provaria mentira:** o crachá continuar verde, ou os botões
+> continuarem lá e funcionarem. A chave privada fica na máquina do cliente — se
+> o corte não acontece no servidor, ele não acontece em lugar nenhum.
+
+Para voltar a usar aquela máquina, pareie de novo. O pareamento antigo não volta.
 
 ---
 

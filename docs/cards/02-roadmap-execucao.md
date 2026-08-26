@@ -42,6 +42,8 @@ Uma capacidade só entra depois que a trilha G entrega o lugar onde ela mora.
 | **G.8.3** | Instalação guiada na tela: baixar, rodar, parear | G.8.2 · G.7.3 | ✅ implementada |
 | **G.9** | Homologação dos 20 passos com navegador real | todas | ✅ 20/20 em 6m12s |
 | **G.10** | Instalador de um clique: `.exe` único, sem Python, sem terminal | G.8 · G.9 | ✅ implementada |
+| **G.2.4** | Reentrada pelo console, em servidor sem provedor de identidade | G.2.2 | ✅ implementada |
+| **G.2.5** | Revogar corta o canal aberto e recusa comando | G.4.1 | ✅ implementada |
 
 ### 1.2 Capacidades do Card 02
 
@@ -589,6 +591,73 @@ tela: a pessoa baixaria, clicaria, e nada aconteceria.
   para o sistema dela.
 - **Ele não é versionado.** São 29 MB que incharia o histórico para sempre; um
   servidor recém-clonado o gera com `python tools/construir_agente.py`.
+
+---
+
+## 2.19 O que a segunda homologação manual encontrou
+
+Três defeitos, e os três só aparecem quando alguém usa o produto de verdade por
+mais de uma sessão.
+
+### 1. O dono ficava trancado fora do próprio servidor
+
+A sessão vence em 12 horas. Sem provedor OIDC configurado — que é o estado
+normal de quem acabou de subir o Live — **não havia como entrar de novo**. Os
+dados continuavam lá dentro, e o dono do lado de fora. A única saída era apagar
+o banco.
+
+Isso é o pior desfecho possível de um produto de backup: perder o acesso aos
+dados que ele existe para proteger.
+
+O mecanismo agora é o mesmo do primeiro acesso, e a razão é a mesma: **quem tem
+o console da máquina já controla o serviço** — um link impresso ali não concede
+nada que essa pessoa não pudesse tomar de outro jeito. Uso único, 30 minutos, e
+**só quando não há provedor configurado**. Com OIDC no ar, nada é impresso:
+manter as duas portas abertas seria manter uma que ninguém vigia ao lado de uma
+com fechadura.
+
+### 2. Revogar não revogava nada
+
+O botão marcava o dispositivo como revogado no banco — e só. Na prática:
+
+- o **canal já aberto continuava aberto**. O estado só é conferido no aperto de
+  mão, e uma máquina conectada pode ficar assim por dias;
+- os **comandos continuavam sendo aceitos**: backup e restauração funcionavam
+  normalmente numa máquina que a organização tirou de serviço;
+- a tela pintava o crachá pela **presença**, então um dispositivo revogado
+  aparecia em **verde** — a cor dizia "em serviço" enquanto a palavra dizia
+  "revogado", e a cor é o que se lê primeiro;
+- e o backup respondia *"não há canal aberto"*, mandando a pessoa conferir o
+  cabo de rede de uma máquina que ela mesma revogou.
+
+Agora revogar **fecha o canal na hora** e a resposta diz se cortou agora ou se
+vai cortar quando a máquina voltar — a diferença importa para quem revogou um
+notebook roubado. Comando em máquina revogada é recusado com o motivo certo, nas
+duas rotas (a genérica e a de backup, que tem caminho próprio). A tela pinta pelo
+estado, esconde as ações e explica o que aconteceu.
+
+A chave privada fica **na máquina do cliente**: não dá para apagá-la de longe. Se
+o corte não acontece no servidor, ele não acontece.
+
+### 3. O instalador autorizava uma pasta só
+
+Uma empresa pequena guarda o que importa em mais de um lugar: `Documentos`, a
+pasta do sistema de gestão, a planilha na área de trabalho. O assistente aceitava
+a primeira e mandava procurar um comando para a segunda — devolvendo o terminal
+pela porta dos fundos, que é exatamente o que ele existe para evitar.
+
+Agora a tela lista as pastas escolhidas e aceita quantas a pessoa quiser. O botão
+de concluir só habilita com pelo menos uma: sem pasta autorizada, aquele
+computador não copia nada.
+
+### E uma frase que tinha deixado de ser verdade
+
+A tela de envio avulso ainda dizia *"Backup automático de pastas — ainda não
+disponível... Ele ainda não existe."* O Agente existe há vários commits. Agora
+ela explica a diferença entre os dois modos e aponta para onde a coisa mora:
+
+> o envio avulso protege o que você **entrega**; o Agente protege o que você
+> **tem**.
 
 ---
 

@@ -130,9 +130,17 @@ class Janela:
         self._botao("Começar", começar)
 
     def tela_pasta(self) -> None:
-        """Segunda tela: a impressão para conferir, e a pasta a proteger."""
+        """
+        Segunda tela: a impressão para conferir, e as pastas a proteger.
+
+        **Pastas**, no plural, e não uma só. Uma empresa pequena guarda o que
+        importa em mais de um lugar — `Documentos`, a pasta do sistema de gestão,
+        a planilha na área de trabalho. Aceitar uma e mandar a pessoa procurar um
+        comando para a segunda seria devolver o terminal pela porta dos fundos,
+        que é justamente o que este instalador existe para evitar.
+        """
         self._limpar()
-        self._titulo("Escolha a pasta a proteger")
+        self._titulo("Escolha as pastas a proteger")
         self._paragrafo(
             "Confira se esta impressão digital é a mesma que aparece no Live. "
             "É o que garante que esta máquina é esta máquina."
@@ -142,11 +150,23 @@ class Janela:
         )
         self._paragrafo(
             "A autorização é dada aqui, neste computador. Nenhuma tela na nuvem "
-            "concede acesso ao seu disco."
+            "concede acesso ao seu disco. Pode escolher quantas pastas quiser."
         )
 
+        lista = tk.Listbox(self.corpo, height=5, width=64)
+        lista.pack(anchor="w", pady=(10, 0))
+
         aviso = ttk.Label(self.corpo, text="", wraplength=LARGURA - 60, justify="left")
-        aviso.pack(anchor="w", pady=(10, 0))
+        aviso.pack(anchor="w", pady=(6, 0))
+
+        botoes = ttk.Frame(self.corpo)
+        botoes.pack(anchor="w", pady=(14, 0))
+
+        def redesenhar() -> None:
+            lista.delete(0, tk.END)
+            for pasta in self.assistente.pastas:
+                lista.insert(tk.END, pasta)
+            concluir.configure(state="normal" if self.assistente.pastas else "disabled")
 
         def escolher() -> None:
             escolhida = filedialog.askdirectory(title="Qual pasta você quer proteger?")
@@ -157,10 +177,13 @@ class Janela:
                 text=f"{passo.mensagem} {passo.detalhe}".strip(),
                 foreground="#15803d" if passo.ok else "#b91c1c",
             )
-            if passo.ok:
-                self._botao("Concluir", self._instalar)
+            redesenhar()
 
-        self._botao("Procurar…", escolher)
+        ttk.Button(botoes, text="Adicionar pasta…", command=escolher).pack(side="left")
+        concluir = ttk.Button(botoes, text="Concluir", command=self._instalar, state="disabled")
+        concluir.pack(side="left", padx=(8, 0))
+
+        redesenhar()
 
     def tela_trabalhando(self, texto: str) -> None:
         self._limpar()
