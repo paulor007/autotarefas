@@ -18,7 +18,7 @@ from pydantic import BaseModel, EmailStr, Field
 
 from ..config import settings
 from ..db.models import Usuario
-from . import bootstrap, oidc
+from . import bootstrap, oidc, reentrada
 from .dependencias import SessaoBanco
 from .entrada import acolher, organizacoes_do_usuario
 from .oidc import ErroDeIdentidade
@@ -235,6 +235,33 @@ def primeiro_acesso(pedido: PedidoDeBootstrap, sessao: SessaoBanco) -> Response:
     _gravar_sessao(
         resposta,
         SessaoWeb(usuario_id=criado.usuario_id, organizacao_id=criado.organizacao_id),
+    )
+    return resposta
+
+
+@roteador.get("/reentrar")
+def reentrar(request: Request, chave: str = "") -> Response:
+    """
+    Entrada pelo link impresso no console, quando nao ha provedor.
+
+    Existe porque a alternativa e pior que qualquer risco que ela traga: um
+    servidor sem OIDC perde o dono quando a sessao vence, e os dados ficam
+    trancados sem ninguem para abrir.
+
+    Quem tem o console da maquina ja controla o servico — o link nao concede
+    nada que essa pessoa nao pudesse tomar de outro jeito. Com OIDC no ar, esta
+    rota nao serve para nada: nenhuma chave chega a ser emitida.
+    """
+    del request
+    try:
+        usada = reentrada.usar(chave, agora_s=time.time())
+    except reentrada.ReentradaIndisponivel as erro:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(erro)) from erro
+
+    resposta = RedirectResponse(url="/", status_code=status.HTTP_303_SEE_OTHER)
+    _gravar_sessao(
+        resposta,
+        SessaoWeb(usuario_id=usada.usuario_id, organizacao_id=usada.organizacao_id),
     )
     return resposta
 

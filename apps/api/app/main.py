@@ -45,7 +45,7 @@ from . import (
 )
 from .config import settings
 from .db.atual import banco, definir_banco
-from .identidade import bootstrap
+from .identidade import bootstrap, reentrada
 from .identidade import rotas as rotas_identidade
 from .identidade.sessao_web import segredo_e_efemero
 
@@ -94,13 +94,21 @@ def _preparar_plataforma() -> None:
     fluxo que exige provar acesso a maquina onde o servico roda.
     """
     with banco().sessao() as sessao:
-        vazio = bootstrap.esta_vazio(sessao)
-    if vazio:
-        convite = bootstrap.emitir(agora_s=time.time())
-        # `print` de proposito, e nao log: o convite tem que aparecer no
-        # console de quem subiu o servico. Um log com nivel configuravel
-        # poderia estar desligado justo na hora em que o dono precisa dele.
-        print(bootstrap.linha_do_console(convite, settings.public_base_url))  # noqa: T201
+        if bootstrap.esta_vazio(sessao):
+            convite = bootstrap.emitir(agora_s=time.time())
+            # `print` de proposito, e nao log: o convite tem que aparecer no
+            # console de quem subiu o servico. Um log com nivel configuravel
+            # poderia estar desligado justo na hora em que o dono precisa dele.
+            print(bootstrap.linha_do_console(convite, settings.public_base_url))  # noqa: T201
+        else:
+            # Ja ha organizacao. Sem provedor de identidade, o dono nao tem por
+            # onde entrar depois que a sessao vence — ficaria trancado do lado
+            # de fora dos proprios dados. O link vai para o console pelo mesmo
+            # motivo do convite: quem tem a maquina ja tem o servico. Com OIDC
+            # configurado, `emitir` devolve `None` e nada e impresso.
+            chave = reentrada.emitir(sessao, agora_s=time.time())
+            if chave is not None:
+                print(reentrada.linha_do_console(chave, settings.public_base_url))  # noqa: T201
     if segredo_e_efemero():
         print(  # noqa: T201 — ver acima
             "  [aviso] SESSION_SECRET nao definido: as sessoes nao sobrevivem "
@@ -126,6 +134,7 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         demo_servers.stop()
         canal.presenca.limpar()
         bootstrap.descartar()
+        reentrada.descartar()
         definir_banco(None)
 
 
