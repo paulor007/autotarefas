@@ -66,6 +66,10 @@ PACIENCIA_AGENDAMENTO_S = 210.0
 #: "aceita arquivo grande" de "aceita arquivo pequeno e promete o resto".
 TAMANHO_GRANDE = 12 * 1024 * 1024
 
+#: Onde as capturas do fluxo sao gravadas. Elas sao evidencia da entrega, e
+#: nascem do teste que passou — nao de uma sessao manual que ninguem viu.
+CAPTURAS = RAIZ / "docs" / "cards" / "capturas-02"
+
 pytestmark = [pytest.mark.e2e, pytest.mark.slow]
 
 
@@ -321,6 +325,18 @@ def janela(navegador: Browser) -> Iterator[Janela]:
 # ============================================================
 
 
+def _capturar(pagina: Page, nome: str) -> None:
+    """
+    Guarda a tela como ela estava neste passo.
+
+    Sai do teste que passou, e nao de uma sessao manual: uma captura tirada a
+    parte pode mostrar qualquer coisa; esta mostra o estado que as asserções
+    acabaram de conferir.
+    """
+    CAPTURAS.mkdir(parents=True, exist_ok=True)
+    pagina.screenshot(path=str(CAPTURAS / f"{nome}.png"), full_page=True)
+
+
 def _painel(pagina: Page) -> object:
     """
     A parte da tela que exige conta.
@@ -405,6 +421,7 @@ def test_01_criar_organizacao_e_usuario(cenario: Cenario, janela: Janela) -> Non
 
     pagina.get_by_text("Padaria Sol").first.wait_for()
     assert "dono@padariasol.com.br" in pagina.content()
+    _capturar(pagina, "01-organizacao-criada")
 
 
 def test_02_baixar_e_instalar_o_agente(cenario: Cenario, janela: Janela) -> None:
@@ -438,6 +455,7 @@ def test_03_parear_dispositivo(cenario: Cenario, janela: Janela) -> None:
     achado = re.search(r"-Codigo\s+(\S+)", comando)
     assert achado, comando
     cenario.codigo = achado.group(1)
+    _capturar(pagina, "02-instalacao-guiada")
 
     saida = _agente(
         cenario.maquina,
@@ -523,6 +541,7 @@ def test_04_autorizar_pasta_e_subir_o_agente(cenario: Cenario, janela: Janela) -
 
     pagina.get_by_role("button", name="Ver pastas autorizadas").first.click()
     pagina.get_by_text(str(maquina.dados.resolve())).first.wait_for()
+    _capturar(pagina, "03-dispositivo-conectado")
 
 
 def test_05_criar_politica_com_destino_externo(cenario: Cenario, janela: Janela) -> None:
@@ -601,6 +620,7 @@ def test_07_executar_com_o_navegador_aberto(cenario: Cenario, janela: Janela) ->
     assert pacotes, "nenhum pacote foi criado na maquina"
     copias = sorted(cenario.maquina.destino.glob("backup_*.zip"))
     assert copias, "o destino externo nao recebeu o pacote"
+    _capturar(pagina, "04-politica-e-execucao")
 
 
 def test_08_marcar_o_horario_e_fechar_o_navegador(cenario: Cenario, janela: Janela) -> None:
@@ -740,6 +760,7 @@ def test_11_conferir_historico_e_saude(cenario: Cenario, janela: Janela) -> None
     assert (cenario.maquina.pacotes / cenario.pacote_do_agendamento).is_file(), (
         "o Live mostrou um pacote que nao existe na maquina"
     )
+    _capturar(pagina, "05-historico-com-agendamento")
 
 
 def test_12_conferir_pacote_e_manifesto(cenario: Cenario) -> None:
@@ -805,6 +826,8 @@ def test_14_restaurar_uma_amostra_pela_tela(cenario: Cenario, janela: Janela) ->
     pacotes = sorted(p.name for p in cenario.maquina.pacotes.glob("*.zip"))
     corte = inteiro.find("Restaurar arquivos ·")
     assert "Restauração concluída" in inteiro, f"{inteiro[corte:][:900]} || pacotes={pacotes}"
+
+    _capturar(pagina, "06-restauracao-concluida")
 
     recuperados = list((cenario.maquina.dados / "recuperado").rglob("contrato.txt"))
     assert recuperados, "o arquivo restaurado nao apareceu no disco"
@@ -985,3 +1008,4 @@ def test_20_comprovar_retry_notificacao_e_auditoria(cenario: Cenario, janela: Ja
         PACIENCIA_S,
         lambda: "a tela nao mostrou o selo da trilha. Painel: " + painel.inner_text()[-500:],
     )
+    _capturar(pagina, "07-retry-e-auditoria")

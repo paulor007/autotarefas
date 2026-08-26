@@ -1,6 +1,11 @@
 # Card 02 — Backup automático verificável
 
-**Status: EM CONSTRUÇÃO.** Nenhuma parte deste card foi homologada.
+**Status: IMPLEMENTADO, AGUARDANDO HOMOLOGAÇÃO FINAL.**
+Todas as subetapas têm commit próprio e teste. Os vinte passos da homologação
+passam com navegador real, backend real e Agente real
+(`tests/e2e/test_homologacao_card_02_e2e.py` — 20/20).
+**Nada aqui está homologado**: quem homologa é o proprietário, com o roteiro
+de [02-homologacao-manual.md](02-homologacao-manual.md).
 Documento de decisão aprovado conceitualmente pelo proprietário em 20/08/2026.
 
 Este documento é o contrato funcional do card: o que ele resolve, o que promete,
@@ -380,16 +385,16 @@ em sequência, e **K não existe**.
 
 | Subetapa | Finalidade | Depende de | Estado | Relação com G |
 | --- | --- | --- | --- | --- |
-| **02.A** | Correções críticas e segurança de caminhos: junções, ciclos, ressalvas visíveis, aviso de mesmo volume, documentação honesta | — | **implementada, não homologada** (`90193f5`, `5870838`) | parte já no Live; aviso de volume e opção de links dependem de G.6 |
-| **02.B** | **Assinatura HMAC com chave externa** — autenticidade | 02.A · G.2 (guarda da chave) | não iniciada | tela em G.6 |
-| **02.C** | Criptografia AES e gestão segura da senha | 02.B · G.2 | não iniciada, decisão de nuvem pendente (seção 20) | tela em G.6 |
-| **02.D** | VSS opcional para arquivos abertos | G.3–G.5 (agente) | não iniciada | exclusiva do agente; nunca no modo upload |
-| **02.E** | Agendamento, gatilhos, retry, notificações e retenção diária/semanal/mensal | 02.G.6 (política) | não iniciada | telas em G.6 e G.7 |
-| **02.F** | Destinos externos e conector S3 | 02.C (decisão de chave) · G.5 | não iniciada | tela em G.6 |
-| **02.G** | **Agente local e interface operacional** — fundação da plataforma | — | **G.0 concluída** (`9c77a3b`); **G.1 — IMPLEMENTADA, AGUARDANDO HOMOLOGAÇÃO** (`b671270` + correções da G.1.1); G.2–G.8 não iniciadas | é a própria trilha G |
-| **02.H** | **Restauração guiada pela interface** (era 02.I) | 02.B (mostrar autenticidade) | não iniciada | tela em G.6 |
-| **02.I** | **Backup incremental com catálogo** (era 02.J) | 02.E (retenção) · G.6 | não iniciada | sem tela própria; muda o motor |
-| **02.J** | **Hooks e proteção antes de ação destrutiva**, com falha fechada (era 02.K) | 02.G.6 | não iniciada | aviso na tela da automação bloqueada |
+| **02.A** | Correções críticas e segurança de caminhos: junções, ciclos, ressalvas visíveis, aviso de mesmo volume, documentação honesta | — | implementada (`90193f5`, `5870838`) | parte já no Live; aviso de volume e opção de links dependem de G.6 |
+| **02.B** | **Assinatura HMAC com chave externa** — autenticidade | 02.A · G.2 (guarda da chave) | implementada (`2fdad84`) | tela em G.6 |
+| **02.C** | Criptografia AES e gestão segura da senha | 02.B · G.2 | implementada (`c519b4b`) | tela em G.6 |
+| **02.D** | VSS opcional para arquivos abertos | G.3–G.5 (agente) | implementada (`b69f957`) · teste com elevação pendente | exclusiva do agente; nunca no modo upload |
+| **02.E** | Agendamento, gatilhos, retry, notificações e retenção diária/semanal/mensal | 02.G.6 (política) | implementada (`05e5e3b`) · envio de e-mail exige SMTP no cofre | telas em G.6 e G.7.4 |
+| **02.F** | Destinos externos e conector S3 | 02.C (decisão de chave) · G.5 | implementada (`84f41ab`) · nuvem real pendente | tela em G.7.4 |
+| **02.G** | **Agente local e interface operacional** — fundação da plataforma | — | G.0 a G.9 implementadas — matriz em [02-roadmap-execucao.md](02-roadmap-execucao.md) | é a própria trilha G |
+| **02.H** | **Restauração guiada pela interface** (era 02.I) | 02.B (mostrar autenticidade) | implementada (`4972f41`) | tela na G.7.3 |
+| **02.I** | **Backup incremental com catálogo** (era 02.J) | 02.E (retenção) · G.6 | implementada (`b38bbdf`) | sem tela própria; muda o motor |
+| **02.J** | **Hooks e proteção antes de ação destrutiva**, com falha fechada (era 02.K) | 02.G.6 | implementada (`6b176cb`) | aviso na tela da restauração bloqueada |
 | **02.K** | — | — | **não existe** | — |
 
 ### Critérios de aceite por subetapa
@@ -412,16 +417,26 @@ em sequência, e **K não existe**.
 
 ## 22. Trilha G — estado por subetapa
 
+A matriz completa, com dependências e ordem de execução, está em
+**[02-roadmap-execucao.md](02-roadmap-execucao.md)**. Resumo:
+
 | Subetapa | Estado | Commit |
 | --- | --- | --- |
-| **G.0** — `live_demo` vira `apps/web` + `apps/api` | concluída | `9c77a3b` |
-| **G.1** — nome do card, modelo de capacidades e linguagem honesta na interface | **IMPLEMENTADA, AGUARDANDO HOMOLOGAÇÃO** | `b671270`, corrigido pela G.1.1 |
-| **G.1.1** — correções da homologação manual da G.1 | implementada, aguarda a mesma homologação | commit separado, sem reescrever o anterior |
-| **G.2**–**G.8** | não iniciadas | — |
+| **G.0** — `live_demo` vira `apps/web` + `apps/api` | implementada | `9c77a3b` |
+| **G.1** + **G.1.1** — nome do card, capacidades, linguagem honesta | implementadas | `b671270`, `19d1064` |
+| **G.2.1–G.2.3** — dados multiempresa, identidade OIDC, cofre | implementadas | `b3ec3e5`, `cc91cb9`, `c389e7b` |
+| **G.3.1–G.3.2** — esqueleto do Agente, pareamento | implementadas | `9b267f5`, `1fb4098` |
+| **G.4.1–G.4.2** — canal de saída, protocolo de comandos | implementadas | `49ea17a`, `4bc9586` |
+| **G.5.1–G.5.3** — raízes autorizadas, streaming, destinos reais | implementadas | `14667ba`, `d9da5c8`, `e389493` |
+| **G.6** — telas de dispositivos e pastas | implementada | `3967c3a` |
+| **G.7.1–G.7.4** — histórico do agendamento, pacote por nome, telas, política | implementadas | `131e9f2`, `fd699b6`, `5b1f2ce`, `9579119` |
+| **G.8** — serviço, pacote e instalação guiada | implementada | `6483f37` |
+| **G.9** — homologação dos 20 passos com navegador real | 20/20 | `ec97a5a` |
 
-A G.1 **não está homologada**. O que existe é uma implementação preparada para
-homologação: o proprietário executou o fluxo real e encontrou seis problemas,
-corrigidos na G.1.1.
+Nenhuma delas está **homologada**. O que existe é uma implementação preparada
+para homologação, com os vinte passos passando de ponta a ponta — e com quatro
+verificações que dependem de hardware, privilégio ou credencial do proprietário,
+listadas no roteiro manual.
 
 ### 22.1 G.1.1 — o que mudou, mensagem por mensagem
 

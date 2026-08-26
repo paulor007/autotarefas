@@ -30,11 +30,19 @@ Três regras valem para todos:
 
 | | |
 | --- | --- |
-| **Status** | **EM CONSTRUÇÃO** — nada homologado |
-| **Homologação** | — |
+| **Status** | **IMPLEMENTADO, AGUARDANDO HOMOLOGAÇÃO FINAL** |
+| **Homologação** | roteiro em [02-homologacao-manual.md](02-homologacao-manual.md); os 20 passos passam automatizados, com navegador real |
 | **Problema** | A rotina manual que não é executada, o backup que nunca foi testado e a cópia mantida no mesmo disco |
-| **Limitações** | Hoje o cliente não tem nenhum destino disponível pela interface: outro volume, disco externo e rede funcionam apenas por linha de comando; sem agente não há pasta local, agendamento nem VSS; hash no manifesto detecta corrupção, não adulteração intencional; sem incremental, políticas grandes consomem tempo e espaço |
-| **Próxima etapa** | 02.G.1 — **IMPLEMENTADA, AGUARDANDO HOMOLOGAÇÃO** (corrigida pela G.1.1). G.2 não começa antes da homologação |
+| **Limitações** | Pendem de hardware, privilégio ou credencial do proprietário: disco externo físico, VSS com elevação, envio de e-mail (SMTP no cofre) e nuvem S3 com endpoint externo. O pacote do Agente exige Python 3.13 instalado — não há executável único nesta versão |
+| **Próxima etapa** | homologação final pelo proprietário |
+
+---
+
+## Entrega do Card 02
+
+O que foi feito, o que foi provado, o que **não** foi provado e o que depende do
+proprietário está em **[02-entrega.md](02-entrega.md)**. O roteiro de conferência
+manual está em **[02-homologacao-manual.md](02-homologacao-manual.md)**.
 
 ---
 
