@@ -154,6 +154,12 @@ dev = [
     # === Pre-commit hooks ===
     "pre-commit>=4.6.0,<5.0.0",
 ]
+# Para gerar o executavel do Agente (instala com: pip install -e ".[instalador]")
+# Fica separado do `dev` de proposito: quem so roda testes nao precisa baixar um
+# empacotador de 20 MB, e o build do `.exe` acontece na maquina que publica.
+instalador = [
+    "pyinstaller>=6.11.0,<7.0.0",
+]
 demo = [
     "flask>=3.1.2,<4.0.0",
     "aiosmtpd>=1.4.6,<2.0.0",

@@ -30,17 +30,22 @@ import zipfile
 from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter
-from fastapi.responses import StreamingResponse
+from fastapi import APIRouter, Query, Request, Response
+from sqlalchemy.orm import Session
 
-from .identidade.dependencias import ContextoAtual
+from .identidade.dependencias import ContextoAtual, SessaoBanco
 
 #: Pasta que aparece dentro do ZIP. Uma so, para o arquivo nao explodir na
 #: pasta de Downloads de quem extrair sem olhar.
 RAIZ = "AutoTarefas-Agente"
 
-#: Nome do arquivo baixado.
+#: Nome do arquivo baixado, em cada formato.
 NOME_DO_ARQUIVO = "autotarefas-agente.zip"
+NOME_DO_EXECUTAVEL = "AutoTarefas-Agente.exe"
+
+#: Onde o build deixa a base do executavel. `tools/construir_agente.py` a gera;
+#: ela nao e versionada, e por isso pode nao existir neste servidor.
+PASTA_DO_BUILD = "dist-agente"
 
 #: O que o Agente precisa de verdade, medido pelo que ele importa. As faixas
 #: acompanham as do `pyproject.toml` do projeto.
@@ -259,6 +264,62 @@ O QUE ESTE PACOTE NAO FAZ
 """
 
 
+def base_do_executavel() -> Path | None:
+    """
+    O executavel do Agente, se este servidor tiver um.
+
+    Pode nao ter: ele nao e versionado (dezenas de megabytes), e um servidor
+    recem-clonado so o ganha depois de `python tools/construir_agente.py`. Nesse
+    caso o Live **diz** que so tem o pacote com Python, em vez de oferecer um
+    botao que baixaria nada.
+    """
+    caminho = raiz_do_projeto() / PASTA_DO_BUILD / NOME_DO_EXECUTAVEL
+    return caminho if caminho.is_file() else None
+
+
+def _codigo_valido(sessao: Session, contexto: object, digitado: str) -> str:
+    """
+    Confere se o codigo e desta organizacao e ainda vale.
+
+    Carimbar o que o navegador mandou sem conferir permitiria um instalador
+    apontando para o codigo de outra empresa — e o cliente entraria na
+    organizacao errada sem nunca saber.
+    """
+    from . import dispositivos
+
+    if not digitado:
+        return ""
+    try:
+        registro = dispositivos._achar_codigo(sessao, digitado)
+    except dispositivos.PareamentoRecusado:
+        return ""
+    organizacao = getattr(contexto, "organizacao_id", "")
+    if registro.organizacao_id != organizacao:
+        return ""
+    return registro.codigo
+
+
+def carimbar(base: Path, servidor: str, codigo: str) -> bytes:
+    """
+    O executavel com o endereco e o codigo colados no fim.
+
+    Copia de bytes, e nao um build por download: construir um executavel leva
+    dezenas de segundos, e um download nao pode esperar por isso.
+    """
+    import tempfile
+
+    from apps.agente.agente import carimbo
+
+    dados = {"servidor": servidor}
+    if codigo:
+        dados["codigo"] = codigo
+
+    with tempfile.TemporaryDirectory() as temporario:
+        destino = Path(temporario) / NOME_DO_EXECUTAVEL
+        carimbo.gravar(base, destino, dados)
+        return destino.read_bytes()
+
+
 # ============================================================
 # Rotas
 # ============================================================
@@ -267,21 +328,52 @@ roteador = APIRouter(prefix="/api/agente", tags=["agente"])
 
 
 @roteador.get("/instalador")
-def baixar_instalador(contexto: ContextoAtual) -> StreamingResponse:
+def baixar_instalador(
+    contexto: ContextoAtual,
+    sessao: SessaoBanco,
+    request: Request,
+    codigo: str = Query(default="", max_length=32),
+    formato: str = Query(default="", pattern="^(exe|zip)?$"),
+) -> Response:
     """
-    Entrega o pacote do Agente.
+    Entrega o Agente: o executavel quando existe, o pacote com Python quando nao.
 
-    Exige sessao: o pacote nao carrega segredo, mas tambem nao precisa ficar
-    disponivel para a internet inteira.
+    O executavel sai **carimbado** com o endereco deste Live e com o codigo de
+    pareamento de quem esta baixando. E o que faz o instalador nao perguntar
+    nada: a pessoa da um duplo clique e escolhe a pasta.
+
+    `formato=zip` pede o pacote com codigo mesmo havendo executavel — para
+    maquina onde a politica proibe binario baixado, ou para quem quer ler antes
+    de rodar.
+
+    Exige sessao. O pacote nao carrega segredo — o codigo vale poucos minutos e
+    uma vez so —, mas tambem nao precisa ficar disponivel para a internet
+    inteira.
     """
-    del contexto
-    dados = montar()
-    return StreamingResponse(
-        io.BytesIO(dados),
-        media_type="application/zip",
+    # `formato=zip` e uma escolha legitima: ha maquina onde a politica proibe
+    # executavel baixado, e quem prefere ler o codigo antes de rodar. O caminho
+    # do Python continua existindo, e continua sendo mantido.
+    base = None if formato == "zip" else base_do_executavel()
+    if base is None:
+        dados = montar(str(request.base_url).rstrip("/"))
+        return Response(
+            content=dados,
+            media_type="application/zip",
+            headers={
+                "Content-Disposition": f'attachment; filename="{NOME_DO_ARQUIVO}"',
+            },
+        )
+
+    dados = carimbar(
+        base,
+        str(request.base_url).rstrip("/"),
+        _codigo_valido(sessao, contexto, codigo),
+    )
+    return Response(
+        content=dados,
+        media_type="application/vnd.microsoft.portable-executable",
         headers={
-            "Content-Disposition": f'attachment; filename="{NOME_DO_ARQUIVO}"',
-            "Content-Length": str(len(dados)),
+            "Content-Disposition": f'attachment; filename="{NOME_DO_EXECUTAVEL}"',
         },
     )
 
@@ -289,21 +381,45 @@ def baixar_instalador(contexto: ContextoAtual) -> StreamingResponse:
 @roteador.get("/instalador/ficha")
 def ficha_do_instalador(contexto: ContextoAtual) -> dict[str, Any]:
     """
-    Tamanho e conteudo do pacote, para a tela dizer o que vai ser baixado.
+    O que vai ser baixado, antes do clique.
 
-    Um botao de download que nao diz o tamanho nem o que vem dentro pede um ato
-    de fe que ninguem deveria ter que dar.
+    `formato` e o campo que muda a tela inteira: com `exe`, o roteiro e "duplo
+    clique"; com `zip`, e "instale o Python e rode o script". A tela nao pode
+    prometer o primeiro quando o servidor so tem o segundo.
     """
     del contexto
+    base = base_do_executavel()
+    if base is not None:
+        return {
+            "formato": "exe",
+            "nome": NOME_DO_EXECUTAVEL,
+            "tamanho_bytes": base.stat().st_size,
+            "arquivos": 1,
+            "precisa_de_python": "",
+        }
+
     dados = montar()
     with zipfile.ZipFile(io.BytesIO(dados)) as pacote:
         arquivos = len(pacote.namelist())
     return {
+        "formato": "zip",
         "nome": NOME_DO_ARQUIVO,
         "tamanho_bytes": len(dados),
         "arquivos": arquivos,
         "precisa_de_python": "3.13",
+        # Dito em voz alta: e a pasta que a pessoa precisa entrar depois de
+        # extrair. O extrator do Windows cria uma pasta em volta desta.
+        "pasta_do_pacote": RAIZ,
     }
 
 
-__all__ = ["NOME_DO_ARQUIVO", "RAIZ", "REQUISITOS", "montar", "roteador"]
+__all__ = [
+    "NOME_DO_ARQUIVO",
+    "NOME_DO_EXECUTAVEL",
+    "RAIZ",
+    "REQUISITOS",
+    "base_do_executavel",
+    "carimbar",
+    "montar",
+    "roteador",
+]

@@ -215,6 +215,11 @@ emails_recebidos/
 # Preserva o lockfile do frontend Live para npm ci e CI reproduzivel
 !apps/web/package-lock.json
 
+# Executavel do Agente (G.10). Dezenas de MB que se refazem em um comando:
+# `python tools/construir_agente.py`. No repositorio, incharia o historico para
+# sempre.
+dist-agente/
+
 # Banco local da plataforma (G.2). Dado de cliente nunca e versionado.
 autotarefas.db
 autotarefas.db-journal

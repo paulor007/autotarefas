@@ -48,46 +48,52 @@ nome, e clique em **Criar organização**.
 
 ### 2. Baixar o Agente
 
-Em **Dispositivos**, clique em **Parear nova máquina**. A tela mostra o pacote,
-o tamanho, quantos arquivos vêm dentro e o requisito de Python — **antes** do
-clique. Baixe.
+Em **Dispositivos**, clique em **Parear nova máquina**. A tela mostra o nome do
+arquivo, o tamanho e se precisa de Python — **antes** do clique. Baixe.
 
-**Precisa acontecer:** o download é um `.zip` de algumas centenas de KB.
+**Precisa acontecer:** o download é um `.exe` de ~29 MB, e a tela diz "não
+precisa instalar mais nada".
 
-> **O que provaria mentira:** o ZIP conter `.env`, banco, chave ou o
-> `agente.json` de outro cliente. Abra e confira: só código, `LEIA-ME.txt`,
-> `instalar.ps1` e `requisitos.txt`.
+> **Se a tela disser que precisa de Python 3.13:** este servidor ainda não gerou
+> o executável. Quem administra o servidor roda
+> `python tools/construir_agente.py`. Até lá o download é o pacote com código, e
+> o roteiro é o da seção "Caminho alternativo", no fim.
 
-### 3. Instalar e parear
+### 3. Instalar e parear — dois cliques
 
-Extraia, abra o terminal na pasta e rode o comando que a tela mostra:
+Dê **dois cliques** no arquivo baixado.
 
-```bash
-.\instalar.ps1 -Codigo SEU-CODIGO -Servidor http://localhost:8000
-```
+**Precisa acontecer:**
 
-**Precisa acontecer:** o Agente imprime a **impressão digital** desta máquina.
-Ela tem que ser a mesma que aparece no Live.
+1. abre uma janela dizendo o endereço do seu Live — você não digitou nada;
+2. clique em **Começar**. Ele registra a máquina e mostra a **impressão
+   digital**;
+3. confira se é a mesma que aparece no Live, na lista de dispositivos.
 
-> **O que provaria mentira:** impressões diferentes entre o terminal e a tela —
-> ou o pareamento funcionar com um código já usado.
+> **O que provaria mentira:** a janela pedir endereço e código. Isso significa
+> que o carimbo não chegou no arquivo — e a promessa de "um clique" não se
+> cumpriu.
+
+> **O Windows vai avisar** que o programa não é reconhecido (SmartScreen). É
+> esperado: o executável não é assinado, e assinatura exige certificado pago.
+> Está registrado como limitação.
 
 ### 4. Autorizar uma pasta
 
-Na própria máquina:
+Na mesma janela, clique em **Procurar…** e escolha a pasta.
 
-```bash
-.\venv\Scripts\python.exe -m apps.agente.agente autorizar C:\caminho\da\pasta
-```
+**Precisa acontecer:** a janela confirma a pasta; ao concluir, ela diz que o
+Agente vai subir junto com o Windows. No Live, o dispositivo aparece como
+**Conectado** — sem reiniciar nada.
 
-No Live, clique em **Ver pastas autorizadas**.
+> **O que provaria mentira:** existir qualquer botão **no Live** que autorize
+> pasta. Não existe, e é de propósito: uma tela na nuvem não concede acesso ao
+> disco de ninguém. O seletor de pastas roda na sua máquina, e passa pelas mesmas
+> recusas do comando de linha.
 
-**Precisa acontecer:** a pasta aparece; o dispositivo aparece como
-**Conectado**.
-
-> **O que provaria mentira:** existir qualquer botão no Live que autorize pasta.
-> Não existe, e é de propósito: uma tela na nuvem não concede acesso ao disco de
-> ninguém.
+> **O outro jeito de provar mentira:** terminar com "tudo certo" sem você ter
+> escolhido pasta. Se faltar pasta, a última tela tem que dizer que este
+> computador **não copia nada**.
 
 ---
 
@@ -223,6 +229,27 @@ automatizada não tem. Eles estão **pendentes**, e não "feitos".
 | **VSS (arquivo aberto)** | Exige terminal como administrador | Deixe uma planilha **aberta**, marque "usar instantâneo" e execute. O arquivo tem que entrar no pacote |
 | **E-mail de aviso** | Exige SMTP no cofre da organização | Configure o SMTP, provoque uma falha, confira o e-mail |
 | **Nuvem S3 real** | Exige endpoint e credencial de terceiro | Configure a credencial no cofre, marque destino **Nuvem**, confira no bucket |
+
+---
+
+## Caminho alternativo — pacote com Python
+
+Use quando o servidor ainda não gerou o executável, ou quando a política da
+máquina proíbe binário baixado. Para forçar este formato mesmo havendo
+executável, acrescente `?formato=zip` ao endereço do download.
+
+1. extraia o ZIP. **Dentro dele há a pasta `AutoTarefas-Agente`** — é nela que o
+   terminal precisa abrir. O extrator do Windows cria outra pasta em volta, e
+   abrir o terminal no lugar errado dá "o termo não é reconhecido";
+2. se o Windows recusar por política de execução:
+   `Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass`;
+3. `.\instalar.ps1 -Codigo SEU-CODIGO -Servidor http://localhost:8000`;
+4. autorize a pasta:
+   `.\venv\Scripts\python.exe -m apps.agente.agente autorizar C:\caminho\da\pasta`
+
+> **O que provaria mentira:** o ZIP conter `.env`, banco, chave ou o
+> `agente.json` de outro cliente. Abra e confira: só código, `LEIA-ME.txt`,
+> `instalar.ps1` e `requisitos.txt`.
 
 ---
 

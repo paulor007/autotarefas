@@ -141,6 +141,39 @@ def servico(pasta_de_configuracao: Path | None) -> None:
         click.echo("Agente encerrado.")
 
 
+@cli.command(name="assistente")
+@click.option("--servidor", default="", help="Endereco do Live. Vazio: a janela pergunta.")
+@click.option("--codigo", default="", help="Codigo de pareamento. Vazio: a janela pergunta.")
+@click.option(
+    "--pasta-de-configuracao",
+    type=click.Path(file_okay=False, path_type=Path),
+    default=None,
+)
+def assistente(servidor: str, codigo: str, pasta_de_configuracao: Path | None) -> None:
+    """
+    Abre a janela de instalacao, a mesma do executavel.
+
+    Existe para conferir o assistente sem gerar o `.exe`, que leva minutos. O
+    cliente nunca chega aqui: ele recebe o executavel ja carimbado, e o duplo
+    clique abre exatamente esta janela.
+    """
+    import os
+
+    from .assistente import Assistente
+    from .janela import Janela
+
+    pasta = pasta_de_configuracao or ident.pasta_padrao()
+    Janela(
+        Assistente(
+            local=Local(pasta=pasta),
+            guarda=ident.Guarda(pasta),
+            servidor=servidor,
+            codigo=codigo,
+            nome_da_maquina=os.environ.get("COMPUTERNAME", "") or "Computador",
+        )
+    ).abrir()
+
+
 @cli.command(name="instalar-servico")
 @click.option(
     "--ao-ligar",
@@ -239,7 +272,59 @@ def estado(pasta_de_configuracao: Path | None) -> None:
         click.echo("Pastas autorizadas: NENHUMA - este dispositivo nao copiaria nada.")
 
 
+#: Sinalizador que o Agendador de Tarefas usa para pedir o modo servico ao
+#: executavel congelado. La nao ha `python -m` para chamar: o proprio `.exe` e
+#: o programa, e ele precisa de um jeito de saber que nao e para abrir janela.
+SINAL_DE_SERVICO = "--servico"
+
+
+def _congelado() -> None:
+    """
+    O que o `.exe` do cliente faz.
+
+    Duplo clique abre o assistente. Com `--servico`, roda o Agente de verdade —
+    e e assim que o Agendador o chama, sem janela nenhuma.
+
+    Duas entradas no mesmo arquivo porque distribuir dois executaveis dobraria o
+    tamanho do download para repetir o mesmo Python embutido.
+    """
+    import asyncio
+
+    if SINAL_DE_SERVICO in sys.argv:
+        from .servico import rodar_servico
+
+        pasta = _pasta_pedida() or ident.pasta_padrao()
+        local, guarda = Local(pasta=pasta), ident.Guarda(pasta)
+        if not local.carregar().pareado:
+            sys.exit(_SAIDA_PROBLEMA)
+        asyncio.run(rodar_servico(local, guarda))
+        return
+
+    from .janela import montar
+
+    montar(_pasta_pedida()).abrir()
+
+
+def _pasta_pedida() -> Path | None:
+    """Le `--pasta-de-configuracao` sem o Click, que aqui nao esta no caminho."""
+    if "--pasta-de-configuracao" not in sys.argv:
+        return None
+    posicao = sys.argv.index("--pasta-de-configuracao") + 1
+    if posicao >= len(sys.argv):
+        return None
+    return Path(sys.argv[posicao])
+
+
 def main() -> None:
+    """
+    Ponto de entrada unico.
+
+    Congelado, o programa e um instalador com janela. Rodando do codigo, e a
+    linha de comando de sempre — que e o que o instalador e a suite usam.
+    """
+    if getattr(sys, "frozen", False):
+        _congelado()
+        return
     cli()
 
 

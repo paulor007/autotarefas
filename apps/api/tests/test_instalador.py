@@ -196,14 +196,96 @@ class TestFunciona:
 
 
 class TestFicha:
-    def test_a_ficha_diz_o_tamanho_e_quantos_arquivos(self, nomes: list[str]) -> None:
-        """
-        Um botao de download que nao diz o tamanho nem o que vem dentro pede um
-        ato de fe que ninguem deveria ter que dar.
-        """
+    """
+    O que a tela promete depende do que este servidor TEM.
+
+    O executavel nao e versionado: um servidor recem-clonado so o ganha depois
+    de `python tools/construir_agente.py`. A ficha e o que impede a tela de
+    prometer "dois cliques" onde so existe o pacote com Python — entao os dois
+    ramos sao testados, e nenhum depende do que por acaso esta no disco de quem
+    roda a suite.
+    """
+
+    def test_sem_executavel_a_ficha_e_do_pacote_com_python(
+        self, nomes: list[str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(instalador, "base_do_executavel", lambda: None)
+
         ficha = instalador.ficha_do_instalador(contexto=None)  # type: ignore[arg-type]
 
+        assert ficha["formato"] == "zip"
         assert ficha["nome"].endswith(".zip")
         assert ficha["arquivos"] == len(nomes)
         assert ficha["tamanho_bytes"] > 0
         assert ficha["precisa_de_python"] == "3.13"
+        # A pasta que a pessoa precisa entrar depois de extrair. O extrator do
+        # Windows cria outra em volta desta, e o comando "nao e reconhecido".
+        assert ficha["pasta_do_pacote"] == instalador.RAIZ
+
+    def test_com_executavel_a_ficha_promete_um_clique(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """
+        `precisa_de_python` vazio e o campo que muda o roteiro na tela.
+
+        Com ele preenchido, a interface mostra terminal e script; vazio, mostra
+        "de dois cliques no arquivo".
+        """
+        falso = tmp_path / "AutoTarefas-Agente.exe"
+        falso.write_bytes(b"MZ" + b"\x00" * 4096)
+        monkeypatch.setattr(instalador, "base_do_executavel", lambda: falso)
+
+        ficha = instalador.ficha_do_instalador(contexto=None)  # type: ignore[arg-type]
+
+        assert ficha["formato"] == "exe"
+        assert ficha["nome"] == instalador.NOME_DO_EXECUTAVEL
+        assert ficha["arquivos"] == 1
+        assert ficha["precisa_de_python"] == ""
+
+
+class TestCarimbo:
+    def test_o_executavel_sai_com_endereco_e_codigo(self, tmp_path: Path) -> None:
+        """
+        E o carimbo que dispensa a pessoa de digitar dois campos numa janela.
+
+        Sem ele, o instalador de um clique teria dois jeitos de errar antes do
+        primeiro clique.
+        """
+        from apps.agente.agente import carimbo
+
+        base = tmp_path / "base.exe"
+        base.write_bytes(b"MZ" + b"\x00" * 4096)
+
+        dados = instalador.carimbar(base, "https://live.exemplo.com.br", "ABC123")
+
+        carimbado = tmp_path / "saida.exe"
+        carimbado.write_bytes(dados)
+        assert carimbo.ler(carimbado) == {
+            "servidor": "https://live.exemplo.com.br",
+            "codigo": "ABC123",
+        }
+
+    def test_sem_codigo_o_carimbo_leva_so_o_endereco(self, tmp_path: Path) -> None:
+        """
+        Codigo invalido nao vira carimbo: a janela pergunta, em vez de tentar
+        parear com um valor que o servidor ja recusou.
+        """
+        from apps.agente.agente import carimbo
+
+        base = tmp_path / "base.exe"
+        base.write_bytes(b"MZ" + b"\x00" * 4096)
+
+        dados = instalador.carimbar(base, "https://live.exemplo.com.br", "")
+
+        carimbado = tmp_path / "saida.exe"
+        carimbado.write_bytes(dados)
+        assert carimbo.ler(carimbado) == {"servidor": "https://live.exemplo.com.br"}
+
+    def test_o_executavel_continua_inteiro_antes_do_carimbo(self, tmp_path: Path) -> None:
+        base = tmp_path / "base.exe"
+        corpo = b"MZ" + b"\x00" * 4096
+        base.write_bytes(corpo)
+
+        dados = instalador.carimbar(base, "https://x", "Y")
+
+        assert dados.startswith(corpo)

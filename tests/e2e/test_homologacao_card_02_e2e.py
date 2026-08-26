@@ -43,6 +43,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
+from urllib.parse import unquote
 
 import pytest
 
@@ -230,7 +231,11 @@ def live(maquina: Maquina) -> Iterator[tuple[str, str, list[str]]]:
         convite = ""
         fim = time.monotonic() + 30
         while time.monotonic() < fim and not convite:
-            achado = re.search(r"convite=([A-Za-z0-9_\-]+)", "".join(linhas))
+            # A URL INTEIRA, e nao so o token: e ela que o produto manda a
+            # pessoa abrir, e portanto e ela que o teste tem que seguir. Montar
+            # um endereco proprio aqui foi o que deixou passar um convite que
+            # apontava para 404.
+            achado = re.search(r"(http://\S+?convite=[A-Za-z0-9_\-]+)", "".join(linhas))
             if achado:
                 convite = achado.group(1)
                 break
@@ -411,8 +416,15 @@ def _agente(
 
 
 def test_01_criar_organizacao_e_usuario(cenario: Cenario, janela: Janela) -> None:
-    """1. A empresa nasce pelo convite impresso no console do servidor."""
-    pagina = janela.abrir(f"{cenario.url}/?convite={cenario.convite}")
+    """
+    1. A empresa nasce pelo convite impresso no console do servidor.
+
+    O teste abre **o endereco que o console imprimiu**, letra por letra. Montar
+    um endereco equivalente aqui deixaria passar exatamente o defeito que a
+    primeira homologacao manual encontrou: o link do produto respondia 404,
+    porque `/primeiro-acesso` nao e um arquivo e o servidor so servia arquivos.
+    """
+    pagina = janela.abrir(cenario.convite)
 
     pagina.get_by_placeholder("Padaria Sol").fill("Padaria Sol")
     pagina.get_by_placeholder("voce@suaempresa.com.br").fill("dono@padariasol.com.br")
@@ -425,11 +437,19 @@ def test_01_criar_organizacao_e_usuario(cenario: Cenario, janela: Janela) -> Non
 
 
 def test_02_baixar_e_instalar_o_agente(cenario: Cenario, janela: Janela) -> None:
-    """2. O pacote sai da propria tela, e o que roda depois e ELE."""
+    """
+    2. O pacote sai da propria tela, e o que roda depois e ELE.
+
+    Pede `formato=zip` de proposito. O download padrao e o executavel de um
+    clique — e ele tem homologacao propria, em
+    `test_instalador_exe_e2e.py`, porque conduzir uma janela do Windows sem
+    display nao prova nada. Aqui interessa o Agente rodando como processo
+    separado, e para isso o pacote com codigo e o caminho.
+    """
     pagina = janela.pagina
     assert pagina is not None
 
-    resposta = pagina.request.get(f"{cenario.url}/api/agente/instalador")
+    resposta = pagina.request.get(f"{cenario.url}/api/agente/instalador", params={"formato": "zip"})
     assert resposta.ok, resposta.status
 
     destino = cenario.maquina.pasta / "baixado"
@@ -446,15 +466,26 @@ def test_02_baixar_e_instalar_o_agente(cenario: Cenario, janela: Janela) -> None
 
 
 def test_03_parear_dispositivo(cenario: Cenario, janela: Janela) -> None:
-    """3. O codigo sai da tela; o pareamento acontece na maquina."""
+    """
+    3. O codigo sai da tela; o pareamento acontece na maquina.
+
+    O codigo e lido do **link de download**, e nao de um comando escrito na
+    tela: e ali que ele viaja de verdade. Quando o servidor tem o executavel, a
+    tela deixa de mostrar comando nenhum — o carimbo leva o codigo dentro do
+    arquivo, e a pessoa so da dois cliques.
+    """
     pagina = janela.pagina
     assert pagina is not None
 
-    pagina.get_by_role("button", name="Parear nova máquina").click()
-    comando = pagina.get_by_text(re.compile(r"instalar\.ps1")).inner_text()
-    achado = re.search(r"-Codigo\s+(\S+)", comando)
-    assert achado, comando
-    cenario.codigo = achado.group(1)
+    painel = _painel(pagina)
+    painel.get_by_role("button", name="Parear nova máquina").click()
+
+    link = painel.get_by_role("link", name=re.compile("Baixar o Agente"))
+    link.wait_for()
+    endereco = link.get_attribute("href") or ""
+    achado = re.search(r"codigo=([^&]+)", endereco)
+    assert achado, f"o link de download nao carrega o codigo: {endereco}"
+    cenario.codigo = unquote(achado.group(1))
     _capturar(pagina, "02-instalacao-guiada")
 
     saida = _agente(

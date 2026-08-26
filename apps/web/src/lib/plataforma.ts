@@ -433,16 +433,39 @@ export function removerPolitica(
   return pedir(`/api/politicas/${encodeURIComponent(id)}`, { method: "DELETE" });
 }
 
-/** O que vem dentro do pacote do Agente, para a tela dizer antes de baixar. */
+/**
+ * O que vem no download, antes do clique.
+ *
+ * `formato` muda o roteiro inteiro: com `exe` é duplo clique e acabou; com
+ * `zip` é instalar o Python e rodar um script. A tela não pode prometer o
+ * primeiro quando o servidor só tem o segundo.
+ */
 export interface FichaDoInstalador {
+  formato: "exe" | "zip";
   nome: string;
   tamanho_bytes: number;
   arquivos: number;
+  /** Vazio quando o executável já traz o Python dentro. */
   precisa_de_python: string;
+  /** Pasta que aparece dentro do ZIP — é nela que o terminal precisa abrir. */
+  pasta_do_pacote?: string;
 }
 
-/** Endereço do pacote do Agente. É um download de verdade, não um link morto. */
+/** Endereço do download do Agente. É um arquivo de verdade, não um link morto. */
 export const ENDERECO_DO_INSTALADOR = "/api/agente/instalador";
+
+/**
+ * O endereço com o código de pareamento junto.
+ *
+ * É ele que faz o executável já saber para onde ligar: o servidor cola endereço
+ * e código no fim do arquivo antes de entregar. Sem isso, a pessoa teria que
+ * digitar os dois numa janela.
+ */
+export function enderecoDoInstalador(codigo: string): string {
+  return codigo
+    ? `${ENDERECO_DO_INSTALADOR}?codigo=${encodeURIComponent(codigo)}`
+    : ENDERECO_DO_INSTALADOR;
+}
 
 /**
  * Tamanho e conteúdo do pacote, antes de baixar.

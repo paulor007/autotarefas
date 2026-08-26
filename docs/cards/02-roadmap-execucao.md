@@ -41,6 +41,7 @@ Uma capacidade só entra depois que a trilha G entrega o lugar onde ela mora.
 | **G.8.2** | Pacote do Agente com só o que ele usa, baixável pelo Live | G.8.1 | ✅ implementada |
 | **G.8.3** | Instalação guiada na tela: baixar, rodar, parear | G.8.2 · G.7.3 | ✅ implementada |
 | **G.9** | Homologação dos 20 passos com navegador real | todas | ✅ 20/20 em 6m12s |
+| **G.10** | Instalador de um clique: `.exe` único, sem Python, sem terminal | G.8 · G.9 | ✅ implementada |
 
 ### 1.2 Capacidades do Card 02
 
@@ -521,6 +522,73 @@ Além desses, dois buracos de honestidade foram fechados no caminho:
   correto sem credencial, e não um silêncio.
 - **Nuvem S3 real**: validada contra servidor compatível local; endpoint externo
   autorizado continua pendente.
+
+---
+
+## 2.18 O instalador de um clique, e por que ele era obrigatório
+
+A primeira homologação manual travou no terceiro passo. O comando `.\instalar.ps1`
+não foi encontrado — o extrator do Windows cria uma pasta em volta da que vem no
+ZIP, e o terminal abriu um nível acima. Depois disso viria a política de
+execução, e antes de tudo isso já era preciso ter Python instalado.
+
+O diagnóstico não é "faltou uma instrução". É que **exigir terminal já é a
+parede**: o produto promete "um clique e acabou o trabalho repetitivo", e a
+instalação pedia conhecimento de programador.
+
+Ter um Agente instalado **não** é desvio de rota. Nenhum navegador alcança
+`D:\Financeiro`, e nenhum navegador roda às 2h da manhã fechado — isso é limite
+do navegador, não escolha de projeto. O desvio era **como** se instalava.
+
+### O que passou a existir
+
+**Um executável, 29 MB, duplo clique.** Traz o Python dentro; a máquina do
+cliente não instala nada.
+
+**Ele já sabe de onde veio.** O Live cola endereço e código no fim do arquivo na
+hora do download — um acréscimo de bytes, não um build por download (construir um
+executável leva dezenas de segundos, e um download não espera). Tanto `.exe`
+quanto ZIP ignoram sobra no fim, então o carimbo não atrapalha a execução.
+
+**A pasta é escolhida no seletor do Windows.** A autorização continua sendo dada
+**na máquina** — essa regra não afrouxou: a janela chama a mesma função que o
+comando de linha chamava, com as mesmas recusas. O que mudou é que ela deixou de
+ser um comando e virou um botão "Procurar…".
+
+**O serviço sobe na hora**, sem esperar o próximo login. Sem isso a máquina só
+apareceria conectada depois de reiniciar, e a pessoa fecharia a janela achando
+que deu errado.
+
+### O que o carimbo carrega, e o que nunca carrega
+
+Endereço do servidor e código de pareamento. O código vale poucos minutos, serve
+uma vez só e já aparece na tela de quem pediu — carregá-lo ali não cria exposição
+nova. O servidor **confere de quem é o código** antes de colar: carimbar o que o
+navegador mandou permitiria um instalador apontando para outra empresa.
+
+Nunca entram: chave, senha, token de sessão, credencial de nuvem. Um instalador
+que vazasse qualquer um deles seria um vazamento por download, e não há como
+recolher. Há teste que verifica quais campos saem.
+
+### O caminho com Python continua existindo
+
+`formato=zip` no download pede o pacote com código mesmo havendo executável — há
+máquina onde a política proíbe binário baixado, e há quem prefira ler antes de
+rodar. A tela mostra **o roteiro do servidor que está atendendo**: com executável,
+"dois cliques"; sem, o roteiro com Python — e aí ela diz, em voz alta, que o
+executável ainda não foi gerado e qual comando o gera.
+
+Prometer duplo clique onde só existe o pacote seria a mentira mais cara desta
+tela: a pessoa baixaria, clicaria, e nada aconteceria.
+
+### Limitações reais que continuam
+
+- **O executável não é assinado.** O Windows SmartScreen vai avisar na primeira
+  execução. Assinatura de código exige certificado pago em nome da empresa.
+- **Só Windows.** O empacotamento é feito na máquina que publica, e o `.exe` sai
+  para o sistema dela.
+- **Ele não é versionado.** São 29 MB que incharia o histórico para sempre; um
+  servidor recém-clonado o gera com `python tools/construir_agente.py`.
 
 ---
 
