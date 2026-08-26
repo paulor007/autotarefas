@@ -352,5 +352,25 @@ def verify(token: str, name: str) -> JSONResponse:
 
 # Front-end buildado (Vite) - montado automaticamente quando existir (Fase 2/deploy).
 _frontend_dist = settings.repo_root / "apps" / "web" / "dist"
+
+#: Caminhos que a interface trata por conta propria. O `StaticFiles` so conhece
+#: arquivo: para ele, `/primeiro-acesso` e um arquivo que nao existe, e a
+#: resposta e 404. Como e o servidor que IMPRIME esse endereco no console da
+#: primeira execucao, o cliente seguiria o proprio link do produto e bateria
+#: numa porta fechada.
+ROTAS_DA_INTERFACE = ("/primeiro-acesso",)
+
 if _frontend_dist.is_dir():
+    _index = _frontend_dist / "index.html"
+
+    @app.get("/primeiro-acesso", include_in_schema=False)
+    def _pagina_da_interface() -> FileResponse:
+        """
+        Devolve a interface para um caminho que so existe dentro dela.
+
+        Registrado ANTES do `mount`: rota declarada ganha do arquivo estatico, e
+        e isso que faz o endereco do convite abrir a tela em vez de 404.
+        """
+        return FileResponse(_index)
+
     app.mount("/", StaticFiles(directory=str(_frontend_dist), html=True), name="frontend")

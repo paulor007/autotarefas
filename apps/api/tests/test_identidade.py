@@ -561,3 +561,49 @@ def _ultimo_state(testador: TestClient) -> str:
     fluxo = ler_fluxo(testador.cookies.get(COOKIE_FLUXO))
     assert fluxo is not None
     return fluxo["state"]
+
+
+class TestEnderecoDoConvite:
+    """
+    O endereco que o servidor IMPRIME precisa abrir a interface.
+
+    Encontrado na primeira homologacao manual: o console mandava abrir
+    `/primeiro-acesso?convite=...` e a resposta era 404. O `StaticFiles` so
+    conhece arquivo, e para ele aquele caminho nao existia — entao o cliente
+    seguia o proprio link do produto e batia numa porta fechada.
+
+    O teste automatizado nao pegou porque ele montava o endereco por conta
+    propria em vez de seguir o que foi impresso. Agora segue.
+    """
+
+    def test_o_caminho_do_convite_serve_a_interface(self) -> None:
+        from fastapi.testclient import TestClient
+
+        from apps.api.app.main import ROTAS_DA_INTERFACE, _frontend_dist, app
+
+        if not _frontend_dist.is_dir():
+            pytest.skip("frontend nao buildado: rode `npm --prefix apps/web run build`")
+
+        # Sem `with`: o `TestClient` como gerenciador de contexto dispara o
+        # ciclo de vida da aplicacao, que cria o banco padrao do repositorio e
+        # emite convite. Este teste so precisa de um GET num arquivo estatico —
+        # e subir a aplicacao inteira aqui contaminava o banco de outros testes.
+        cliente = TestClient(app)
+        for caminho in ROTAS_DA_INTERFACE:
+            resposta = cliente.get(f"{caminho}?convite=qualquer")
+            assert resposta.status_code == HTTP_OK, (caminho, resposta.status_code)
+            assert "text/html" in resposta.headers["content-type"]
+
+    def test_a_linha_do_console_aponta_para_uma_dessas_rotas(self) -> None:
+        """
+        A frase impressa e o codigo que serve a rota nao podem divergir.
+
+        Se um mudar sem o outro, volta o 404 — e o unico jeito de descobrir
+        seria alguem seguir o link na mao, que e exatamente o que aconteceu.
+        """
+        from apps.api.app.identidade.bootstrap import Convite, linha_do_console
+        from apps.api.app.main import ROTAS_DA_INTERFACE
+
+        linha = linha_do_console(Convite(token="abc"), "http://exemplo")
+
+        assert any(f"http://exemplo{rota}?convite=" in linha for rota in ROTAS_DA_INTERFACE), linha
