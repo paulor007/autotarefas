@@ -241,18 +241,31 @@ export default function ExecutionPanel({
               </div>
             )}
 
-            {/* O que este card AINDA nao faz. Texto, nunca botao: um botao
-                desabilitado prometeria data de entrega que nao existe. */}
+            {/* Os dois modos sao coisas diferentes, e a tela nao pode deixar
+                alguem confundir uma com a outra: aqui em cima o servidor
+                empacota o que voce ENTREGA; la embaixo o Agente protege o que
+                voce TEM. Este aviso existe para quem chegou pelo catalogo
+                achando que o envio avulso ja e backup. */}
             {selected?.planned_modes?.includes("agent_connected") && (
               <div className="rounded-lg border border-white/8 bg-ink px-4 py-3">
                 <p className="text-[0.85rem] font-semibold text-fg">
-                  Backup automático de pastas — ainda não disponível
+                  Isto aqui não é backup — é empacotamento com prova
                 </p>
                 <p className="mt-1 text-[0.85rem] text-muted">
-                  Proteger pastas inteiras do computador, com horário, retenção
-                  e destino externo, vai exigir o AutoTarefas Agente instalado
-                  na máquina. Ele ainda não existe. Por enquanto, o que funciona
-                  é o envio de arquivos acima.
+                  O envio acima protege os arquivos que você entregar, uma vez,
+                  com limite de 10 MB por arquivo — que é limite do navegador.
+                  Você faz, você baixa, você guarda.
+                </p>
+                <p className="mt-2 text-[0.85rem] text-muted">
+                  Backup de verdade é proteger <strong>pastas inteiras</strong> do
+                  computador, no horário, sozinho, com o navegador fechado, para
+                  disco externo ou nuvem, com retenção e restauração. Isso existe
+                  e está em{" "}
+                  <a href="#empresa" className="text-signal underline">
+                    Backup nas suas máquinas
+                  </a>
+                  , que exige conta e o Agente instalado — porque nenhum
+                  navegador alcança o disco de ninguém.
                 </p>
               </div>
             )}
