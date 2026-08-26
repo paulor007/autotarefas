@@ -83,6 +83,7 @@ class TestRegistro:
         resultado = instalacao.instalar()
 
         assert resultado.registrada is True
+        assert resultado.modo is instalacao.Modo.AGENDADOR
         argumentos = no_windows[0]
         assert "/SC" in argumentos
         assert argumentos[argumentos.index("/SC") + 1] == "ONLOGON"
@@ -152,30 +153,95 @@ class TestRecusaDoSistema:
         with pytest.raises(instalacao.InstalacaoRecusada, match="terminal como administrador"):
             instalacao.instalar(ao_ligar=True)
 
-    def test_recusa_no_modo_padrao_devolve_o_detalhe_do_sistema(
+    def test_recusa_no_modo_padrao_cai_para_o_logon_do_usuario(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
+        """
+        O caso que a suite antiga nao cobria — e que aconteceu de verdade.
+
+        Numa maquina Windows 11 comum, `ONLOGON` responde "Acesso negado" mesmo
+        sem `/RU`. Desistir aqui deixaria o cliente sem backup automatico por
+        causa de uma politica que ele nem sabe que tem. A queda para a lista de
+        logon do usuario nao precisa de elevacao.
+        """
+        gravados: list[str] = []
         monkeypatch.setattr(instalacao, "e_windows", lambda: True)
         monkeypatch.setattr(
-            instalacao, "_rodar", lambda _a: _resposta(codigo=1, erro="ERRO: nome invalido")
+            instalacao, "_rodar", lambda _a: _resposta(codigo=1, erro="ERRO: Acesso negado.")
+        )
+        monkeypatch.setattr(instalacao, "gravar_no_logon", gravados.append)
+
+        resultado = instalacao.instalar(comando="agente.exe --servico")
+
+        assert resultado.registrada is True
+        assert resultado.modo is instalacao.Modo.LOGON
+        assert gravados == ["agente.exe --servico"]
+
+    def test_a_queda_diz_o_que_se_perde(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """
+        Os dois caminhos nao sao equivalentes, e a diferenca importa.
+
+        Pela lista de logon, o backup so acontece com a sessao daquele usuario
+        aberta. Chamar isso de "instalado" sem dizer faria alguem contar com um
+        backup de madrugada que nao vai acontecer numa maquina deslogada.
+        """
+        monkeypatch.setattr(instalacao, "e_windows", lambda: True)
+        monkeypatch.setattr(
+            instalacao, "_rodar", lambda _a: _resposta(codigo=1, erro="ERRO: Acesso negado.")
+        )
+        monkeypatch.setattr(instalacao, "gravar_no_logon", lambda _c: None)
+
+        detalhe = instalacao.instalar().detalhe
+
+        assert "VOCE entra no Windows" in detalhe
+        assert "administrador" in detalhe
+
+    def test_se_os_dois_falharem_a_recusa_sobe(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """
+        Sem caminho nenhum, e recusa — e nao um "instalado" que nao instalou.
+
+        E o unico desfecho em que o instalador tem que interromper a boa
+        noticia: o backup agendado nao vai acontecer.
+        """
+
+        def registro_fechado(_comando: str) -> None:
+            raise OSError("registro bloqueado por politica")
+
+        monkeypatch.setattr(instalacao, "e_windows", lambda: True)
+        monkeypatch.setattr(
+            instalacao, "_rodar", lambda _a: _resposta(codigo=1, erro="ERRO: Acesso negado.")
+        )
+        monkeypatch.setattr(instalacao, "gravar_no_logon", registro_fechado)
+
+        with pytest.raises(instalacao.InstalacaoRecusada, match="administrador"):
+            instalacao.instalar()
+
+    def test_ao_ligar_nao_cai_para_o_logon(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """
+        Quem pediu `--ao-ligar` pediu backup sem ninguem logado.
+
+        Cair para a lista de logon entregaria exatamente o oposto do pedido, com
+        cara de sucesso.
+        """
+        monkeypatch.setattr(instalacao, "e_windows", lambda: True)
+        monkeypatch.setattr(
+            instalacao, "_rodar", lambda _a: _resposta(codigo=1, erro="ERRO: Acesso negado.")
+        )
+        monkeypatch.setattr(
+            instalacao,
+            "gravar_no_logon",
+            lambda _c: pytest.fail("nao devia ter caido para o logon"),
         )
 
-        with pytest.raises(instalacao.InstalacaoRecusada, match="nome invalido"):
-            instalacao.instalar()
-
-    def test_recusa_muda_e_nao_vira_sucesso_silencioso(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """Codigo de erro sem texto ainda e erro, e precisa dizer alguma coisa."""
-        monkeypatch.setattr(instalacao, "e_windows", lambda: True)
-        monkeypatch.setattr(instalacao, "_rodar", lambda _a: _resposta(codigo=1))
-
-        with pytest.raises(instalacao.InstalacaoRecusada, match="recusou"):
-            instalacao.instalar()
+        with pytest.raises(instalacao.InstalacaoRecusada, match="AO LIGAR"):
+            instalacao.instalar(ao_ligar=True)
 
 
 class TestRemocao:
-    def test_remover_usa_delete_forcado(self, no_windows: list[list[str]]) -> None:
+    def test_remover_usa_delete_forcado(
+        self, no_windows: list[list[str]], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(instalacao, "apagar_do_logon", lambda: False)
         resultado = instalacao.desinstalar()
 
         assert resultado.registrada is False
@@ -190,11 +256,28 @@ class TestRemocao:
         """
         monkeypatch.setattr(instalacao, "e_windows", lambda: True)
         monkeypatch.setattr(instalacao, "_rodar", lambda _a: _resposta(codigo=1))
+        monkeypatch.setattr(instalacao, "apagar_do_logon", lambda: False)
 
         resultado = instalacao.desinstalar()
 
         assert resultado.registrada is False
-        assert resultado.detalhe
+        assert "nao estava registrado" in resultado.detalhe
+
+    def test_remover_tira_tambem_da_lista_de_logon(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """
+        Sao dois lugares, e o Agente pode estar em qualquer um deles.
+
+        Limpar so o Agendador deixaria o Agente subindo pela lista de logon —
+        depois de a pessoa ter pedido para ele parar.
+        """
+        monkeypatch.setattr(instalacao, "e_windows", lambda: True)
+        monkeypatch.setattr(instalacao, "_rodar", lambda _a: _resposta(codigo=1))
+        monkeypatch.setattr(instalacao, "apagar_do_logon", lambda: True)
+
+        resultado = instalacao.desinstalar()
+
+        assert resultado.registrada is False
+        assert "lista de logon" in resultado.detalhe
 
 
 class TestSituacao:
@@ -205,6 +288,20 @@ class TestSituacao:
         )
 
         assert instalacao.situacao().registrada is True
+
+    def test_encontra_o_registro_na_lista_de_logon(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """
+        Sem esta consulta, a tela diria "nao sobe sozinho" para um Agente que
+        sobe — pelo outro caminho.
+        """
+        monkeypatch.setattr(instalacao, "e_windows", lambda: True)
+        monkeypatch.setattr(instalacao, "_rodar", lambda _a: _resposta(codigo=1))
+        monkeypatch.setattr(instalacao, "ler_do_logon", lambda: "agente.exe --servico")
+
+        resultado = instalacao.situacao()
+
+        assert resultado.registrada is True
+        assert resultado.modo is instalacao.Modo.LOGON
 
     def test_nao_registrada_quando_o_sistema_nao_encontra(
         self, monkeypatch: pytest.MonkeyPatch
@@ -217,6 +314,7 @@ class TestSituacao:
         """
         monkeypatch.setattr(instalacao, "e_windows", lambda: True)
         monkeypatch.setattr(instalacao, "_rodar", lambda _a: _resposta(codigo=1))
+        monkeypatch.setattr(instalacao, "ler_do_logon", lambda: "")
 
         resultado = instalacao.situacao()
 

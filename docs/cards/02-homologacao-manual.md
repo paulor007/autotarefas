@@ -93,6 +93,33 @@ habilita com pelo menos uma. Ao concluir, a janela diz que o Agente vai subir
 junto com o Windows. No Live, o dispositivo aparece como **Conectado** — sem
 reiniciar nada.
 
+**Leia a última tela com atenção.** Ela diz por qual caminho o Agente vai subir,
+e os dois não prometem a mesma coisa:
+
+- *"dispara quando alguém entra no Windows"* — tarefa no Agendador;
+- *"dispara quando VOCÊ entra no Windows"* — lista de logon do seu usuário, que
+  é a queda usada quando o Agendador pede administrador. Nesse caso o backup roda
+  com o navegador fechado, mas **não** com a máquina deslogada.
+
+Para o backup rodar com a máquina ligada e ninguém logado, é preciso instalar
+como administrador.
+
+> **O que provaria mentira:** a janela dizer que vai subir sozinho e **não haver
+> registro nenhum** na máquina. Confira:
+>
+> ```bash
+> schtasks /Query /TN "AutoTarefas Agente"
+> ```
+>
+> e, se não houver tarefa:
+>
+> ```bash
+> Get-ItemProperty "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run" -Name "AutoTarefas Agente"
+> ```
+>
+> Um dos dois tem que existir. Isso já falhou uma vez: o instalador terminava
+> dizendo que estava tudo certo, e não havia registro em lugar nenhum.
+
 > **O que provaria mentira:** existir qualquer botão **no Live** que autorize
 > pasta. Não existe, e é de propósito: uma tela na nuvem não concede acesso ao
 > disco de ninguém. O seletor de pastas roda na sua máquina, e passa pelas mesmas

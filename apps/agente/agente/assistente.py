@@ -67,6 +67,9 @@ class Assistente:
     impressao: str = ""
     pastas: list[str] = field(default_factory=list)
     sobe_sozinho: bool = False
+    #: Por qual caminho ele sobe. Muda o que se pode prometer: pela lista de
+    #: logon, o backup so acontece com a sessao daquele usuario aberta.
+    modo: instalacao.Modo = instalacao.Modo.NENHUM
     rodando: bool = False
 
     # --------------------------------------------------------
@@ -158,6 +161,7 @@ class Assistente:
             )
 
         self.sobe_sozinho = True
+        self.modo = resultado.modo
         return Passo(True, "O Agente vai subir junto com o Windows.", resultado.detalhe)
 
     def iniciar_agora(self) -> Passo:
@@ -208,10 +212,21 @@ class Assistente:
                 "Instalado, mas sem horario.",
                 "O backup so vai acontecer quando alguem mandar pelo Live.",
             )
+        # A promessa muda com o caminho que deu certo. Pela lista de logon o
+        # backup acontece com o navegador fechado, mas NAO com a maquina
+        # deslogada — e quem conta com backup de madrugada precisa saber disso
+        # antes, e nao na primeira noite em que ninguem deixou a sessao aberta.
+        ressalva = (
+            " Ele roda enquanto voce estiver com a sessao aberta no Windows;"
+            " para rodar sem ninguem logado, reinstale como administrador."
+            if self.modo is instalacao.Modo.LOGON
+            else ""
+        )
         return Passo(
             True,
             "Pronto. Este computador esta protegido.",
-            f"{len(self.pastas)} pasta(s) · backup no horario, mesmo com o navegador fechado.",
+            f"{len(self.pastas)} pasta(s) · backup no horario, mesmo com o navegador"
+            f" fechado.{ressalva}",
         )
 
 

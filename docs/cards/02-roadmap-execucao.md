@@ -44,6 +44,7 @@ Uma capacidade só entra depois que a trilha G entrega o lugar onde ela mora.
 | **G.10** | Instalador de um clique: `.exe` único, sem Python, sem terminal | G.8 · G.9 | ✅ implementada |
 | **G.2.4** | Reentrada pelo console, em servidor sem provedor de identidade | G.2.2 | ✅ implementada |
 | **G.2.5** | Revogar corta o canal aberto e recusa comando | G.4.1 | ✅ implementada |
+| **G.10.5** | Partida automática cai para o logon do usuário quando falta privilégio | G.10 | ✅ implementada |
 
 ### 1.2 Capacidades do Card 02
 
@@ -658,6 +659,64 @@ ela explica a diferença entre os dois modos e aponta para onde a coisa mora:
 
 > o envio avulso protege o que você **entrega**; o Agente protege o que você
 > **tem**.
+
+---
+
+## 2.20 O instalador dizia que registrou, e não registrava
+
+Este é o defeito mais grave encontrado até aqui, e ele passou por **todas** as
+verificações: os vinte passos da homologação, a suíte de unidades, o teste que
+extrai o pacote e executa o Agente. Só apareceu quando se olhou a máquina depois
+de uma instalação de verdade.
+
+**O sintoma:** o Agente pareado, rodando, com pasta autorizada — e nenhuma tarefa
+no Agendador. O backup agendado não aconteceria, e o instalador havia terminado
+sem reclamar de nada.
+
+**A causa:** `schtasks /Create /SC ONLOGON` responde **"Acesso negado"** numa
+máquina Windows 11 comum, sem elevação. Também com `/RU <usuário>` e com
+`/RU <usuário> /IT` — as três variantes foram testadas.
+
+A documentação da G.8.1 afirmava o contrário, com todas as letras: que o modo
+"ao entrar" dispensava elevação. Foi **essa premissa errada** que motivou
+escolher o Agendador em vez de um serviço do Windows.
+
+**Por que a suíte não pegou.** Os testes conferiam *quais argumentos* eram
+enviados ao `schtasks` — e os argumentos estavam certos. Nenhum deles verificava
+**o que o Windows responde** a eles. Um teste que confere a pergunta, e não a
+resposta, passa para sempre enquanto a pergunta continuar bem formulada.
+
+Não é um caso raro nem uma máquina exótica: é o Windows padrão.
+
+### O que passou a existir
+
+A instalação tenta o Agendador e, ao ser recusada por falta de privilégio, **cai
+para a lista de logon do usuário** — a chave `Run` do próprio perfil, que grava
+sem elevação. E diz qual dos dois conseguiu.
+
+| Caminho | Precisa de administrador | Roda quando |
+| --- | --- | --- |
+| Agendador, `ONSTART` | sim | a máquina liga, sem ninguém logado |
+| Agendador, `ONLOGON` | **sim, na prática** | alguém entra no Windows |
+| Logon do usuário (registro) | **não** | **aquele** usuário entra no Windows |
+
+Os três não prometem a mesma coisa, e o resumo final do instalador passa a
+declarar a diferença: pelo logon do usuário, o backup roda **com o navegador
+fechado** — a promessa original continua verdadeira — mas **não** com a máquina
+deslogada.
+
+`--ao-ligar` **não** cai para o logon. Quem pediu esse modo pediu backup sem
+ninguém logado; cair entregaria o oposto do pedido com cara de sucesso.
+
+E se os dois caminhos falharem, é recusa — não um "instalado" que não instalou.
+
+### Verificação
+
+O caminho foi exercitado na máquina real, com nome de sonda e limpeza no fim:
+`instalar()` devolveu `modo=logon`, `situacao()` leu de volta, e o valor foi
+removido. Os testes automatizados cobrem a decisão (qual caminho, em qual
+recusa, o que a mensagem diz); a resposta do Windows continua sendo coisa que só
+a máquina responde.
 
 ---
 

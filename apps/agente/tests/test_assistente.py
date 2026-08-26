@@ -293,6 +293,29 @@ class TestResumo:
         assert passo.ok is False
         assert "quando alguem mandar" in passo.detalhe
 
+    def test_pela_lista_de_logon_o_resumo_avisa_o_que_muda(
+        self, instalador: Assistente, tmp_path: Path
+    ) -> None:
+        """
+        Os dois caminhos de partida automatica nao prometem a mesma coisa.
+
+        Pela lista de logon, o backup acontece com o navegador fechado — mas nao
+        com a maquina deslogada. Quem conta com backup de madrugada precisa
+        saber disso antes, e nao na primeira noite em que ninguem deixou a
+        sessao aberta.
+        """
+        pasta = tmp_path / "Financeiro"
+        pasta.mkdir()
+        instalador.autorizar(pasta)
+        instalador.sobe_sozinho = True
+        instalador.modo = instalacao.Modo.LOGON
+
+        passo = instalador.resumo()
+
+        assert passo.ok is True
+        assert "sessao aberta no Windows" in passo.detalhe
+        assert "administrador" in passo.detalhe
+
     def test_com_tudo_no_lugar_diz_que_esta_protegido(
         self, instalador: Assistente, tmp_path: Path
     ) -> None:
@@ -300,12 +323,14 @@ class TestResumo:
         pasta.mkdir()
         instalador.autorizar(pasta)
         instalador.sobe_sozinho = True
+        instalador.modo = instalacao.Modo.AGENDADOR
 
         passo = instalador.resumo()
 
         assert passo.ok is True
         assert "protegido" in passo.mensagem
         assert "navegador fechado" in passo.detalhe
+        assert "sessao aberta" not in passo.detalhe
 
 
 class TestComandoDoServico:

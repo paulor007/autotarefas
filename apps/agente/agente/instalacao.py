@@ -1,43 +1,74 @@
 """O Agente como servico da maquina: sobe sozinho, sem ninguem logar no Live.
 
 Um Agente que so roda quando alguem abre um terminal nao e backup automatico —
-e um backup manual com passos a mais. Esta etapa registra o Agente no
-**Agendador de Tarefas do Windows**, que e o mecanismo do sistema para "rode
-isso quando a maquina ligar" e "reinicie se cair".
+e um backup manual com passos a mais.
 
-Por que o Agendador, e nao um servico do Windows de verdade:
+**Dois mecanismos, e a ordem importa.** O primeiro e o Agendador de Tarefas do
+Windows; o segundo, a lista de programas que sobem quando o usuario entra. A
+diferenca entre eles nao e detalhe de implementacao: e o que o cliente pode
+esperar do produto.
 
-- servico exige elevacao **sempre**, inclusive para instalar. Numa micro
-  empresa isso trava a instalacao na primeira tela;
-- servico roda como SYSTEM, e o Agente precisa alcancar as pastas do usuario —
-  incluindo mapeamentos de rede, que SYSTEM nao enxerga;
-- o Agendador cobre os dois casos que importam: **ao entrar** (sem elevacao) e
-  **ao ligar** (com elevacao, para quem quiser backup antes de alguem logar).
+| Mecanismo | Precisa de administrador? | Roda quando |
+| --- | --- | --- |
+| Agendador, `ONSTART` | **sim** | a maquina liga, mesmo sem ninguem logado |
+| Agendador, `ONLOGON` | **em geral sim** | alguem entra no Windows |
+| Logon do usuario (registro) | nao | **este** usuario entra no Windows |
 
-O que este modulo NAO faz, e diz que nao faz: nao instala Python, nao baixa
-nada e nao pede elevacao sozinho. Um instalador que se eleva sozinho ensina o
-cliente a clicar "sim" em janelas que ele nao leu.
+A terceira linha existe porque a segunda mentiu. A documentacao deste modulo
+afirmava que `ONLOGON` dispensava elevacao — e numa maquina Windows 11 comum ele
+responde **"Acesso negado"**. O instalador registrava o Agente, dizia que estava
+tudo certo, e o backup agendado simplesmente nao aconteceria. Foi encontrado
+rodando o produto de verdade, e nao pela suite: o teste conferia os argumentos
+enviados ao `schtasks`, e eles estavam certos.
+
+Entao a instalacao tenta o Agendador e, ao ser recusada por falta de privilegio,
+**cai para o logon do usuario** — dizendo qual dos dois conseguiu. Um instalador
+que so tenta o melhor caminho e desiste deixa o cliente sem backup automatico
+por causa de uma politica de seguranca que ele nem sabe que tem.
+
+O que este modulo NAO faz, e diz que nao faz: nao instala Python, nao baixa nada
+e nao pede elevacao sozinho. Um instalador que se eleva sozinho ensina o cliente
+a clicar "sim" em janelas que ele nao leu.
 
 Fora do Windows, cada funcao recusa dizendo o motivo. Fingir que registrou um
-servico que nao existe seria a pior mentira possivel aqui: o cliente iria
-embora achando que o backup roda sozinho.
+servico que nao existe seria a pior mentira possivel aqui: o cliente iria embora
+achando que o backup roda sozinho.
 """
 
 from __future__ import annotations
 
+import enum
 import shutil
 import subprocess  # nosec B404 — chamada de programa do sistema, com argumentos fixos
 import sys
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
-#: Nome da tarefa no Agendador. Estavel: e por ele que instalar de novo
-#: substitui em vez de duplicar.
+#: Nome da tarefa no Agendador, e do valor no registro. Estavel: e por ele que
+#: instalar de novo substitui em vez de duplicar.
 NOME_DA_TAREFA = "AutoTarefas Agente"
+
+#: Onde o Windows guarda o que sobe quando o usuario entra. Chave do USUARIO:
+#: gravavel sem elevacao, e some junto com o perfil dele.
+CHAVE_DE_LOGON = r"Software\Microsoft\Windows\CurrentVersion\Run"
 
 #: Quanto esperar pelo `schtasks`. Ele responde em milissegundos; um minuto e
 #: folga para maquina carregada, e evita travar a instalacao para sempre.
 PRAZO_S = 60.0
+
+
+class Modo(enum.StrEnum):
+    """Como o Agente foi registrado para subir sozinho."""
+
+    AGENDADOR = "agendador"
+    """Tarefa no Agendador. Melhor: aceita `ONSTART` e reinicio."""
+
+    LOGON = "logon"
+    """Lista de logon do usuario. Sem elevacao, mas so para este usuario."""
+
+    NENHUM = "nenhum"
+    """Nao esta registrado em lugar nenhum."""
 
 
 class InstalacaoRecusada(Exception):
@@ -46,13 +77,14 @@ class InstalacaoRecusada(Exception):
 
 @dataclass(frozen=True)
 class Situacao:
-    """O que o sistema diz sobre a tarefa do Agente."""
+    """O que o sistema diz sobre a partida automatica do Agente."""
 
     registrada: bool
     detalhe: str = ""
+    modo: Modo = Modo.NENHUM
 
     def como_dicionario(self) -> dict[str, object]:
-        return {"registrada": self.registrada, "detalhe": self.detalhe}
+        return {"registrada": self.registrada, "detalhe": self.detalhe, "modo": self.modo.value}
 
 
 def e_windows() -> bool:
@@ -105,6 +137,67 @@ def _rodar(argumentos: list[str]) -> subprocess.CompletedProcess[str]:
     )
 
 
+# ============================================================
+# Logon do usuario — o caminho que nao pede elevacao
+# ============================================================
+
+
+def _registro() -> Any:
+    """
+    O modulo `winreg`, importado so quando ha Windows para consultar.
+
+    Import tardio de proposito: `winreg` nao existe em Linux nem em macOS, e um
+    import no topo quebraria ate a suite que roda em outro sistema.
+    """
+    import winreg
+
+    return winreg
+
+
+def gravar_no_logon(comando: str) -> None:
+    """
+    Poe o Agente na lista de programas que sobem quando este usuario entra.
+
+    Chave do usuario, e nao da maquina: nao precisa de elevacao, e some junto
+    com o perfil — o que e a coisa certa para um programa que so faz sentido
+    enquanto aquela pessoa usa aquele computador.
+    """
+    winreg = _registro()
+    with winreg.CreateKeyEx(winreg.HKEY_CURRENT_USER, CHAVE_DE_LOGON, 0, winreg.KEY_SET_VALUE) as k:
+        winreg.SetValueEx(k, NOME_DA_TAREFA, 0, winreg.REG_SZ, comando)
+
+
+def ler_do_logon() -> str:
+    """O comando registrado, ou vazio quando nao ha nenhum."""
+    if not e_windows():
+        return ""
+    winreg = _registro()
+    try:
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, CHAVE_DE_LOGON) as k:
+            valor, _ = winreg.QueryValueEx(k, NOME_DA_TAREFA)
+    except OSError:
+        return ""
+    return str(valor)
+
+
+def apagar_do_logon() -> bool:
+    """Tira o Agente da lista de logon. Devolve se havia algo para tirar."""
+    if not e_windows():
+        return False
+    winreg = _registro()
+    try:
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, CHAVE_DE_LOGON, 0, winreg.KEY_SET_VALUE) as k:
+            winreg.DeleteValue(k, NOME_DA_TAREFA)
+    except OSError:
+        return False
+    return True
+
+
+# ============================================================
+# Instalar e desinstalar
+# ============================================================
+
+
 def instalar(
     *,
     comando: str = "",
@@ -112,19 +205,59 @@ def instalar(
     pasta_de_configuracao: Path | None = None,
 ) -> Situacao:
     """
-    Registra o Agente para subir sozinho.
+    Registra o Agente para subir sozinho, pelo melhor caminho disponivel.
 
-    `ao_ligar=False` (padrao) registra **ao entrar** no Windows: nao precisa de
-    elevacao, e cobre o caso normal de um computador de escritorio, que alguem
-    liga de manha.
+    `ao_ligar=True` exige terminal como administrador e registra a tarefa que
+    dispara **com a maquina ligada, sem ninguem logado**. E o unico modo que faz
+    backup de madrugada num computador onde ninguem deixou a sessao aberta.
 
-    `ao_ligar=True` registra **ao ligar a maquina**, rodando como SYSTEM. Exige
-    terminal como administrador — e a recusa do sistema chega inteira para quem
-    pediu, em vez de virar um "instalado" que nao instalou nada.
+    O padrao tenta o Agendador e, se o Windows recusar por falta de privilegio,
+    cai para a lista de logon deste usuario — dizendo qual dos dois conseguiu.
+    Desistir no primeiro "acesso negado" deixaria o cliente sem backup
+    automatico por causa de uma politica que ele nem sabe que tem.
     """
-    _exigir_windows("registrar o Agente como servico")
-
+    _exigir_windows("registrar o Agente para subir sozinho")
     linha = comando or comando_padrao(pasta_de_configuracao)
+
+    if ao_ligar:
+        resultado = _criar_tarefa(linha, ao_ligar=True)
+        if resultado.returncode != 0:
+            detalhe = (resultado.stderr or resultado.stdout or "").strip()
+            raise InstalacaoRecusada(_explicar(detalhe, ao_ligar=True))
+        return Situacao(
+            registrada=True,
+            detalhe="dispara quando a maquina liga, mesmo sem ninguem logado",
+            modo=Modo.AGENDADOR,
+        )
+
+    resultado = _criar_tarefa(linha, ao_ligar=False)
+    if resultado.returncode == 0:
+        return Situacao(
+            registrada=True,
+            detalhe="dispara quando alguem entra no Windows",
+            modo=Modo.AGENDADOR,
+        )
+
+    recusa = (resultado.stderr or resultado.stdout or "").strip()
+    try:
+        gravar_no_logon(linha)
+    except OSError as erro:
+        raise InstalacaoRecusada(_explicar(recusa or str(erro), ao_ligar=False)) from erro
+
+    return Situacao(
+        registrada=True,
+        detalhe=(
+            "dispara quando VOCE entra no Windows. O Agendador de Tarefas pediu "
+            "administrador, entao usei a lista de logon do seu usuario. Para o "
+            "backup rodar com a maquina ligada e ninguem logado, rode o "
+            "instalador como administrador."
+        ),
+        modo=Modo.LOGON,
+    )
+
+
+def _criar_tarefa(linha: str, *, ao_ligar: bool) -> subprocess.CompletedProcess[str]:
+    """Monta e dispara o `schtasks /Create`."""
     argumentos = [
         "/Create",
         "/TN",
@@ -137,57 +270,59 @@ def instalar(
         "/F",
     ]
     argumentos += (
-        ["/SC", "ONSTART", "/RU", "SYSTEM", "/RL", "HIGHEST"]
-        if ao_ligar
-        else [
-            "/SC",
-            "ONLOGON",
-        ]
+        ["/SC", "ONSTART", "/RU", "SYSTEM", "/RL", "HIGHEST"] if ao_ligar else ["/SC", "ONLOGON"]
     )
-
-    resultado = _rodar(argumentos)
-    if resultado.returncode != 0:
-        detalhe = (resultado.stderr or resultado.stdout or "").strip()
-        raise InstalacaoRecusada(_explicar(detalhe, ao_ligar=ao_ligar))
-
-    quando = "ao ligar a maquina" if ao_ligar else "ao entrar no Windows"
-    return Situacao(registrada=True, detalhe=f"tarefa '{NOME_DA_TAREFA}' criada, dispara {quando}")
+    return _rodar(argumentos)
 
 
 def desinstalar() -> Situacao:
     """
-    Tira a tarefa do Agendador.
+    Tira o Agente dos dois lugares onde ele pode ter sido registrado.
 
     Nao apaga configuracao, nem chave, nem pacote. Parar de rodar sozinho e uma
     decisao; apagar o backup do cliente e outra, e ninguem pediu a segunda.
     """
-    _exigir_windows("remover o servico do Agente")
+    _exigir_windows("remover a partida automatica do Agente")
 
-    resultado = _rodar(["/Delete", "/TN", NOME_DA_TAREFA, "/F"])
-    if resultado.returncode != 0:
-        detalhe = (resultado.stderr or resultado.stdout or "").strip()
-        return Situacao(registrada=False, detalhe=detalhe or "a tarefa nao estava registrada")
-    return Situacao(registrada=False, detalhe=f"tarefa '{NOME_DA_TAREFA}' removida")
+    tirou_tarefa = _rodar(["/Delete", "/TN", NOME_DA_TAREFA, "/F"]).returncode == 0
+    tirou_logon = apagar_do_logon()
+
+    if not (tirou_tarefa or tirou_logon):
+        return Situacao(registrada=False, detalhe="o Agente nao estava registrado")
+
+    onde = " e ".join(
+        parte
+        for parte, houve in (("do Agendador", tirou_tarefa), ("da lista de logon", tirou_logon))
+        if houve
+    )
+    return Situacao(registrada=False, detalhe=f"removido {onde}")
 
 
 def situacao() -> Situacao:
     """
-    O Agente esta registrado para subir sozinho?
+    O Agente esta registrado para subir sozinho — e por qual caminho?
 
-    Pergunta ao sistema toda vez. Guardar a resposta num arquivo faria a tela
-    dizer "instalado" para uma tarefa que alguem removeu pelo Agendador.
+    Pergunta ao sistema toda vez, nos dois lugares. Guardar a resposta num
+    arquivo faria a tela dizer "instalado" para uma tarefa que alguem removeu
+    pelo Agendador.
     """
     if not e_windows():
-        return Situacao(registrada=False, detalhe="fora do Windows nao ha tarefa registrada")
+        return Situacao(registrada=False, detalhe="fora do Windows nao ha registro a fazer")
 
     try:
-        resultado = _rodar(["/Query", "/TN", NOME_DA_TAREFA])
+        no_agendador = _rodar(["/Query", "/TN", NOME_DA_TAREFA]).returncode == 0
     except InstalacaoRecusada as erro:
         return Situacao(registrada=False, detalhe=str(erro))
 
-    if resultado.returncode != 0:
-        return Situacao(registrada=False, detalhe="o Agente nao esta registrado para subir sozinho")
-    return Situacao(registrada=True, detalhe=(resultado.stdout or "").strip())
+    if no_agendador:
+        return Situacao(registrada=True, detalhe="tarefa no Agendador", modo=Modo.AGENDADOR)
+    if ler_do_logon():
+        return Situacao(
+            registrada=True,
+            detalhe="na lista de logon do seu usuario",
+            modo=Modo.LOGON,
+        )
+    return Situacao(registrada=False, detalhe="o Agente nao esta registrado para subir sozinho")
 
 
 def _explicar(detalhe: str, *, ao_ligar: bool) -> str:
@@ -198,22 +333,24 @@ def _explicar(detalhe: str, *, ao_ligar: bool) -> str:
     como administrador" diz.
     """
     baixo = detalhe.lower()
-    if ao_ligar and ("denied" in baixo or "negado" in baixo or "access" in baixo):
-        return (
-            "registrar para rodar AO LIGAR exige terminal como administrador. "
-            "Sem elevacao, use o modo padrao (ao entrar no Windows), que cobre "
-            "computador de escritorio. Detalhe do sistema: " + detalhe
-        )
+    if "denied" in baixo or "negado" in baixo or "access" in baixo:
+        alvo = "AO LIGAR" if ao_ligar else "no Agendador de Tarefas"
+        return f"registrar {alvo} exige terminal como administrador. Detalhe do sistema: " + detalhe
     return detalhe or "o Agendador de Tarefas recusou sem dizer o motivo"
 
 
 __all__ = [
+    "CHAVE_DE_LOGON",
     "NOME_DA_TAREFA",
     "InstalacaoRecusada",
+    "Modo",
     "Situacao",
+    "apagar_do_logon",
     "comando_padrao",
     "desinstalar",
     "e_windows",
+    "gravar_no_logon",
     "instalar",
+    "ler_do_logon",
     "situacao",
 ]
