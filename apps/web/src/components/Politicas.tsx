@@ -4,6 +4,7 @@ import {
   ErroDaPlataforma,
   consultarDispositivo,
   criarPolitica,
+  executarBackup,
   listarDispositivos,
   listarPoliticas,
   removerPolitica,
@@ -87,6 +88,30 @@ export default function Politicas({ papel }: Props) {
     void carregar();
   }, [carregar]);
 
+  const executarAgora = async (item: Politica) => {
+    setAviso(`Executando "${item.nome}"…`);
+    try {
+      // Manda as MESMAS escolhas da politica. Um "executar agora" que rodasse
+      // diferente do horario faria o cliente testar uma coisa e receber outra
+      // de madrugada.
+      const resultado = await executarBackup(item.dispositivo_id, {
+        origens: item.configuracao.origens,
+        destino_externo: item.configuracao.destino.caminho,
+        tipo_do_destino: item.configuracao.destino.tipo,
+        usar_vss: item.configuracao.usar_vss,
+        incremental: item.configuracao.incremental,
+      });
+      setAviso(
+        resultado.ok
+          ? `Backup concluído: ${resultado.pacote ?? "pacote gerado"}`
+          : `Backup não concluído: ${resultado.erro ?? "sem detalhe"}`,
+      );
+    } catch (e: unknown) {
+      setAviso("");
+      setErro(mensagemDe(e));
+    }
+  };
+
   const apagar = async (id: string) => {
     try {
       const resultado = await removerPolitica(id);
@@ -163,15 +188,24 @@ export default function Politicas({ papel }: Props) {
                   {nomeDoDispositivo(dispositivos, item.dispositivo_id)}
                 </p>
               </div>
-              {administra && (
+              <div className="flex flex-wrap gap-2">
                 <button
                   type="button"
-                  onClick={() => void apagar(item.id)}
-                  className="rounded-lg border border-danger/30 px-3 py-1 text-[0.75rem] text-danger hover:border-danger/60"
+                  onClick={() => void executarAgora(item)}
+                  className="rounded-lg border border-white/12 px-3 py-1 text-[0.75rem] text-fg hover:border-white/25"
                 >
-                  Remover
+                  Executar agora
                 </button>
-              )}
+                {administra && (
+                  <button
+                    type="button"
+                    onClick={() => void apagar(item.id)}
+                    className="rounded-lg border border-danger/30 px-3 py-1 text-[0.75rem] text-danger hover:border-danger/60"
+                  >
+                    Remover
+                  </button>
+                )}
+              </div>
             </div>
 
             {!item.protege_de_verdade && (

@@ -596,3 +596,42 @@ class TestHistoricoDoAgendamento:
 
         assert resposta.status_code == HTTP_OK, resposta.text
         assert resposta.json()["execucoes"] == []
+
+    def test_execucao_feita_JA_conectado_sobe_sem_reconectar(
+        self,
+        banco: Banco,
+        servidor: str,
+        identidade: ident.Identidade,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """
+        O backup do agendamento acontece com a maquina ja conectada.
+
+        O envio na hora de conectar nao alcanca o que foi gravado depois. Sem a
+        carona na batida do coracao, uma execucao de madrugada so apareceria no
+        Live na proxima reconexao — que pode ser dias depois.
+        """
+        # Batida curta: o teste mede o caminho de verdade, nao a paciencia.
+        monkeypatch.setattr(canal_servidor, "INTERVALO_BATIDA_S", 1.0)
+
+        diario = Diario(pasta=tmp_path / "cfg")
+        _, contexto, _ = _com_agente_no_ar(banco, servidor, identidade, diario=diario)
+
+        # Agora, com o canal ja aberto, o agendador grava uma execucao.
+        diario.registrar(
+            ExecucaoDoDiario(
+                politica_id="",
+                politica_nome="Madrugada",
+                iniciada_em="2026-08-25T02:00:00",
+                terminada_em="2026-08-25T02:03:00",
+                resultado="sucesso",
+                arquivos=4,
+                bytes_copiados=2048,
+            )
+        )
+
+        execucoes = self._esperar_execucoes(banco, contexto, 1)
+
+        assert len(execucoes) == 1, "a execucao gravada com o canal aberto nao subiu"
+        assert execucoes[0].resultado is ResultadoExecucao.SUCESSO

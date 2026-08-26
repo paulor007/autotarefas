@@ -238,3 +238,34 @@ class TestDiarioDeExecucoes:
         registros = servico.diario.todas()
         assert registros[0]["resultado"] == "com_ressalva"
         assert registros[0]["ressalva"] == "1 arquivo(s) nao entraram"
+
+    def test_cada_tentativa_vira_uma_linha_com_o_numero(
+        self, servico: Servico, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """
+        Retry so e comprovavel se cada tentativa deixar rastro.
+
+        Uma linha unica dizendo "falhou" nao distingue "tentou uma vez" de
+        "insistiu tres vezes com espera crescente" — e e essa diferenca que
+        diz se o problema foi um tropeco ou um disco que nao volta.
+        """
+
+        async def explodir(_p: Politica, _c: Configuracao) -> dict[str, Any]:
+            msg = "disco externo desconectado"
+            raise RuntimeError(msg)
+
+        async def sem_espera(_s: float) -> None:
+            return None
+
+        monkeypatch.setattr("apps.agente.agente.servico.executar_politica", explodir)
+        servico.agendador.dormir = sem_espera  # type: ignore[assignment]
+
+        item = self._politica()
+        item.politica = Politica.model_validate({"retry": {"tentativas": 3}})
+        asyncio.run(servico.agendador.disparar(item))
+
+        registros = servico.diario.todas()
+        assert len(registros) == 3, "cada tentativa precisa de uma linha propria"
+        assert "tentativa 2" in registros[1]["ressalva"]
+        assert "tentativa 3" in registros[2]["ressalva"]
+        assert all(linha["resultado"] == "falha" for linha in registros)

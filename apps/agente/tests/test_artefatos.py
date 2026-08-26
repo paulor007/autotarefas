@@ -175,3 +175,56 @@ class TestResolucao:
     def test_sem_pasta_autorizada_diz_o_motivo(self) -> None:
         with pytest.raises(artefatos.PacoteDesconhecido, match="nenhuma pasta autorizada"):
             artefatos.achar(Configuracao(), "backup_2026-08-25_0200.zip")
+
+
+class TestCorrente:
+    """
+    Um pacote incremental nao se sustenta sozinho (G.7.2).
+
+    Quem monta a corrente e a maquina: a tela conhece nomes, e so aqui se sabe
+    quais deles ainda existem no disco. Sem isto, restaurar o pacote de hoje
+    devolveria uma pasta pela metade — com cara de restauracao concluida.
+    """
+
+    @staticmethod
+    def _dois_pacotes(maquina: tuple[Configuracao, Path]) -> tuple[Path, Path]:
+        from autotarefas.tasks.backup import BackupTask
+        from autotarefas.tasks.catalogo import NOME, Catalogo
+
+        configuracao, pacotes = maquina
+        origem = Path(configuracao.raizes[0])
+        (origem / "contrato.txt").write_text("contrato", encoding="utf-8")
+
+        catalogo = Catalogo(pacotes / NOME)
+        primeiro = pacotes / "backup_2026-08-24_0200.zip"
+        BackupTask(sources=[origem], destination=primeiro, catalogo=catalogo).run()
+
+        (origem / "novo.txt").write_text("novo", encoding="utf-8")
+        segundo = pacotes / "backup_2026-08-25_0200.zip"
+        BackupTask(sources=[origem], destination=segundo, catalogo=catalogo).run()
+        return primeiro, segundo
+
+    def test_o_incremental_aponta_para_o_anterior(self, maquina: tuple[Configuracao, Path]) -> None:
+        primeiro, segundo = self._dois_pacotes(maquina)
+
+        assert artefatos.corrente(segundo) == [primeiro]
+
+    def test_pacote_completo_nao_depende_de_ninguem(
+        self, maquina: tuple[Configuracao, Path]
+    ) -> None:
+        primeiro, _ = self._dois_pacotes(maquina)
+
+        assert artefatos.corrente(primeiro) == []
+
+    def test_anterior_apagado_some_da_corrente_sem_derrubar(
+        self, maquina: tuple[Configuracao, Path]
+    ) -> None:
+        """
+        Relatar o que faltou e melhor do que recusar tudo.
+
+        Quem apagou um pacote antigo ainda pode querer de volta o que existe.
+        """
+        primeiro, segundo = self._dois_pacotes(maquina)
+        primeiro.unlink()
+
+        assert artefatos.corrente(segundo) == []

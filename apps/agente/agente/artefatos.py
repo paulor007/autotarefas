@@ -128,6 +128,20 @@ def achar(configuracao: Configuracao, nome: str) -> Path:
     return caminho
 
 
+def corrente(pacote: Path) -> list[Path]:
+    """
+    Os pacotes anteriores de que este depende, do mais novo para o mais velho.
+
+    Quem monta a corrente e a **maquina**, e nao a tela: o Live conhece nomes, e
+    so aqui se sabe quais deles ainda existem no disco. Sem isto, restaurar o
+    pacote de hoje devolveria uma pasta pela metade — com cara de restauracao
+    concluida.
+    """
+    from autotarefas.tasks.backup import corrente_de
+
+    return corrente_de(pacote)
+
+
 def _iso(quando: datetime) -> str:
     return quando.isoformat(timespec="minutes")
 
@@ -136,6 +150,7 @@ __all__ = [
     "Pacote",
     "PacoteDesconhecido",
     "achar",
+    "corrente",
     "listar",
     "nome_valido",
     "pasta_dos_pacotes",

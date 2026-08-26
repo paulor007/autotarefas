@@ -40,6 +40,7 @@ Uma capacidade só entra depois que a trilha G entrega o lugar onde ela mora.
 | **G.8.1** | O Agente sobe sozinho: registro no Agendador de Tarefas | G.5.2 | ✅ implementada |
 | **G.8.2** | Pacote do Agente com só o que ele usa, baixável pelo Live | G.8.1 | ✅ implementada |
 | **G.8.3** | Instalação guiada na tela: baixar, rodar, parear | G.8.2 · G.7.3 | ✅ implementada |
+| **G.9** | Homologação dos 20 passos com navegador real | todas | ✅ 20/20 em 6m12s |
 
 ### 1.2 Capacidades do Card 02
 
@@ -463,6 +464,63 @@ Quatro coisas ela se recusa a esconder:
    desabilitado, em vez de gravar uma política que nunca vai produzir pacote.
 4. **Agendamento desligado é dito como desligado.** "Só executa quando alguém
    manda" é escolha válida; confundi-la com backup automático não é.
+
+---
+
+## 2.17 O que a homologação de ponta a ponta encontrou
+
+Montar os vinte passos como teste de navegador real não foi só empacotar o que
+já existia: quatro problemas apareceram **porque** o fluxo inteiro foi
+percorrido, e nenhum deles era visível na suíte de unidades.
+
+**1. A tela de política não existia.** A matriz dizia que a G.6 tinha entregue
+"dispositivos, pastas, política". As duas primeiras existiam. Criar uma política
+exigia chamar a API na mão — um requisito de linha de comando escondido no meio
+do produto. Corrigido na G.7.4, e a linha da G.6 foi corrigida junto.
+
+**2. "Executar agora" não usava a política.** O botão da tela de dispositivos
+roda as pastas autorizadas para a pasta padrão, ignorando destino e incremental.
+Alguém configuraria um destino externo, clicaria em executar, veria "concluído" —
+e o pacote não teria ido para lá. Agora a política tem o próprio "Executar
+agora", que manda exatamente as escolhas dela.
+
+**3. A retenção apagava a base da corrente incremental.** Duas execuções no mesmo
+dia: a regra diária guarda a mais nova e apaga a anterior — que era justamente a
+base de que a mais nova depende. O pacote continuaria lá, com cara de inteiro, e
+só não restauraria o que promete. Agora a retenção protege os pacotes citados
+pela corrente dos que ela decidiu guardar.
+
+**4. A tela dizia INCOMPLETA para uma restauração completa.** O relatório do
+núcleo devolve `restaurados` como **contagem** e já traz `completa`; a interface
+recalculava o veredito e fazia `.length` de um número — que é `undefined`. Toda
+restauração bem-sucedida aparecia como incompleta. Agora quem decide é quem abriu
+o pacote. O erro inverso — dizer "concluída" para uma restauração pela metade —
+teria sido bem pior, e é a mesma linha de código.
+
+Além desses, dois buracos de honestidade foram fechados no caminho:
+
+- **Notificação só existia no caminho manual.** A falha de madrugada — a que
+  ninguém viu acontecer — não avisava ninguém. Agora a execução sincronizada do
+  agendamento passa pelo mesmo aviso, e o aviso escolhe a política **daquela**
+  execução, não "alguma" política da máquina.
+- **A trilha de auditoria não aparecia em lugar nenhum.** Ela era gravada e
+  encadeada por hash desde a G.2.1, mas nenhuma tela a mostrava — e evidência que
+  ninguém consegue olhar não serve de evidência. Agora há rota e seção no Live,
+  com o selo de integridade em cima.
+
+### Limites reais da homologação automática
+
+- **Disco externo físico**: a suíte não tem como plugar um HD USB. A política do
+  roteiro copia para outra pasta da mesma máquina, e a tela diz em voz alta que
+  isso não protege contra o disco morrer. A outra metade **é** verificada: o
+  passo 6 declara "disco externo" para uma pasta que não está num disco externo e
+  a operação é **recusada**, com o motivo.
+- **VSS**: exige elevação; continua na homologação manual.
+- **E-mail**: sem SMTP no cofre não há envio. O passo 20 verifica que a trilha
+  registra `notificacao.nao_enviada` com o motivo — que é o comportamento
+  correto sem credencial, e não um silêncio.
+- **Nuvem S3 real**: validada contra servidor compatível local; endpoint externo
+  autorizado continua pendente.
 
 ---
 

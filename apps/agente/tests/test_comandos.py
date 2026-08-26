@@ -447,6 +447,55 @@ class TestPacotesPeloNome:
         recuperado = next(destino.rglob("contrato.txt"))
         assert recuperado.read_text(encoding="utf-8") == "do backup"
 
+    def test_restaurar_incremental_sem_informar_a_corrente(self, tmp_path: Any) -> None:
+        """
+        A tela nao sabe montar a corrente; a maquina sabe.
+
+        Sem isto, restaurar o pacote de hoje devolveria uma pasta pela metade —
+        e o pior: com cara de restauracao concluida.
+        """
+        from datetime import datetime
+
+        from autotarefas.tasks.backup import BackupTask
+        from autotarefas.tasks.catalogo import NOME, Catalogo
+
+        raiz = tmp_path / "cliente" / "dados"
+        documentos = raiz / "docs"
+        documentos.mkdir(parents=True)
+        (documentos / "contrato.txt").write_text("contrato", encoding="utf-8")
+        (documentos / "nota.txt").write_text("nota", encoding="utf-8")
+
+        pacotes = tmp_path / "cliente" / "backups"
+        pacotes.mkdir()
+        catalogo = Catalogo(pacotes / NOME)
+        BackupTask(
+            sources=[documentos],
+            destination=pacotes / "backup_2026-08-24_0200.zip",
+            catalogo=catalogo,
+        ).run()
+
+        (documentos / "contrato.txt").write_text("contrato v2", encoding="utf-8")
+        nome = f"backup_{datetime.now():%Y-%m-%d_%H%M}.zip"
+        BackupTask(sources=[documentos], destination=pacotes / nome, catalogo=catalogo).run()
+
+        configuracao = Configuracao(servidor="https://x", dispositivo_id="d").com_raiz(raiz)
+        destino = raiz / "recuperado"
+
+        resultado = asyncio.run(
+            comandos.atender(
+                _comando("restaurar", pacote=nome, destino=str(destino)),
+                comandos.registro_padrao(),
+                _contexto(configuracao),
+            )
+        )
+
+        assert resultado["ok"] is True, resultado.get("erro")
+        assert resultado["faltando"] == [], resultado
+        assert resultado["restaurados"] == 2, resultado
+        assert resultado["completa"] is True, resultado
+        recuperado = next(destino.rglob("nota.txt"))
+        assert recuperado.read_text(encoding="utf-8") == "nota"
+
     def test_conferir_backup_dispensa_a_tela_de_conhecer_caminhos(self, tmp_path: Any) -> None:
         """
         A tela nao conhece pasta nenhuma da maquina.

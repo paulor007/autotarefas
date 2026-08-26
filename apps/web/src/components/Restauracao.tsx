@@ -267,22 +267,21 @@ export default function Restauracao({
  * a pessoa vai embora achando que recuperou tudo.
  */
 function Relatorio({ dados }: { dados: RelatorioDeRestauracao }) {
-  const restaurados = dados.restaurados ?? [];
+  const restaurados = dados.restaurados ?? 0;
   const jaExistiam = dados.ja_existiam ?? [];
   const recusados = dados.recusados ?? [];
   const faltando = dados.faltando ?? [];
   const corrompidos = dados.corrompidos ?? [];
-  const completa =
-    restaurados.length > 0 &&
-    faltando.length === 0 &&
-    recusados.length === 0 &&
-    corrompidos.length === 0;
+  // Quem decide é o núcleo, que abriu o pacote e conferiu cada arquivo.
+  // Recalcular aqui foi exatamente o que fez uma restauração completa
+  // aparecer como INCOMPLETA — e o erro inverso teria sido pior.
+  const completa = dados.completa === true;
 
   return (
     <div className="mt-3 rounded-lg border border-white/10 bg-surface px-3 py-2 text-[0.85rem]">
       <p className={completa ? "font-semibold text-ok" : "font-semibold text-signal"}>
         {completa
-          ? `Restauração concluída: ${restaurados.length} arquivo(s) conferem com o manifesto.`
+          ? `Restauração concluída: ${restaurados} arquivo(s) conferem com o manifesto.`
           : "Restauração INCOMPLETA — veja abaixo o que ficou de fora."}
       </p>
 

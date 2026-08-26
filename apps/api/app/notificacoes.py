@@ -30,7 +30,7 @@ from autotarefas.tasks.politica import QuandoNotificar
 
 from . import cofre
 from .db import repositorio as repo
-from .db.models import ResultadoExecucao
+from .db.models import Execucao, Politica, ResultadoExecucao
 
 #: Nomes dos segredos de SMTP no cofre da organização. Fixos, pelo mesmo
 #: motivo dos de nuvem: a tela grava com estes nomes e o envio lê com estes.
@@ -213,6 +213,87 @@ def registrar_aviso(
         detalhe=(", ".join(aviso.destinatarios) if aviso.enviado else aviso.motivo),
         dispositivo_id=dispositivo_id,
     )
+
+
+def _politica_da_execucao(
+    sessao: Session, contexto: repo.Contexto, execucao: Execucao
+) -> Politica | None:
+    """
+    A politica que produziu esta execucao, e nao "alguma" politica da maquina.
+
+    Com duas politicas na mesma maquina — uma diaria e uma mensal, por exemplo —
+    pegar a primeira ativa mandaria o aviso com o nome errado, e quem recebesse
+    procuraria o problema no lugar errado.
+    """
+    if execucao.politica_id:
+        alvo = sessao.execute(
+            repo.escopo(Politica, contexto).where(Politica.id == execucao.politica_id)
+        ).scalar_one_or_none()
+        if alvo is not None:
+            return alvo
+
+    # Execucao avulsa (pedida pela tela sem politica citada): cai na politica
+    # ativa da maquina, que e de onde vem a lista de destinatarios.
+    return (
+        sessao.execute(
+            repo.escopo(Politica, contexto)
+            .where(Politica.dispositivo_id == execucao.dispositivo_id)
+            .where(Politica.ativa.is_(True))
+        )
+        .scalars()
+        .first()
+    )
+
+
+def avisar_execucao(
+    sessao: Session,
+    contexto: repo.Contexto,
+    *,
+    execucao: Execucao,
+    dispositivo: str,
+) -> dict[str, Any]:
+    """
+    Avisa quem a politica pediu, e registra o que aconteceu com o aviso.
+
+    Vale para os DOIS caminhos: a execucao pedida pela tela e a que o Agente
+    fez sozinho, de madrugada. A segunda e justamente a que mais precisa de
+    aviso — ninguem estava olhando —, e deixa-la de fora faria a notificacao
+    funcionar so quando nao era necessaria.
+
+    Sem politica com destinatarios, nao ha a quem avisar. Isso e dito, e nao
+    silenciado: "nao avisei porque nao ha destinatario" e informacao.
+    """
+    from autotarefas.tasks.politica import Politica as ConfiguracaoDePolitica
+
+    registro = _politica_da_execucao(sessao, contexto, execucao)
+    if registro is None:
+        return {"enviado": False, "motivo": "nenhuma politica com destinatarios"}
+
+    configuracao = ConfiguracaoDePolitica.de_json(registro.configuracao)
+    if not deve_avisar(configuracao.notificacao.quando, execucao.resultado):
+        return {"enviado": False, "motivo": "a politica nao pede aviso neste desfecho"}
+
+    assunto, corpo = texto_do_aviso(
+        dispositivo=dispositivo,
+        politica=registro.nome,
+        resultado=execucao.resultado,
+        ressalva=execucao.ressalva,
+    )
+    aviso = enviar(
+        sessao,
+        contexto,
+        destinatarios=list(configuracao.notificacao.emails),
+        assunto=assunto,
+        corpo=corpo,
+    )
+    registrar_aviso(
+        sessao,
+        contexto,
+        aviso=aviso,
+        dispositivo_id=execucao.dispositivo_id,
+        alvo=registro.nome,
+    )
+    return aviso.como_dicionario()
 
 
 __all__ = [

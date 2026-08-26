@@ -131,17 +131,24 @@ async def apertar_maos(
     return dict(resposta)
 
 
-async def bater_coracao(conexao: object, intervalo_s: float) -> None:
+async def bater_coracao(conexao: object, intervalo_s: float, diario: Diario | None = None) -> None:
     """
-    Manda batidas ate a conexao cair.
+    Manda batidas ate a conexao cair, e leva o diario de carona.
 
-    Sem elas, uma conexao morta por NAT ou firewall silencioso continuaria
+    Sem as batidas, uma conexao morta por NAT ou firewall silencioso continuaria
     "aberta" dos dois lados, e a tela mostraria um Agente conectado que nao
     responde a comando nenhum.
+
+    O diario vai junto por um motivo concreto: o backup do agendamento acontece
+    com a maquina **ja conectada**, e o envio na hora de conectar nao alcanca o
+    que foi gravado depois. Sem esta carona, uma execucao de madrugada so
+    apareceria no Live na proxima reconexao — que pode ser dias depois.
     """
     while True:
         await asyncio.sleep(intervalo_s)
         await conexao.send(json.dumps({"tipo": "batida"}))  # type: ignore[attr-defined]
+        if diario is not None:
+            await enviar_execucoes(conexao, diario)
 
 
 async def enviar_execucoes(conexao: object, diario: Diario) -> int:
@@ -240,7 +247,7 @@ async def manter_conectado(
                     await ao_conectar(pronto)
 
                 intervalo = float(str(pronto.get("intervalo_batida_s") or 20.0))
-                batidas = asyncio.create_task(bater_coracao(conexao, intervalo))
+                batidas = asyncio.create_task(bater_coracao(conexao, intervalo, diario))
                 try:
                     await atender_comandos(conexao, configuracao, conhecidos, diario)
                 finally:

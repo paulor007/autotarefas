@@ -128,6 +128,16 @@ def aplicar(pasta: Path, regra: Retencao) -> RelatorioDeRetencao:
     pacotes = listar(pasta)
     guardar, apagar = decidir(pacotes, regra)
 
+    # Um pacote incremental depende dos anteriores que o manifesto dele cita.
+    # Apagar a base de uma corrente que a propria retencao decidiu guardar
+    # deixaria para tras um pacote que nao restaura o que promete — e o
+    # problema so apareceria no dia em que alguem precisasse dele.
+    protegidos = _bases_das_correntes(guardar)
+    if protegidos:
+        adiados = [pacote for pacote in apagar if pacote.caminho.name in protegidos]
+        apagar = [pacote for pacote in apagar if pacote.caminho.name not in protegidos]
+        guardar = [*guardar, *adiados]
+
     removidos: list[str] = []
     falharam: list[str] = []
     for pacote in apagar:
@@ -141,6 +151,22 @@ def aplicar(pasta: Path, regra: Retencao) -> RelatorioDeRetencao:
             removidos.append(pacote.caminho.name)
 
     return RelatorioDeRetencao(guardados=len(guardar), removidos=removidos, nao_removidos=falharam)
+
+
+def _bases_das_correntes(guardados: list[Pacote]) -> set[str]:
+    """
+    Nomes dos pacotes de que os guardados dependem.
+
+    Falha fechada: pacote que nao da para ler nao contribui nomes, e por isso
+    tambem nao "desprotege" ninguem — o que ja estava marcado para guardar
+    continua guardado.
+    """
+    from autotarefas.tasks.backup import corrente_de
+
+    nomes: set[str] = set()
+    for pacote in guardados:
+        nomes.update(anterior.name for anterior in corrente_de(pacote.caminho))
+    return nomes
 
 
 __all__ = ["PADRAO", "Pacote", "RelatorioDeRetencao", "aplicar", "decidir", "listar"]

@@ -70,6 +70,31 @@ export interface ResultadoDeBackup {
   erro?: string;
 }
 
+/** Uma linha da trilha de auditoria. */
+export interface LinhaDeAuditoria {
+  id: string;
+  acao: string;
+  alvo: string;
+  detalhe: string;
+  quando: string;
+  dispositivo_id: string;
+}
+
+/**
+ * A trilha, e se ela continua íntegra.
+ *
+ * `integra` vem junto porque a corrente de hashes só vale enquanto se pode
+ * conferir: mostrar as linhas sem dizer se elas ainda batem seria pedir
+ * exatamente a confiança que o encadeamento existe para dispensar.
+ */
+export function listarAuditoria(): Promise<{
+  integra: boolean;
+  explicacao: string;
+  linhas: LinhaDeAuditoria[];
+}> {
+  return pedir("/api/historico/auditoria");
+}
+
 /** Ficha de um pacote produzido por uma execução. */
 export interface ArtefatoDaExecucao {
   id: string;
@@ -111,12 +136,19 @@ export interface ItemDoPacote {
   onde: string;
 }
 
-/** O que a restauração fez, e o que não fez. */
+/**
+ * O que a restauração fez, e o que não fez.
+ *
+ * `restaurados` é uma **contagem**, e `completa` vem decidido pelo núcleo. A
+ * tela não recalcula: quem sabe se a restauração entregou tudo que o pacote
+ * prometia é quem abriu o pacote.
+ */
 export interface RelatorioDeRestauracao {
   ok?: boolean;
   erro?: string;
   destino?: string;
-  restaurados?: string[];
+  restaurados?: number;
+  completa?: boolean;
   ja_existiam?: string[];
   recusados?: string[];
   faltando?: string[];
@@ -232,6 +264,7 @@ export function executarBackup(
     destino_externo?: string;
     tipo_do_destino?: string;
     enviar_para_nuvem?: boolean;
+    incremental?: boolean;
   } = {},
 ): Promise<ResultadoDeBackup> {
   return pedir(`/api/dispositivos/${encodeURIComponent(id)}/backup`, {

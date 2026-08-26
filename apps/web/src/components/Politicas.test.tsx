@@ -273,4 +273,52 @@ describe("Políticas de backup", () => {
 
     expect(await screen.findByText(/só executa quando alguém manda/i)).toBeTruthy();
   });
+
+  it("executar agora usa as MESMAS escolhas da política", async () => {
+    // Um "executar agora" que rodasse diferente do horário faria o cliente
+    // testar uma coisa e receber outra de madrugada.
+    const politica = {
+      id: "p3",
+      nome: "Diária",
+      dispositivo_id: "d1",
+      ativa: true,
+      configuracao: {
+        origens: ["C:\Loja\Dados"],
+        destino: { tipo: "externo", caminho: "E:\Backups" },
+        agendamento: { tipo: "diario", hora: "02:00", dia_da_semana: 0, dia_do_mes: 1 },
+        retencao: { diarias: 7, semanais: 4, mensais: 12 },
+        retry: { tentativas: 3, espera_inicial_min: 5 },
+        notificacao: { quando: "problema", emails: [] },
+        usar_vss: false,
+        cifrar: false,
+        assinar: true,
+        verificar: true,
+        incremental: true,
+      },
+      protege_de_verdade: true,
+      criada_em: "2026-08-25T10:00:00",
+      atualizada_em: "2026-08-25T10:00:00",
+    };
+    const espiao = mockRotas({
+      ...BASE,
+      "/api/politicas": { politicas: [politica] },
+      "/backup": { execucao_id: "e1", ok: true, pacote: "backup_2026-08-25_1200.zip" },
+    });
+
+    render(<Politicas papel="dono" />);
+    await userEvent.click(await screen.findByRole("button", { name: /executar agora/i }));
+
+    await waitFor(() =>
+      expect(
+        espiao.mock.calls.some((c) => String(c[0]).endsWith("/backup")),
+      ).toBe(true),
+    );
+    const pedido = espiao.mock.calls.find((c) => String(c[0]).endsWith("/backup"));
+    const corpo = JSON.parse(String((pedido?.[1] as RequestInit)?.body));
+    expect(corpo.destino_externo).toBe("E:\Backups");
+    expect(corpo.tipo_do_destino).toBe("externo");
+    expect(corpo.incremental).toBe(true);
+    expect(corpo.origens).toEqual(["C:\Loja\Dados"]);
+    expect(await screen.findByText(/backup concluído/i)).toBeTruthy();
+  });
 });

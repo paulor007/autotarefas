@@ -24,6 +24,7 @@ from datetime import datetime
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query, status
+from loguru import logger
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -137,6 +138,7 @@ def registrar_do_agente(
                 )
             )
         sessao.flush()
+        _avisar_se_precisa(sessao, dispositivo, execucao)
         aceitos.append(identificador)
 
     if aceitos:
@@ -151,6 +153,29 @@ def registrar_do_agente(
         )
 
     return aceitos
+
+
+def _avisar_se_precisa(sessao: Session, dispositivo: Dispositivo, execucao: Execucao) -> None:
+    """
+    Manda o aviso da politica para o que a maquina executou sozinha.
+
+    E o caso que mais precisa de aviso: a falha de madrugada, que ninguem viu
+    acontecer. Avisar so na execucao pedida pela tela faria a notificacao
+    funcionar exatamente quando ela nao era necessaria.
+
+    Falha no envio nao derruba a gravacao: o historico e o fato; o e-mail e a
+    consequencia. Perder a linha do historico por causa de um SMTP fora do ar
+    seria trocar o registro pela cortesia.
+    """
+    from . import notificacoes
+
+    contexto = repo.contexto_de_dispositivo(sessao, dispositivo_id=dispositivo.id)
+    try:
+        notificacoes.avisar_execucao(
+            sessao, contexto, execucao=execucao, dispositivo=dispositivo.nome
+        )
+    except Exception:  # noqa: BLE001 — envio de e-mail nao pode derrubar historico
+        logger.exception("nao foi possivel avisar sobre a execucao %s", execucao.id)
 
 
 def listar(
@@ -238,6 +263,47 @@ def historico_da_organizacao(
             )
 
     return {"execucoes": listar(sessao, contexto, dispositivo_id=dispositivo_id, limite=limite)}
+
+
+@roteador.get("/auditoria")
+def trilha_da_organizacao(
+    contexto: ContextoAtual,
+    sessao: SessaoBanco,
+    limite: int = Query(default=PAGINA, ge=1, le=PAGINA),
+) -> dict[str, Any]:
+    """
+    A trilha do que foi feito, e se ela continua integra.
+
+    A trilha ja era gravada e encadeada por hash desde a G.2.1, mas nao aparecia
+    em lugar nenhum — uma evidencia que ninguem consegue olhar nao serve de
+    evidencia. `integra` vem junto porque a corrente so vale enquanto se pode
+    conferir: mostrar as linhas sem dizer se elas ainda batem seria oferecer
+    exatamente a confianca que o encadeamento existe para nao pedir.
+    """
+    from .db.models import Auditoria
+
+    integra, explicacao = repo.conferir_trilha(sessao, contexto)
+    linhas = sessao.execute(
+        repo.escopo(Auditoria, contexto)
+        .order_by(Auditoria.quando.desc(), Auditoria.id.desc())
+        .limit(limite)
+    ).scalars()
+
+    return {
+        "integra": integra,
+        "explicacao": explicacao,
+        "linhas": [
+            {
+                "id": linha.id,
+                "acao": linha.acao,
+                "alvo": linha.alvo,
+                "detalhe": linha.detalhe,
+                "quando": linha.quando.isoformat(),
+                "dispositivo_id": linha.dispositivo_id or "",
+            }
+            for linha in linhas
+        ],
+    }
 
 
 __all__ = ["LOTE_MAXIMO", "PAGINA", "listar", "registrar_do_agente", "roteador"]

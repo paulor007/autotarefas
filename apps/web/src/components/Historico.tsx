@@ -82,7 +82,7 @@ export default function Historico({ dispositivoId = "" }: Props) {
                 {quando(item.iniciada_em)}
               </p>
               <p className="text-[0.8rem] text-muted">
-                {item.arquivos} arquivo(s) · {emMB(item.bytes_copiados)}
+                {item.arquivos} arquivo(s) · pacote de {emMB(item.bytes_copiados)}
               </p>
             </div>
             <div className="flex items-center gap-2">

@@ -225,3 +225,70 @@ def test_semana_iso_atravessa_a_virada_do_ano() -> None:
     assert fim.semana == inicio.semana
     assert fim.dia != inicio.dia
     assert isinstance(fim.dia, date)
+
+
+class TestCorrenteIncremental:
+    """
+    A retencao nao apaga a base de uma corrente que ela mesma guardou (G.7.2).
+
+    Sem isto, duas execucoes no mesmo dia terminariam assim: a regra diaria
+    guarda so a mais nova, apaga a anterior — e a mais nova e incremental,
+    dependendo justamente da que acabou de sumir. O pacote continuaria la,
+    parecendo inteiro, e so nao restauraria o que promete.
+    """
+
+    @staticmethod
+    def _duas_no_mesmo_dia(tmp_path: Path) -> tuple[Path, Path]:
+        from autotarefas.tasks.backup import BackupTask
+        from autotarefas.tasks.catalogo import NOME, Catalogo
+
+        origem = tmp_path / "dados"
+        origem.mkdir()
+        (origem / "contrato.txt").write_text("contrato", encoding="utf-8")
+
+        pacotes = tmp_path / "backups"
+        pacotes.mkdir()
+        catalogo = Catalogo(pacotes / NOME)
+
+        base = pacotes / "backup_2026-08-25_0200.zip"
+        BackupTask(sources=[origem], destination=base, catalogo=catalogo).run()
+
+        (origem / "novo.txt").write_text("novo", encoding="utf-8")
+        depois = pacotes / "backup_2026-08-25_1400.zip"
+        BackupTask(sources=[origem], destination=depois, catalogo=catalogo).run()
+        return base, depois
+
+    def test_a_base_do_incremental_nao_e_apagada(self, tmp_path: Path) -> None:
+        base, depois = self._duas_no_mesmo_dia(tmp_path)
+
+        relatorio = retencao.aplicar(depois.parent, Retencao(diarias=1, semanais=0, mensais=0))
+
+        assert base.name not in relatorio["removidos"]
+        assert base.is_file(), "a retencao apagou a base da corrente incremental"
+        assert depois.is_file()
+
+    def test_pacote_completo_antigo_continua_sendo_apagado(self, tmp_path: Path) -> None:
+        """
+        A protecao e so para quem sustenta uma corrente.
+
+        Sem esse limite, a retencao viraria enfeite: nada seria apagado nunca, e
+        o disco encheria em silencio.
+        """
+        from autotarefas.tasks.backup import BackupTask
+
+        origem = tmp_path / "dados"
+        origem.mkdir()
+        (origem / "contrato.txt").write_text("contrato", encoding="utf-8")
+
+        pacotes = tmp_path / "backups"
+        pacotes.mkdir()
+        velho = pacotes / "backup_2026-08-24_0200.zip"
+        novo = pacotes / "backup_2026-08-25_0200.zip"
+        BackupTask(sources=[origem], destination=velho).run()
+        BackupTask(sources=[origem], destination=novo).run()
+
+        relatorio = retencao.aplicar(pacotes, Retencao(diarias=1, semanais=0, mensais=0))
+
+        assert velho.name in relatorio["removidos"]
+        assert not velho.is_file()
+        assert novo.is_file()

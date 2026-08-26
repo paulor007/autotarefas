@@ -89,7 +89,7 @@ class Servico:
                 resultado=_resultado(deu_certo, ficha),
                 arquivos=int(ficha.get("arquivos", 0) or 0),
                 bytes_copiados=int(ficha.get("tamanho_bytes", 0) or 0),
-                ressalva=str(ficha.get("ressalva") or ficha.get("erro") or ""),
+                ressalva=_ressalva(ficha, item.tentativa),
                 artefato=artefato,
             )
         )
@@ -159,6 +159,23 @@ class Servico:
 
         for acao, executor in originais.items():
             self.registro.registrar(acao, com_agendador(executor))
+
+
+def _ressalva(ficha: dict[str, Any], tentativa: int) -> str:
+    """
+    O que deu errado, e em qual tentativa.
+
+    O numero nao e detalhe tecnico: "falhou" e "falhou na 2a tentativa" pedem
+    coisas diferentes de quem le. A segunda diz que o Agente insistiu — e que o
+    problema nao foi um tropeco.
+
+    Cada tentativa vira uma linha propria no historico. Juntar as tres numa so
+    esconderia justamente o que prova que o retry aconteceu.
+    """
+    texto = str(ficha.get("ressalva") or ficha.get("erro") or "")
+    if tentativa > 1:
+        return f"tentativa {tentativa}: {texto}".strip()
+    return texto
 
 
 def _resultado(deu_certo: bool, ficha: dict[str, Any]) -> str:

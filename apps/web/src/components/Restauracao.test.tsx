@@ -173,7 +173,8 @@ describe("Restauração guiada", () => {
       "/pacote": CONTEUDO,
       "/restaurar": {
         ok: true,
-        restaurados: ["docs/contrato.txt"],
+        restaurados: 1,
+        completa: false,
         ja_existiam: [],
         recusados: [],
         faltando: ["docs/nota.txt"],
@@ -190,6 +191,33 @@ describe("Restauração guiada", () => {
     expect(screen.queryByText(/restauração concluída/i)).toBeNull();
   });
 
+  it("o veredito de completude vem do núcleo, e não é recalculado na tela", async () => {
+    // Recalcular aqui foi o que fez uma restauração completa aparecer como
+    // INCOMPLETA: `restaurados` é uma contagem, e `.length` de um número é
+    // `undefined`. Quem abriu o pacote é quem sabe.
+    mockRotas({
+      "/pacotes": PACOTES,
+      "/consultar": ESTADO,
+      "/pacote": CONTEUDO,
+      "/restaurar": {
+        ok: true,
+        restaurados: 2,
+        completa: true,
+        ja_existiam: ["docs/antigo.txt"],
+        recusados: [],
+        faltando: [],
+        corrompidos: [],
+      },
+    });
+
+    montar();
+    await userEvent.click(await screen.findByText("backup_2026-08-25_0200.zip"));
+    await userEvent.click(await screen.findByRole("button", { name: /restaurar$/i }));
+
+    expect(await screen.findByText(/2 arquivo\(s\) conferem/i)).toBeTruthy();
+    expect(screen.queryByText(/INCOMPLETA/i)).toBeNull();
+  });
+
   it("restauração completa é dita como completa", async () => {
     mockRotas({
       "/pacotes": PACOTES,
@@ -197,7 +225,8 @@ describe("Restauração guiada", () => {
       "/pacote": CONTEUDO,
       "/restaurar": {
         ok: true,
-        restaurados: ["docs/contrato.txt", "docs/nota.txt"],
+        restaurados: 2,
+        completa: true,
         ja_existiam: [],
         recusados: [],
         faltando: [],
@@ -247,7 +276,7 @@ describe("Restauração guiada", () => {
       "/pacotes": PACOTES,
       "/consultar": ESTADO,
       "/pacote": CONTEUDO,
-      "/restaurar": { ok: true, restaurados: ["docs/contrato.txt"] },
+      "/restaurar": { ok: true, restaurados: 1, completa: true },
     });
 
     montar();

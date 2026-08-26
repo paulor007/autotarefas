@@ -43,7 +43,6 @@ from .db.models import (
     EstadoDispositivo,
     Execucao,
     Papel,
-    Politica,
     ResultadoExecucao,
     agora,
     em_utc,
@@ -405,6 +404,29 @@ class PedidoDeBackup(BaseModel):
     #: canal autenticado. Se viesse daqui, o navegador teria que guardar a
     #: chave de nuvem do cliente.
     enviar_para_nuvem: bool = False
+    #: Copiar so o que mudou. Existe aqui para o "executar agora" de uma
+    #: politica se comportar como a execucao agendada dela: um botao que roda
+    #: diferente do horario faria o cliente testar outra coisa.
+    incremental: bool = False
+
+
+def _parametros_do_backup(pedido: PedidoDeBackup) -> dict[str, Any]:
+    """
+    So o que foi realmente pedido.
+
+    Campo vazio nao entra: o Agente tem padroes proprios — as pastas
+    autorizadas, a pasta de pacotes ao lado delas — e mandar `""` os
+    sobrescreveria com nada.
+    """
+    escolhas: dict[str, Any] = {
+        "origens": pedido.origens,
+        "destino": pedido.destino,
+        "usar_vss": pedido.usar_vss,
+        "incremental": pedido.incremental,
+        "destino_externo": pedido.destino_externo,
+        "tipo_do_destino": pedido.tipo_do_destino,
+    }
+    return {chave: valor for chave, valor in escolhas.items() if valor}
 
 
 @roteador.post("/{dispositivo_id}/backup")
@@ -447,17 +469,7 @@ async def executar_backup_agora(
         dispositivo_id=dispositivo_id,
     )
 
-    parametros: dict[str, Any] = {}
-    if pedido.origens:
-        parametros["origens"] = pedido.origens
-    if pedido.destino:
-        parametros["destino"] = pedido.destino
-    if pedido.usar_vss:
-        parametros["usar_vss"] = True
-    if pedido.destino_externo:
-        parametros["destino_externo"] = pedido.destino_externo
-    if pedido.tipo_do_destino:
-        parametros["tipo_do_destino"] = pedido.tipo_do_destino
+    parametros = _parametros_do_backup(pedido)
     if pedido.enviar_para_nuvem:
         try:
             parametros["s3"] = credencial_de_nuvem(sessao, contexto)
@@ -495,53 +507,16 @@ def _avisar(
     sessao: Session, contexto: repo.Contexto, execucao: Execucao, dispositivo: str
 ) -> dict[str, Any]:
     """
-    Avisa quem a politica pediu, e registra o que aconteceu com o aviso.
+    Avisa quem a politica pediu.
 
-    Execucao manual usa a politica do dispositivo quando existe uma; sem
-    politica, nao ha destinatario e o aviso simplesmente nao acontece — o que
-    e dito, em vez de silencio.
+    A regra mora em `notificacoes` porque a execucao do agendamento — a que
+    ninguem viu acontecer — precisa exatamente da mesma coisa.
     """
-    from autotarefas.tasks.politica import Politica as ConfiguracaoDePolitica
-
     from . import notificacoes
 
-    registro = (
-        sessao.execute(
-            repo.escopo(Politica, contexto)
-            .where(Politica.dispositivo_id == execucao.dispositivo_id)
-            .where(Politica.ativa.is_(True))
-        )
-        .scalars()
-        .first()
+    return notificacoes.avisar_execucao(
+        sessao, contexto, execucao=execucao, dispositivo=dispositivo
     )
-    if registro is None:
-        return {"enviado": False, "motivo": "nenhuma politica com destinatarios"}
-
-    configuracao = ConfiguracaoDePolitica.de_json(registro.configuracao)
-    if not notificacoes.deve_avisar(configuracao.notificacao.quando, execucao.resultado):
-        return {"enviado": False, "motivo": "a politica nao pede aviso neste desfecho"}
-
-    assunto, corpo = notificacoes.texto_do_aviso(
-        dispositivo=dispositivo,
-        politica=registro.nome,
-        resultado=execucao.resultado,
-        ressalva=execucao.ressalva,
-    )
-    aviso = notificacoes.enviar(
-        sessao,
-        contexto,
-        destinatarios=list(configuracao.notificacao.emails),
-        assunto=assunto,
-        corpo=corpo,
-    )
-    notificacoes.registrar_aviso(
-        sessao,
-        contexto,
-        aviso=aviso,
-        dispositivo_id=execucao.dispositivo_id,
-        alvo=registro.nome,
-    )
-    return aviso.como_dicionario()
 
 
 def _falhou(sessao: Session, execucao: Execucao, erro: Exception, codigo: int) -> JSONResponse:

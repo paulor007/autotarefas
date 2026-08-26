@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 
+import Auditoria from "./Auditoria";
 import Dispositivos from "./Dispositivos";
 import Historico from "./Historico";
 import Politicas from "./Politicas";
@@ -122,6 +123,16 @@ export default function Painel() {
         </p>
         <div className="mt-3">
           <Historico />
+        </div>
+      </section>
+
+      <section>
+        <h2 className="text-lg font-semibold text-fg">Auditoria</h2>
+        <p className="mt-1 text-[0.8rem] text-muted">
+          O que foi feito nesta organização, encadeado por hash.
+        </p>
+        <div className="mt-3">
+          <Auditoria />
         </div>
       </section>
     </div>

@@ -1313,6 +1313,44 @@ def _sha_da_entrada(zf: zipfile.ZipFile, arcname: str, buffer_size: int) -> str:
     return h.hexdigest()
 
 
+def corrente_de(pacote: Path) -> list[Path]:
+    """
+    Pacotes de que este depende, do mais proximo para o mais distante.
+
+    Um pacote incremental nao se sustenta sozinho: o manifesto dele cita, para
+    cada arquivo inalterado, em qual pacote anterior o conteudo esta. Quem for
+    restaurar precisa da corrente inteira — e quem for **apagar** precisa saber
+    que ela existe.
+
+    So entram os que ainda estao no disco, ao lado do pacote. Um citado que
+    sumiu nao vira excecao: a restauracao relata o que faltou, o que e mais util
+    do que recusar tudo por causa de um arquivo antigo.
+    """
+    pasta = pacote.parent
+    encontrados: list[Path] = []
+    vistos = {pacote.name}
+    fila = [pacote]
+
+    while fila:
+        atual = fila.pop(0)
+        try:
+            relatorio = verify_backup(atual)
+        except (OSError, ValueError, zipfile.BadZipFile):
+            # Pacote ilegivel no meio da corrente. Nao e motivo para desistir:
+            # o que der para recuperar continua valendo.
+            continue
+        for nome in relatorio.chain:
+            if nome in vistos:
+                continue
+            vistos.add(nome)
+            anterior = pasta / nome
+            if anterior.is_file():
+                encontrados.append(anterior)
+                fila.append(anterior)
+
+    return encontrados
+
+
 __all__ = [
     "MANIFEST_NAME",
     "PARTIAL_SUFFIX",
@@ -1320,6 +1358,7 @@ __all__ = [
     "BackupTask",
     "UnreadableFile",
     "VerifyReport",
+    "corrente_de",
     "rotate_backups",
     "timestamped_name",
     "verify_backup",

@@ -297,9 +297,17 @@ async def executar_restaurar(parametros: dict[str, Any], contexto: Contexto) -> 
 
     configuracao = contexto.configuracao
     pacote = _achar_pacote(configuracao, str(parametros.get("pacote", "")))
-    anteriores = [
-        _achar_pacote(configuracao, str(item)) for item in parametros.get("anteriores") or []
-    ]
+    pedidos = parametros.get("anteriores") or []
+    if pedidos:
+        anteriores = [_achar_pacote(configuracao, str(item)) for item in pedidos]
+    else:
+        # A tela nao sabe montar a corrente de um pacote incremental: ela
+        # conhece nomes, e so esta maquina sabe quais deles ainda existem no
+        # disco. Sem isto, restaurar o pacote de hoje devolveria uma pasta pela
+        # metade com cara de restauracao concluida.
+        from . import artefatos
+
+        anteriores = artefatos.corrente(pacote)
 
     # O DESTINO e a unica coisa que o Live escolhe de verdade aqui, e por isso
     # passa pela guarda de pastas autorizadas: restaurar e escrever no disco do
