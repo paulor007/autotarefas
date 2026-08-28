@@ -3,6 +3,8 @@ import { beforeEach, describe, expect, it } from "vitest";
 
 import {
   cliqueDeNavegacao,
+  comVolta,
+  destinoDeVolta,
   ehDoProduto,
   enderecoDa,
   navegar,
@@ -176,5 +178,32 @@ describe("clique de navegacao", () => {
     cliqueDeNavegacao("/app")(evento({ button: 1 }));
     expect(chamouPreventDefault).toBe(false);
     expect(window.location.pathname).toBe("/");
+  });
+});
+
+describe("destino de volta", () => {
+  it("aceita um caminho de dentro do produto", () => {
+    expect(destinoDeVolta(comVolta("/app/dispositivos", "/app/backups"))).toBe(
+      "/app/backups",
+    );
+  });
+
+  it("nulo quando não há para onde voltar", () => {
+    expect(destinoDeVolta("/app/dispositivos")).toBeNull();
+    expect(destinoDeVolta("/app/dispositivos?voltar=")).toBeNull();
+  });
+
+  it("recusa um destino fora do produto", () => {
+    // Sem esta recusa, `?voltar=https://algum-site` viraria um botão com a
+    // cara do AutoTarefas levando para fora dele.
+    for (const fora of [
+      "https://exemplo.invalido",
+      "//exemplo.invalido",
+      "/",
+      "/primeiro-acesso",
+      "javascript:alert(1)",
+    ]) {
+      expect(destinoDeVolta(comVolta("/app/dispositivos", fora))).toBeNull();
+    }
   });
 });

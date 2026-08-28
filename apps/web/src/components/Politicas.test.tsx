@@ -65,12 +65,20 @@ beforeEach(() => {
 });
 
 describe("Políticas de backup", () => {
-  it("sem máquina pareada, diz que a política precisa de uma", async () => {
+  it("sem máquina pareada, oferece o caminho para adicionar uma", async () => {
+    // Dizer "precisa de uma máquina" e parar aí deixava a pessoa procurando
+    // onde. O aviso vira uma porta, e a porta guarda o caminho de volta: quem
+    // sai daqui para parear vai mexer em OUTRO computador, e precisa
+    // reencontrar esta tela sem refazer nada.
     mockRotas({ "/api/politicas": { politicas: [] }, "/api/dispositivos": { dispositivos: [] } });
 
     render(<Politicas papel="dono" />);
 
-    expect(await screen.findByText(/precisa de uma máquina pareada/i)).toBeTruthy();
+    expect(await screen.findByText(/Nenhuma máquina conectada/i)).toBeTruthy();
+    const porta = screen.getByRole("link", { name: /Adicionar máquina/i });
+    expect(porta.getAttribute("href")).toBe(
+      "/app/dispositivos?voltar=%2Fapp%2Fbackups",
+    );
     expect(screen.queryByRole("button", { name: /nova política/i })).toBeNull();
   });
 

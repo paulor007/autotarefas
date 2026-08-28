@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import Dispositivos from "./Dispositivos";
+import { comVolta, enderecoDa } from "../lib/rotas";
 
 /**
  * Testes da tela de máquinas.
@@ -52,6 +53,7 @@ function mockRotas(
 describe("Dispositivos", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+    window.history.replaceState(null, "", enderecoDa("dispositivos"));
   });
 
   it("mostra 'Desligado' para máquina cadastrada e sem canal aberto", async () => {
@@ -300,5 +302,75 @@ describe("Dispositivos", () => {
     expect(comando.textContent).toContain("ABCD-EFGH");
     expect(screen.getByText(/serve uma vez só/i)).toBeTruthy();
     expect(screen.getByRole("link", { name: /baixar o agente/i })).toBeTruthy();
+  });
+});
+
+describe("voltar de onde se veio", () => {
+  const VOLTA = comVolta(enderecoDa("dispositivos"), enderecoDa("backups"));
+
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    window.history.replaceState(null, "", VOLTA);
+  });
+
+  it("sem máquina ainda, avisa que há uma configuração esperando", async () => {
+    // Parear acontece em OUTRO computador e leva minutos. Sem esta faixa, a
+    // pessoa volta e não lembra de onde saiu.
+    mockRotas({
+      "/api/dispositivos": { corpo: { dispositivos: [] } },
+      "/api/agente/conectados": { corpo: { conectados: [], total_conectados: 0 } },
+    });
+    render(<Dispositivos papel="dono" />);
+
+    await waitFor(() => {
+      expect(screen.getByText(/estava configurando um backup/i)).toBeTruthy();
+    });
+  });
+
+  it("com a máquina pronta, a faixa vira o convite para terminar", async () => {
+    mockRotas({
+      "/api/dispositivos": { corpo: { dispositivos: [DISPOSITIVO] } },
+      "/api/agente/conectados": { corpo: { conectados: [], total_conectados: 0 } },
+    });
+    render(<Dispositivos papel="dono" />);
+
+    const volta = await screen.findByRole("link", {
+      name: /Voltar para a configuração do backup/i,
+    });
+    expect(volta.getAttribute("href")).toBe(enderecoDa("backups"));
+  });
+
+  it("sem `voltar` na URL, nenhuma faixa aparece", async () => {
+    window.history.replaceState(null, "", enderecoDa("dispositivos"));
+    mockRotas({
+      "/api/dispositivos": { corpo: { dispositivos: [DISPOSITIVO] } },
+      "/api/agente/conectados": { corpo: { conectados: [], total_conectados: 0 } },
+    });
+    render(<Dispositivos papel="dono" />);
+
+    await waitFor(() => {
+      expect(screen.getByText("PC da loja")).toBeTruthy();
+    });
+    expect(screen.queryByText(/Voltar para a configuração/i)).toBeNull();
+  });
+
+  it("um `voltar` para fora do produto é ignorado", async () => {
+    // O parâmetro vem da URL, logo de fora. Sem o filtro, seria um botão com a
+    // cara do AutoTarefas levando para outro lugar.
+    window.history.replaceState(
+      null,
+      "",
+      comVolta(enderecoDa("dispositivos"), "https://exemplo.invalido"),
+    );
+    mockRotas({
+      "/api/dispositivos": { corpo: { dispositivos: [DISPOSITIVO] } },
+      "/api/agente/conectados": { corpo: { conectados: [], total_conectados: 0 } },
+    });
+    render(<Dispositivos papel="dono" />);
+
+    await waitFor(() => {
+      expect(screen.getByText("PC da loja")).toBeTruthy();
+    });
+    expect(screen.queryByText(/Voltar para a configuração/i)).toBeNull();
   });
 });

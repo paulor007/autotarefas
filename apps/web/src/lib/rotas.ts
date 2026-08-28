@@ -94,11 +94,14 @@ function semBusca(caminho: string): string {
   return caminho.split("?")[0] ?? "";
 }
 
-export function ehDoProduto(caminho: string): boolean {
+/** Uma secao do produto — `/primeiro-acesso` nao conta. */
+function ehSecao(caminho: string): boolean {
   const so = semBusca(caminho);
-  return (
-    so === PRODUTO || so.startsWith(`${PRODUTO}/`) || so === PRIMEIRO_ACESSO
-  );
+  return so === PRODUTO || so.startsWith(`${PRODUTO}/`);
+}
+
+export function ehDoProduto(caminho: string): boolean {
+  return ehSecao(caminho) || semBusca(caminho) === PRIMEIRO_ACESSO;
 }
 
 export function secaoDe(caminho: string): Secao {
@@ -119,6 +122,30 @@ export function parametro(caminho: string, nome: string): string | null {
   return corte < 0
     ? null
     : new URLSearchParams(caminho.slice(corte)).get(nome);
+}
+
+/**
+ * Para onde voltar depois de resolver o que faltava.
+ *
+ * Adotar uma maquina leva minutos e quase sempre acontece em OUTRO computador.
+ * Quem sai da configuracao do backup para parear precisa reencontrar o
+ * caminho de volta sem refazer nada — e o caminho viaja na propria URL, para
+ * sobreviver a um F5.
+ *
+ * O valor vem de fora, entao passa por filtro: so caminho dentro do produto.
+ * Sem isso, `?voltar=https://algum-site` viraria um botao do AutoTarefas que
+ * leva para fora dele — com a aparencia de ser do AutoTarefas.
+ */
+export function destinoDeVolta(caminho: string): string | null {
+  const bruto = parametro(caminho, "voltar");
+  // `ehSecao`, e nao `ehDoProduto`: `/primeiro-acesso` pertence ao produto mas
+  // nao e lugar para onde se volta — a organizacao ja existe.
+  return bruto && ehSecao(bruto) ? bruto : null;
+}
+
+/** `/app/dispositivos?voltar=/app/backups`, montado sem erro de escapamento. */
+export function comVolta(destino: string, voltar: string): string {
+  return `${destino}?voltar=${encodeURIComponent(voltar)}`;
 }
 
 /**

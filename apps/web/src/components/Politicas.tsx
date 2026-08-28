@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 
+import { cliqueDeNavegacao, comVolta, enderecoDa } from "../lib/rotas";
+
 import {
   ErroDaPlataforma,
   consultarDispositivo,
@@ -20,6 +22,9 @@ interface Props {
 }
 
 const ADMINISTRAM = new Set(["dono", "administrador"]);
+
+/** O pareamento, com o caminho de volta para esta mesma tela. */
+const PARA_PAREAR = comVolta(enderecoDa("dispositivos"), enderecoDa("backups"));
 
 /** O que o formulário começa oferecendo. */
 const PADRAO: ConfiguracaoDePolitica = {
@@ -64,6 +69,9 @@ export default function Politicas({ papel }: Props) {
   const [erro, setErro] = useState("");
   const [aviso, setAviso] = useState("");
   const [abrindo, setAbrindo] = useState(false);
+  // Como em Dispositivos: lista vazia e "ainda nao perguntei" sao coisas
+  // diferentes, e so uma delas merece a tela de "nenhuma maquina".
+  const [carregado, setCarregado] = useState(false);
 
   const administra = ADMINISTRAM.has(papel);
 
@@ -81,6 +89,8 @@ export default function Politicas({ papel }: Props) {
       setErro("");
     } catch (e: unknown) {
       setErro(mensagemDe(e));
+    } finally {
+      setCarregado(true);
     }
   }, []);
 
@@ -141,11 +151,26 @@ export default function Politicas({ papel }: Props) {
         )}
       </div>
 
-      {dispositivos.length === 0 && (
-        <p className="mt-2 text-sm text-muted">
-          Política de backup precisa de uma máquina pareada. Pareie o Agente
-          primeiro — é ele quem executa.
-        </p>
+      {carregado && dispositivos.length === 0 && (
+        <div className="mt-4 rounded-xl border border-white/10 bg-ink px-4 py-4">
+          <p className="text-sm font-semibold text-fg">
+            Nenhuma máquina conectada
+          </p>
+          <p className="mt-1 text-[0.85rem] text-muted">
+            O backup roda no computador, e quem executa é o Agente. Antes de
+            configurar o que copiar, é preciso ter uma máquina.
+          </p>
+          {/* Leva ao pareamento CARREGANDO o caminho de volta. Adotar uma
+              maquina leva minutos e quase sempre acontece em outro computador;
+              sem isso, quem sai daqui volta perdido. */}
+          <a
+            href={PARA_PAREAR}
+            onClick={cliqueDeNavegacao(PARA_PAREAR)}
+            className="mt-3 inline-block rounded-lg border border-signal/40 bg-signal/10 px-4 py-2 text-sm font-semibold text-signal hover:border-signal/70"
+          >
+            Adicionar máquina
+          </a>
+        </div>
       )}
 
       {abrindo && (

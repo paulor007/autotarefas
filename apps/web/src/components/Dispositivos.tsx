@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { ArrowLeft } from "lucide-react";
 
 import InstalarAgente from "./InstalarAgente";
 import Restauracao from "./Restauracao";
@@ -15,6 +16,11 @@ import {
   type Dispositivo,
   type EstadoDoDispositivo,
 } from "../lib/plataforma";
+import {
+  cliqueDeNavegacao,
+  destinoDeVolta,
+  useCaminho,
+} from "../lib/rotas";
 
 interface Props {
   /** Papel de quem está olhando: só quem administra parea e revoga. */
@@ -58,6 +64,11 @@ export default function Dispositivos({ papel }: Props) {
   const [erro, setErro] = useState<string | null>(null);
   const [ocupado, setOcupado] = useState(false);
   const [restaurando, setRestaurando] = useState("");
+
+  // De onde a pessoa veio, quando veio de algum lugar. Parear e um desvio:
+  // comeca numa configuracao, passa por outro computador e precisa terminar
+  // onde comecou.
+  const voltar = destinoDeVolta(useCaminho());
 
   const administra = ADMINISTRAM.has(papel);
   const opera = OPERAM.has(papel);
@@ -158,6 +169,33 @@ export default function Dispositivos({ papel }: Props) {
         <p className="mt-3 rounded-lg border border-danger/40 bg-danger/5 px-3 py-2 text-sm text-danger">
           {erro}
         </p>
+      )}
+
+      {voltar && (
+        <a
+          href={voltar}
+          onClick={cliqueDeNavegacao(voltar)}
+          className="mt-4 flex items-center gap-2 rounded-xl border border-signal/30 bg-signal/5 px-4 py-3 text-sm text-fg hover:border-signal/60"
+        >
+          <ArrowLeft className="h-4 w-4 shrink-0 text-signal" />
+          <span>
+            {dispositivos.length > 0 ? (
+              <>
+                <strong className="font-semibold">
+                  {dispositivos.length === 1
+                    ? "1 máquina pronta."
+                    : `${dispositivos.length} máquinas prontas.`}
+                </strong>{" "}
+                Voltar para a configuração do backup
+              </>
+            ) : (
+              <>
+                Você estava configurando um backup. Assim que a máquina
+                aparecer aqui, volte para terminar.
+              </>
+            )}
+          </span>
+        </a>
       )}
 
       {!carregado && !erro && (
