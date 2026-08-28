@@ -24,7 +24,7 @@ from __future__ import annotations
 import enum
 from datetime import date, datetime, time, timedelta
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class TipoDeAgendamento(enum.StrEnum):
@@ -177,6 +177,18 @@ class Politica(BaseModel):
     corrija um campo errado, e a execução que falha por configuração inválida
     é indistinguível, no log, da que falha por disco cheio.
     """
+
+    #: Campo desconhecido é recusado, e não descartado em silêncio.
+    #:
+    #: A tela mandou `verificar: true` durante semanas. O Pydantic descartava
+    #: sem dizer nada, e a caixa "Conferir o pacote depois de gerar" ficou lá,
+    #: marcável e desmarcável, sem ligar em coisa alguma — a conferência no
+    #: destino sempre foi incondicional. Um controle que não controla nada é a
+    #: mentira mais fácil de cometer numa interface.
+    #:
+    #: Com `forbid`, o mesmo erro vira um 400 com o nome do campo, na primeira
+    #: vez que alguém tentar.
+    model_config = ConfigDict(extra="forbid")
 
     #: Vazio = todas as pastas autorizadas na máquina. É o padrão útil: quem
     #: autorizou uma pasta quer que ela seja copiada.

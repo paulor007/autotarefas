@@ -25,7 +25,6 @@ export const PADRAO: ConfiguracaoDePolitica = {
   usar_vss: false,
   cifrar: false,
   assinar: true,
-  verificar: true,
   incremental: false,
 };
 
@@ -414,16 +413,22 @@ export default function AssistenteDeBackup({
                 aoMudar={(v) => setConfig({ ...config, assinar: v })}
               />
               <Marcador
-                rotulo="Conferir o pacote depois de gerar"
-                valor={config.verificar}
-                aoMudar={(v) => setConfig({ ...config, verificar: v })}
-              />
-              <Marcador
                 rotulo="Copiar arquivo aberto usando instantâneo (VSS, exige administrador)"
                 valor={config.usar_vss}
                 aoMudar={(v) => setConfig({ ...config, usar_vss: v })}
               />
             </fieldset>
+
+            {/* Havia aqui uma caixa "Conferir o pacote depois de gerar". Ela
+                nunca ligou em nada: a conferencia no destino sempre foi
+                incondicional, e desmarcar a caixa nao mudava uma linha do que
+                acontecia. Virou o que sempre foi — um fato. */}
+            <p className="text-muted">
+              Todo pacote é conferido no destino, sempre: se o que chegou não
+              bater com o manifesto, a cópia é descartada e a execução falha.
+              Não há como desligar isso — é o que a palavra "verificável"
+              significa.
+            </p>
           </div>
         </details>
 

@@ -84,9 +84,11 @@ export default function CartaoDeAutomacao({
         </p>
       ) : semBackup ? (
         <p className="mt-5 text-sm text-muted">
+          {/* O selo acima ja disse que nao ha backup ativo. Repetir a frase
+              aqui gastaria a atencao da pessoa duas vezes com a mesma
+              informacao; o cartao diz o que FALTA. */}
           {maquinas === 1 ? "1 máquina pronta" : `${maquinas} máquinas prontas`}
-          , nenhum backup configurado ainda. Enquanto não houver política, nada
-          é copiado.
+          . Falta dizer o que copiar, para onde e em que horário.
         </p>
       ) : (
         <dl className="mt-5 grid gap-4 sm:grid-cols-3">

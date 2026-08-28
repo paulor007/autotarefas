@@ -52,6 +52,14 @@ const VAZIO = {
   "/api/historico/auditoria": {
     corpo: { integra: true, explicacao: "", linhas: [] },
   },
+  "/api/protecao": {
+    corpo: {
+      nivel: "sem_configuracao",
+      titulo: "Nenhum backup configurado",
+      resumo: "Nenhum backup ativo. Enquanto não houver política, nada é copiado.",
+      backups: [],
+    },
+  },
 };
 
 function mockRotas(
@@ -253,9 +261,89 @@ describe("início", () => {
     render(<Produto />);
 
     await waitFor(() => {
-      expect(screen.getByText(/nenhum backup configurado ainda/i)).toBeTruthy();
+      expect(screen.getByText(/Falta dizer o que copiar/i)).toBeTruthy();
     });
     const acao = screen.getByRole("link", { name: /Configurar backup/i });
     expect(acao.getAttribute("href")).toBe(enderecoDa("backups"));
+  });
+});
+
+describe("estado da proteção", () => {
+  function comProtecao(corpo: unknown) {
+    return { ...VAZIO, "/api/protecao": { corpo } };
+  }
+
+  it("sem nada configurado, não acusa risco nem promete proteção", async () => {
+    // "Em risco" para quem ainda não teve chance de configurar acusaria a
+    // pessoa de um problema que ela não criou.
+    mockRotas(VAZIO);
+    render(<Produto />);
+
+    const selo = await screen.findByRole("region", { name: /proteção/i });
+    expect(within(selo).getByText(/Nenhum backup configurado/i)).toBeTruthy();
+  });
+
+  it("destino no mesmo computador vira Proteção parcial, com o motivo", async () => {
+    mockRotas(
+      comProtecao({
+        nivel: "parcial",
+        titulo: "Proteção parcial",
+        resumo: "1 backup ativo. 1 precisa de atenção.",
+        backups: [
+          {
+            politica_id: "p1",
+            nome: "Backup da loja",
+            maquina: "PC da loja",
+            nivel: "parcial",
+            titulo: "Proteção parcial",
+            motivos: [
+              "A cópia fica no mesmo computador dos arquivos originais.",
+            ],
+          },
+        ],
+      }),
+    );
+    render(<Produto />);
+
+    const selo = await screen.findByRole("region", { name: /proteção/i });
+    expect(within(selo).getByText("Proteção parcial")).toBeTruthy();
+    expect(within(selo).getByText(/mesmo computador/i)).toBeTruthy();
+    expect(within(selo).getByText("Backup da loja")).toBeTruthy();
+  });
+
+  it("o veredito da empresa é o pior dos backups, e diz de qual", async () => {
+    mockRotas(
+      comProtecao({
+        nivel: "em_risco",
+        titulo: "Proteção em risco",
+        resumo: "2 backups ativos. 1 precisa de atenção.",
+        backups: [
+          {
+            politica_id: "p1",
+            nome: "Backup da loja",
+            maquina: "PC da loja",
+            nivel: "protegido",
+            titulo: "Protegido",
+            motivos: [],
+          },
+          {
+            politica_id: "p2",
+            nome: "Backup do escritório",
+            maquina: "PC do escritório",
+            nivel: "em_risco",
+            titulo: "Proteção em risco",
+            motivos: ["Este backup nunca concluiu uma execução."],
+          },
+        ],
+      }),
+    );
+    render(<Produto />);
+
+    const selo = await screen.findByRole("region", { name: /proteção/i });
+    expect(within(selo).getByText("Proteção em risco")).toBeTruthy();
+    expect(within(selo).getByText("Backup do escritório")).toBeTruthy();
+    expect(within(selo).getByText(/nunca concluiu/i)).toBeTruthy();
+    // O backup que está bem não vira ruído: sem motivo, não vira linha.
+    expect(within(selo).queryByText("Backup da loja")).toBeNull();
   });
 });

@@ -364,7 +364,6 @@ export interface ConfiguracaoDePolitica {
   usar_vss: boolean;
   cifrar: boolean;
   assinar: boolean;
-  verificar: boolean;
   incremental: boolean;
 }
 
@@ -387,6 +386,40 @@ export interface Sincronizacao {
   motivo?: string;
   politicas?: number;
   proximas?: { id: string; proxima: string }[];
+}
+
+/** O veredito de um backup, e os fatos que o sustentam. */
+export interface BackupAvaliado {
+  politica_id: string;
+  nome: string;
+  maquina: string;
+  nivel: NivelDeProtecao;
+  titulo: string;
+  motivos: string[];
+}
+
+export type NivelDeProtecao =
+  | "sem_configuracao"
+  | "em_risco"
+  | "parcial"
+  | "protegido";
+
+/**
+ * A resposta para "meus dados estão protegidos?".
+ *
+ * O nível da organização é o **pior** entre os backups: quem tem uma máquina
+ * impecável e outra sem backup há dias não está protegido, e arredondar para
+ * o melhor caso seria o erro exato que este veredito existe para evitar.
+ */
+export interface EstadoDeProtecao {
+  nivel: NivelDeProtecao;
+  titulo: string;
+  resumo: string;
+  backups: BackupAvaliado[];
+}
+
+export function obterProtecao(): Promise<EstadoDeProtecao> {
+  return pedir("/api/protecao");
 }
 
 export function listarPoliticas(): Promise<{ politicas: Politica[] }> {

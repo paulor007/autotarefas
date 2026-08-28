@@ -37,6 +37,7 @@ from . import (
     instalador,
     jobs,
     politicas,
+    protecao,
     ratelimit,
     samples,
     spreadsheets,
@@ -171,6 +172,7 @@ app.include_router(dispositivos.roteador)
 app.include_router(canal.roteador)
 app.include_router(politicas.roteador)
 app.include_router(historico.roteador)
+app.include_router(protecao.roteador)
 app.include_router(instalador.roteador)
 
 

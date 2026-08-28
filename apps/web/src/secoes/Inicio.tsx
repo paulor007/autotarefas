@@ -1,13 +1,16 @@
 import { useCallback, useEffect, useState } from "react";
 
 import CartaoDeAutomacao from "../components/CartaoDeAutomacao";
+import SeloDeProtecao from "../components/SeloDeProtecao";
 import { quando } from "../lib/datas";
 import {
   listarDispositivos,
   listarHistorico,
   listarPoliticas,
   listarPresenca,
+  obterProtecao,
   type Dispositivo,
+  type EstadoDeProtecao,
   type Execucao,
   type Politica,
 } from "../lib/plataforma";
@@ -17,6 +20,7 @@ interface Retrato {
   conectados: Set<string>;
   politicas: Politica[];
   execucoes: Execucao[];
+  protecao: EstadoDeProtecao;
 }
 
 const VAZIO: Retrato = {
@@ -24,6 +28,12 @@ const VAZIO: Retrato = {
   conectados: new Set(),
   politicas: [],
   execucoes: [],
+  protecao: {
+    nivel: "sem_configuracao",
+    titulo: "",
+    resumo: "",
+    backups: [],
+  },
 };
 
 /**
@@ -39,12 +49,14 @@ export default function Inicio() {
 
   const carregar = useCallback(async () => {
     try {
-      const [maquinas, presenca, politicas, historico] = await Promise.all([
-        listarDispositivos(),
-        listarPresenca(),
-        listarPoliticas(),
-        listarHistorico(),
-      ]);
+      const [maquinas, presenca, politicas, historico, protecao] =
+        await Promise.all([
+          listarDispositivos(),
+          listarPresenca(),
+          listarPoliticas(),
+          listarHistorico(),
+          obterProtecao(),
+        ]);
       setRetrato({
         dispositivos: maquinas.dispositivos,
         conectados: new Set(
@@ -54,6 +66,7 @@ export default function Inicio() {
         ),
         politicas: politicas.politicas,
         execucoes: historico.execucoes,
+        protecao,
       });
       setErro(null);
     } catch (e: unknown) {
@@ -86,6 +99,10 @@ export default function Inicio() {
           Configure uma vez. O AutoTarefas trabalha sozinho depois.
         </p>
       </header>
+
+      {/* A resposta antes do detalhe. Quem abre o produto quer saber se esta
+          protegido, e nao quantas politicas existem. */}
+      <SeloDeProtecao estado={retrato?.protecao ?? null} />
 
       <CartaoDeAutomacao
         carregando={retrato === null}
