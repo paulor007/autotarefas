@@ -635,17 +635,31 @@ def test_card_de_backup_tem_o_nome_do_problema(client: TestClient) -> None:
     catalogo = client.get("/api/catalog").json()
     backup = next(a for a in catalogo["automations"] if a["id"] == "backup")
 
-    assert backup["title"] == "Backup automático verificável"
+    # O nome mudou de proposito: "Backup automatico verificavel" e o PRODUTO,
+    # que roda no computador do cliente pelo Agente. O que existe aqui e a
+    # demonstracao dele, e dois nomes quase iguais para coisas diferentes foi
+    # exatamente o que confundiu quem usou.
+    assert backup["title"] == "Empacotamento verificável de arquivos"
+    assert backup["has_product_version"] is True
     assert "ZIP" not in backup["title"]
     assert "manifesto" in backup["description"].lower()
 
 
 def test_modos_declaram_o_que_existe_e_o_que_falta(client: TestClient) -> None:
+    """
+    `planned_modes` e `has_product_version` dizem coisas diferentes.
+
+    `agent_connected` saiu de `planned_modes` porque nao e mais um plano: o
+    Agente existe, roda na maquina do cliente e faz backup agendado. Ele so nao
+    mora AQUI, no Live aberto — e um catalogo publico anunciando "em breve"
+    para uma capacidade ja entregue mente na direcao contraria da usual.
+    """
     catalogo = client.get("/api/catalog").json()
     backup = next(a for a in catalogo["automations"] if a["id"] == "backup")
 
     assert backup["modes"] == ["web_upload"]
-    assert backup["planned_modes"] == ["agent_connected"]
+    assert backup["planned_modes"] == []
+    assert backup["has_product_version"] is True
 
 
 def test_servidor_nao_anuncia_capacidade_que_nao_tem(client: TestClient) -> None:

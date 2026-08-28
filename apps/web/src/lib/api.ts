@@ -33,6 +33,8 @@ export interface Automation {
   modes?: string[];
   /** Modos previstos e ainda indisponiveis. Viram texto, nunca botao. */
   planned_modes?: string[];
+  /** Existe versão completa desta capacidade dentro do produto (`/app`). */
+  has_product_version?: boolean;
 }
 
 export interface Catalog {

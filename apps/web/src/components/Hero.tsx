@@ -42,10 +42,15 @@ export default function Hero({ health }: { health: Health | null }) {
         </p>
 
         <p className="mx-auto mb-8 max-w-xl text-sm leading-relaxed text-muted/80 sm:text-base">
-          Execute automações reais direto pelo navegador — sem instalar nada.
-          Validação de dados, backup, scraping, integração via API e mais. Tudo
-          em ambiente isolado, com execução real, stdout via terminal e
-          artefatos para download.
+          Experimente automações reais direto pelo navegador, sem instalar nada:
+          validação de dados, empacotamento verificável, scraping, integração
+          via API. Execução de verdade em ambiente isolado, com stdout no
+          terminal e artefatos para baixar.
+        </p>
+        <p className="mx-auto mb-8 max-w-xl text-sm leading-relaxed text-muted/80 sm:text-base">
+          O <strong className="text-fg">backup automático</strong> — pastas do
+          computador, no horário, com o navegador fechado — é o produto, e fica
+          em <span className="text-signal">Entrar</span>.
         </p>
 
         <div className="mb-12 flex flex-col justify-center gap-3 sm:flex-row">

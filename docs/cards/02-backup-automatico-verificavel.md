@@ -56,6 +56,13 @@ notificação — com explicação e ação recomendada.
 implementação. Não haverá renomeação automática do card quando a restauração de
 amostra existir.
 
+> **Este nome pertence ao produto, e só a ele.** A demonstração do Live aberto
+> — envio avulso de arquivos, até 10 MB cada, empacotados uma vez — chamava-se
+> igual, e as duas coisas conviviam na mesma página. Quem experimentava a
+> demonstração concluía que já tinha backup automático. Ela passou a se chamar
+> **`Empacotamento verificável de arquivos`**, com o subtítulo "Experimente sem
+> instalar nada", e vive em `/` (a vitrine). O produto vive em `/app`.
+
 O que evolui é o **estado de cada execução**, que carrega o nível de prova
 alcançado:
 

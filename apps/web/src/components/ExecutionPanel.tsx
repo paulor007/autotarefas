@@ -32,7 +32,9 @@ const SPREADSHEET_JOURNEY_ID = "validate";
  * chega com o agente.
  */
 function entradaTitulo(automation: Automation): string {
-  if (automation.id === "backup") return "Proteger arquivos avulsos";
+  // "Proteger" era a palavra do produto. Aqui nao se protege nada: se
+  // empacota o que a pessoa acabou de entregar, uma vez.
+  if (automation.id === "backup") return "Empacotar arquivos avulsos";
   return `Arquivo de entrada ${uploadLabel(automation.upload)}`;
 }
 
@@ -242,36 +244,36 @@ export default function ExecutionPanel({
               </div>
             )}
 
-            {/* Os dois modos sao coisas diferentes, e a tela nao pode deixar
-                alguem confundir uma com a outra: aqui em cima o servidor
-                empacota o que voce ENTREGA; la embaixo o Agente protege o que
-                voce TEM. Este aviso existe para quem chegou pelo catalogo
-                achando que o envio avulso ja e backup. */}
-            {selected?.planned_modes?.includes("agent_connected") && (
+            {/* Sao coisas diferentes, e a tela nao pode deixar confundir uma
+                com a outra: aqui o servidor empacota o que voce ENTREGA; no
+                produto o Agente protege o que voce TEM. Este aviso existe para
+                quem chegou pelo catalogo achando que o envio avulso ja e
+                backup — e para levar quem quer o backup de verdade. */}
+            {selected?.has_product_version && (
               <div className="rounded-lg border border-white/8 bg-ink px-4 py-3">
                 <p className="text-[0.85rem] font-semibold text-fg">
-                  Isto aqui não é backup — é empacotamento com prova
+                  Isto é a demonstração. O backup automático é o produto.
                 </p>
                 <p className="mt-1 text-[0.85rem] text-muted">
-                  O envio acima protege os arquivos que você entregar, uma vez,
-                  com limite de 10 MB por arquivo — que é limite do navegador.
-                  Você faz, você baixa, você guarda.
+                  Aqui você entrega arquivos, uma vez, com limite de 10 MB por
+                  arquivo — que é limite do navegador. Você faz, você baixa,
+                  você guarda. Serve para ver o manifesto e a verificação
+                  funcionando sem instalar nada.
                 </p>
                 <p className="mt-2 text-[0.85rem] text-muted">
-                  Backup de verdade é proteger <strong>pastas inteiras</strong> do
-                  computador, no horário, sozinho, com o navegador fechado, para
-                  disco externo ou nuvem, com retenção e restauração. Isso existe
-                  e está em{" "}
-                  <a
-                    href={PRODUTO}
-                    onClick={cliqueDeNavegacao(PRODUTO)}
-                    className="text-signal underline"
-                  >
-                    Backup nas suas máquinas
-                  </a>
-                  , que exige conta e o Agente instalado — porque nenhum
-                  navegador alcança o disco de ninguém.
+                  O <strong>Backup automático</strong> protege pastas inteiras
+                  do computador, no horário, sozinho, com o navegador fechado,
+                  para disco externo ou nuvem, com retenção e restauração. Ele
+                  exige conta e o Agente instalado — porque nenhum navegador
+                  alcança o disco de ninguém.
                 </p>
+                <a
+                  href={PRODUTO}
+                  onClick={cliqueDeNavegacao(PRODUTO)}
+                  className="mt-3 inline-block rounded-lg border border-signal/40 bg-signal/10 px-3 py-1.5 text-[0.8rem] font-semibold text-signal hover:border-signal/70"
+                >
+                  Abrir o backup automático
+                </a>
               </div>
             )}
 

@@ -54,6 +54,13 @@ class Automation:
     #: Modos previstos e AINDA NAO disponiveis. Aparecem como texto honesto,
     #: nunca como botao.
     planned_modes: tuple[str, ...] = ()
+    #: Existe uma versao COMPLETA desta capacidade dentro do produto
+    #: autenticado, e o que roda aqui e a demonstracao dela. A tela usa isto
+    #: para dizer, em voz alta, o que a demonstracao NAO faz — e para onde ir.
+    #:
+    #: Diferente de `planned_modes`: aquilo e o que ainda nao existe; isto e o
+    #: que existe e nao mora aqui.
+    has_product_version: bool = False
     #: Automacoes sem upload rodam contra um servico de demonstracao interno.
     #: Estes dois campos descrevem ESSA origem para o visitante (o front
     #: renderiza o bloco "Origem da demonstracao" sempre que preenchidos).
@@ -80,17 +87,19 @@ AUTOMATIONS: tuple[Automation, ...] = (
     Automation(
         "backup",
         "arquivos",
-        "Backup automático verificável",
-        "Pacote com manifesto e verificação",
+        "Empacotamento verificável de arquivos",
+        "Experimente sem instalar nada",
         "Gera um pacote .zip com manifesto: o SHA-256 de cada arquivo, a lista do "
         "que não pôde ser lido e a soma do pacote inteiro. Depois de criado, você "
-        "pode conferir a integridade sem precisar dos arquivos originais.",
+        "pode conferir a integridade sem precisar dos arquivos originais. Uma vez, "
+        "com os arquivos que você entregar — backup de pastas, no horário e "
+        "sozinho, é o produto.",
         False,
         "folder",
-        "Envie os arquivos que quer proteger agora.",
+        "Envie os arquivos que quer empacotar agora.",
         "zip",
         modes=("web_upload",),
-        planned_modes=("agent_connected",),
+        has_product_version=True,
     ),
     Automation(
         "organize",
@@ -256,6 +265,7 @@ def public_catalog() -> dict[str, Any]:
             "source_detail": a.source_detail,
             "modes": list(a.modes),
             "planned_modes": list(a.planned_modes),
+            "has_product_version": a.has_product_version,
         }
         for a in AUTOMATIONS
     ]
