@@ -356,6 +356,19 @@ def _painel(pagina: Page) -> object:
     return pagina.locator("#produto")
 
 
+def _ir_para(pagina: Page, secao: str) -> Any:
+    """
+    Troca de secao pela navegacao do produto, como uma pessoa faria.
+
+    Clicar no link, e nao pedir o endereco: assim a homologacao exercita a
+    propria navegacao. Se um rotulo sumir da barra, isto quebra aqui — e nao
+    tres passos adiante, com uma mensagem que nao explica nada.
+    """
+    barra = pagina.get_by_role("navigation", name=re.compile("Seções"))
+    barra.get_by_role("link", name=secao, exact=True).click()
+    return _painel(pagina)
+
+
 def _nova_politica(painel: Any, cenario: Cenario, *, hora: str, nome: str) -> None:
     """
     Cria uma politica pela tela, com as escolhas que a homologacao usa.
@@ -480,7 +493,7 @@ def test_03_parear_dispositivo(cenario: Cenario, janela: Janela) -> None:
     pagina = janela.pagina
     assert pagina is not None
 
-    painel = _painel(pagina)
+    painel = _ir_para(pagina, "Dispositivos")
     painel.get_by_role("button", name="Parear nova máquina").click()
 
     link = painel.get_by_role("link", name=re.compile("Baixar o Agente"))
@@ -571,6 +584,7 @@ def test_04_autorizar_pasta_e_subir_o_agente(cenario: Cenario, janela: Janela) -
 
     # E o que a TELA mostra, que e o que o cliente ve.
     pagina.reload()
+    _ir_para(pagina, "Dispositivos")
     pagina.get_by_text("Conectado").first.wait_for()
 
     pagina.get_by_role("button", name="Ver pastas autorizadas").first.click()
@@ -583,7 +597,7 @@ def test_05_criar_politica_com_destino_externo(cenario: Cenario, janela: Janela)
     pagina = janela.pagina
     assert pagina is not None
 
-    painel = _painel(pagina)
+    painel = _ir_para(pagina, "Backups")
     _nova_politica(painel, cenario, hora="", nome="Backup da loja")
     cenario.politica_criada = True
 
@@ -602,7 +616,7 @@ def test_06_destino_externo_de_mentira_e_recusado_pela_tela(
     assert cenario.politica_criada
     pagina = janela.pagina
     assert pagina is not None
-    painel = _painel(pagina)
+    painel = _ir_para(pagina, "Backups")
 
     # A honestidade sobre o destino local ja esta na tela.
     assert painel.get_by_text(re.compile("não protege contra o disco morrer")).count() > 0
@@ -640,7 +654,7 @@ def test_07_executar_com_o_navegador_aberto(cenario: Cenario, janela: Janela) ->
     pagina = janela.pagina
     assert pagina is not None
 
-    painel = _painel(pagina)
+    painel = _ir_para(pagina, "Backups")
     painel.get_by_role("button", name="Executar agora").first.click()
 
     def terminou() -> bool:
@@ -671,7 +685,7 @@ def test_08_marcar_o_horario_e_fechar_o_navegador(cenario: Cenario, janela: Jane
     """
     pagina = janela.pagina
     assert pagina is not None
-    painel = _painel(pagina)
+    painel = _ir_para(pagina, "Backups")
 
     linha = painel.locator("li", has_text="Backup da loja")
     linha.get_by_role("button", name="Remover").click()
@@ -722,8 +736,10 @@ def test_10_reabrir_o_live(cenario: Cenario, janela: Janela) -> None:
     # O produto, e nao a raiz: `/` e a vitrine, para quem ainda esta avaliando.
     pagina = janela.abrir(f"{cenario.url}/app")
 
-    _painel(pagina).get_by_text("Padaria Sol").first.wait_for()
-    assert _painel(pagina).get_by_text("Parear nova máquina").count() > 0
+    # A sessao sobreviveu: a navegacao do produto so aparece para quem entrou.
+    pagina.get_by_role("navigation", name=re.compile("Seções")).wait_for()
+    assert _ir_para(pagina, "Configurações").get_by_text("Padaria Sol").count() > 0
+    assert _ir_para(pagina, "Dispositivos").get_by_text("Parear nova máquina").count() > 0
 
 
 def test_11_conferir_historico_e_saude(cenario: Cenario, janela: Janela) -> None:
@@ -740,7 +756,7 @@ def test_11_conferir_historico_e_saude(cenario: Cenario, janela: Janela) -> None
     """
     pagina = janela.pagina
     assert pagina is not None
-    painel = _painel(pagina)
+    painel = _ir_para(pagina, "Atividade")
 
     def no_servidor() -> str:
         resposta = pagina.request.get(f"{cenario.url}/api/historico")
@@ -783,19 +799,23 @@ def test_11_conferir_historico_e_saude(cenario: Cenario, janela: Janela) -> None
         ),
     )
 
-    # Saude: a maquina continua conectada. Esperar, e nao afirmar na hora: a
-    # presenca chega numa segunda chamada, e o `reload` acima pode ter
-    # acontecido antes dela.
-    _ate(
-        lambda: painel.get_by_text("Conectado").count() > 0,
-        PACIENCIA_S,
-        "a tela nao mostrou a maquina como conectada",
-    )
-
     assert (cenario.maquina.pacotes / cenario.pacote_do_agendamento).is_file(), (
         "o Live mostrou um pacote que nao existe na maquina"
     )
+    # A captura sai AQUI, com o historico na tela — e nao depois de trocar de
+    # secao, quando ela mostraria outra coisa com o nome do historico.
     _capturar(pagina, "05-historico-com-agendamento")
+
+    # Saude: a maquina continua conectada. Isso se ve em Dispositivos, e nao
+    # aqui — o selo de conexao pertence a maquina, nao a execucao. Esperar, e
+    # nao afirmar na hora: a presenca chega numa segunda chamada, e pode nao
+    # ter chegado no instante em que a tela abriu.
+    maquinas = _ir_para(pagina, "Dispositivos")
+    _ate(
+        lambda: maquinas.get_by_text("Conectado").count() > 0,
+        PACIENCIA_S,
+        "a tela nao mostrou a maquina como conectada",
+    )
 
 
 def test_12_conferir_pacote_e_manifesto(cenario: Cenario) -> None:
@@ -841,7 +861,7 @@ def test_14_restaurar_uma_amostra_pela_tela(cenario: Cenario, janela: Janela) ->
     """
     pagina = janela.pagina
     assert pagina is not None
-    painel = _painel(pagina)
+    painel = _ir_para(pagina, "Dispositivos")
 
     painel.get_by_role("button", name="Restaurar arquivos").first.click()
     # Pelo BOTAO, e nao pelo texto: o mesmo nome de pacote aparece tambem no
@@ -881,7 +901,7 @@ def test_16_executar_novamente(cenario: Cenario, janela: Janela) -> None:
     """16. Segunda execucao, pela mesma politica."""
     pagina = janela.pagina
     assert pagina is not None
-    painel = _painel(pagina)
+    painel = _ir_para(pagina, "Backups")
 
     painel.get_by_role("button", name="Executar agora").first.click()
 
@@ -934,7 +954,7 @@ def test_18_arquivo_maior_que_dez_megabytes(cenario: Cenario, janela: Janela) ->
 
     pagina = janela.pagina
     assert pagina is not None
-    painel = _painel(pagina)
+    painel = _ir_para(pagina, "Backups")
     painel.get_by_role("button", name="Executar agora").first.click()
 
     def terminou() -> bool:
@@ -972,7 +992,7 @@ def test_19_provocar_falha_controlada(cenario: Cenario, janela: Janela) -> None:
     """
     pagina = janela.pagina
     assert pagina is not None
-    painel = _painel(pagina)
+    painel = _ir_para(pagina, "Backups")
 
     quando = (datetime.now() + timedelta(minutes=2)).strftime("%H:%M")
 
@@ -1003,7 +1023,7 @@ def test_20_comprovar_retry_notificacao_e_auditoria(cenario: Cenario, janela: Ja
     """
     pagina = janela.pagina
     assert pagina is not None
-    painel = _painel(pagina)
+    painel = _ir_para(pagina, "Atividade")
 
     def tentativas() -> list[dict[str, Any]]:
         resposta = pagina.request.get(f"{cenario.url}/api/historico")

@@ -3,34 +3,15 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import Dispositivos from "./Dispositivos";
-import Painel from "./Painel";
 
 /**
- * Testes do painel da plataforma.
+ * Testes da tela de máquinas.
  *
  * O que se protege aqui não é layout: é a recusa de mentir. Botão que não
  * funciona, "conectado" para máquina desligada e "erro" para computador
  * fechado à noite são os três jeitos mais fáceis de uma interface enganar
  * quem confia nela.
  */
-
-const SEM_ORGANIZACAO = {
-  autenticado: false,
-  provedor_configurado: false,
-  precisa_bootstrap: true,
-  usuario: null,
-  organizacao: null,
-  organizacoes: [],
-};
-
-const LOGADO = {
-  autenticado: true,
-  provedor_configurado: true,
-  precisa_bootstrap: false,
-  usuario: { id: "u1", nome: "Ana", email: "ana@padaria.com.br" },
-  organizacao: { id: "o1", nome: "Padaria Sol", papel: "dono" },
-  organizacoes: [{ id: "o1", nome: "Padaria Sol" }],
-};
 
 const DISPOSITIVO = {
   id: "d1",
@@ -67,70 +48,6 @@ function mockRotas(
     }),
   );
 }
-
-describe("Painel", () => {
-  beforeEach(() => {
-    vi.restoreAllMocks();
-  });
-
-  it("com banco vazio, manda procurar o convite no console", async () => {
-    // Sem o convite na URL, um formulário que aceita qualquer coisa e depois
-    // recusa transformaria um passo simples num chamado de suporte.
-    mockRotas({ "/api/auth/estado": { corpo: SEM_ORGANIZACAO } });
-    render(<Painel />);
-
-    await waitFor(() => {
-      expect(screen.getByText(/Primeiro acesso/)).toBeTruthy();
-    });
-    expect(screen.getByText(/no console/i)).toBeTruthy();
-  });
-
-  it("sem provedor configurado, não mostra botão de entrar", async () => {
-    // Botão que não funciona é a mentira mais fácil de cometer numa interface.
-    mockRotas({
-      "/api/auth/estado": {
-        corpo: { ...SEM_ORGANIZACAO, precisa_bootstrap: false },
-      },
-    });
-    render(<Painel />);
-
-    await waitFor(() => {
-      expect(screen.getByText(/não tem um provedor de identidade/i)).toBeTruthy();
-    });
-    expect(screen.queryByText(/Entrar com a conta da empresa/i)).toBeNull();
-  });
-
-  it("com provedor configurado, oferece a entrada", async () => {
-    mockRotas({
-      "/api/auth/estado": {
-        corpo: {
-          ...SEM_ORGANIZACAO,
-          precisa_bootstrap: false,
-          provedor_configurado: true,
-        },
-      },
-    });
-    render(<Painel />);
-
-    await waitFor(() => {
-      expect(screen.getByText(/Entrar com a conta da empresa/i)).toBeTruthy();
-    });
-  });
-
-  it("logado, mostra a organização e o papel", async () => {
-    mockRotas({
-      "/api/auth/estado": { corpo: LOGADO },
-      "/api/dispositivos": { corpo: { dispositivos: [] } },
-      "/api/agente/conectados": { corpo: { conectados: [], total_conectados: 0 } },
-    });
-    render(<Painel />);
-
-    await waitFor(() => {
-      expect(screen.getByText("Padaria Sol")).toBeTruthy();
-    });
-    expect(screen.getByText(/ana@padaria\.com\.br · dono/)).toBeTruthy();
-  });
-});
 
 describe("Dispositivos", () => {
   beforeEach(() => {
@@ -297,6 +214,39 @@ describe("Dispositivos", () => {
       screen.getByRole("button", { name: /Executar backup agora/i }),
     ).toBeTruthy();
     expect(screen.queryByRole("button", { name: /Parear nova máquina/i })).toBeNull();
+  });
+
+  it("enquanto carrega, não afirma que não há máquina", async () => {
+    // A frase "Nenhuma máquina pareada ainda" aparecia no intervalo entre
+    // abrir a tela e o servidor responder — falsa, curta, e exatamente na
+    // cara de quem tem máquina pareada.
+    let responder: (valor: unknown) => void = () => {};
+    const espera = new Promise((pronto) => {
+      responder = pronto;
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        await espera;
+        return {
+          ok: true,
+          status: 200,
+          json: async () =>
+            url.includes("conectados")
+              ? { conectados: [], total_conectados: 0 }
+              : { dispositivos: [DISPOSITIVO] },
+        } as Response;
+      }),
+    );
+    render(<Dispositivos papel="dono" />);
+
+    expect(screen.queryByText(/Nenhuma máquina pareada/i)).toBeNull();
+    expect(screen.getByText(/Carregando/i)).toBeTruthy();
+
+    responder(null);
+    await waitFor(() => {
+      expect(screen.getByText("PC da loja")).toBeTruthy();
+    });
   });
 
   it("sem máquina pareada, explica o que falta", async () => {

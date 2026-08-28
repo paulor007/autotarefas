@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { listarHistorico, type Execucao } from "../lib/plataforma";
+import { quando } from "../lib/datas";
 
 interface Props {
   /** Vazio = toda a organização. Preenchido = só aquela máquina. */
@@ -145,19 +146,6 @@ function rotuloDoResultado(resultado: Execucao["resultado"]): string {
   return nomes[resultado] ?? resultado;
 }
 
-/** Data legível, ou o texto cru quando não dá para interpretar. */
-function quando(bruto: string): string {
-  if (!bruto) return "sem data";
-  const data = new Date(bruto);
-  if (Number.isNaN(data.getTime())) return bruto;
-  return data.toLocaleString("pt-BR", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
 
 function emMB(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;

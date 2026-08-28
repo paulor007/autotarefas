@@ -46,6 +46,11 @@ const INTERVALO_PRESENCA_MS = 10_000;
  */
 export default function Dispositivos({ papel }: Props) {
   const [dispositivos, setDispositivos] = useState<Dispositivo[]>([]);
+  // Lista vazia e "ainda nao perguntei" nao sao a mesma coisa. Sem esta
+  // marca, a tela afirmava "Nenhuma maquina pareada ainda" no intervalo
+  // entre abrir e o servidor responder — uma frase falsa, curta, na cara de
+  // quem tem maquina pareada.
+  const [carregado, setCarregado] = useState(false);
   const [conectados, setConectados] = useState<Record<string, boolean>>({});
   const [codigo, setCodigo] = useState<CodigoDePareamento | null>(null);
   const [estados, setEstados] = useState<Record<string, EstadoDoDispositivo>>({});
@@ -72,6 +77,8 @@ export default function Dispositivos({ papel }: Props) {
       setErro(null);
     } catch (e: unknown) {
       setErro(e instanceof Error ? e.message : "não foi possível carregar");
+    } finally {
+      setCarregado(true);
     }
   }, []);
 
@@ -130,7 +137,7 @@ export default function Dispositivos({ papel }: Props) {
   };
 
   return (
-    <section className="mx-auto max-w-3xl">
+    <section>
       <div className="flex items-center justify-between gap-3">
         <h2 className="text-lg font-semibold text-fg">Dispositivos</h2>
         {administra && (
@@ -153,7 +160,11 @@ export default function Dispositivos({ papel }: Props) {
         </p>
       )}
 
-      {dispositivos.length === 0 && !erro && (
+      {!carregado && !erro && (
+        <p className="mt-4 text-sm text-muted">Carregando…</p>
+      )}
+
+      {carregado && dispositivos.length === 0 && !erro && (
         <p className="mt-4 text-sm text-muted">
           Nenhuma máquina pareada ainda. O backup de pastas do computador
           depende do Agente instalado e pareado.
