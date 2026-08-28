@@ -29,7 +29,29 @@ Você vai precisar de:
 - opcional, mas recomendado: um **pen drive ou HD externo** — é o único jeito de
   homologar destino externo de verdade.
 
-Suba o Live:
+### O jeito curto: o ensaio
+
+Um comando sobe o Live num **banco separado**, com a porta e o endereço
+impresso combinando entre si, e escreve na tela o que fazer em seguida:
+
+```bash
+python tools/ensaio.py comecar --limpo
+```
+
+`--limpo` começa do zero, como um cliente novo — e sem tocar no
+`autotarefas.db` do dia a dia. Precisa entrar de novo depois que o link vencer?
+Em **outro terminal**, sem derrubar o serviço:
+
+```bash
+python tools/ensaio.py entrar
+```
+
+Nada aí é simulado: é o mesmo Live, o mesmo Agente e o mesmo banco de sempre,
+só que num arquivo à parte. O que o ensaio faz é tirar do caminho as três
+pedras que atrapalhavam repetir o teste — banco sujo, porta que não bate com o
+link impresso, e "reinicie o serviço" como única forma de voltar a entrar.
+
+### O jeito longo: na mão
 
 ```bash
 python -m uvicorn apps.api.app.main:app --port 7860

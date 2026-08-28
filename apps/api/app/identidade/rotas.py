@@ -18,7 +18,7 @@ from pydantic import BaseModel, EmailStr, Field
 
 from ..config import settings
 from ..db.models import Usuario
-from . import bootstrap, oidc, reentrada
+from . import bootstrap, console, oidc, reentrada
 from .dependencias import SessaoBanco
 from .entrada import acolher, organizacoes_do_usuario
 from .oidc import ErroDeIdentidade
@@ -272,4 +272,56 @@ def reentrar(request: Request, chave: str = "") -> Response:
     return resposta
 
 
-__all__ = ["roteador"]
+#: Cabecalho que carrega a prova de acesso a maquina do servico.
+CABECALHO_DO_CONSOLE = "X-AutoTarefas-Console"
+
+
+@roteador.post("/reentrar/emitir")
+def emitir_reentrada(request: Request, sessao: SessaoBanco) -> JSONResponse:
+    """
+    Emite uma chave de reentrada nova, com o servico no ar.
+
+    Existe por um motivo pratico e um de honestidade.
+
+    **Pratico:** a chave so nascia na partida do servico. Quem voltasse horas
+    depois encontrava um link vencido, e a unica saida era reiniciar o Live —
+    instrucao ruim no meio de uma sessao de testes, e pior ainda para quem
+    estivesse com backup rodando.
+
+    **De honestidade:** a tela de entrada passou a dizer "a entrada e o link
+    que o servidor imprime no console". Se o unico jeito de obter esse link
+    fosse derrubar o servico, a frase seria verdadeira e inutil ao mesmo tempo.
+
+    A prova exigida e a MESMA do console: ler um arquivo dentro da pasta do
+    servico. Quem consegue isso ja podia abrir o banco, que tem muito mais.
+    """
+    if not console.confere(request.headers.get(CABECALHO_DO_CONSOLE, "")):
+        # 403 e nao 404: esconder a rota nao esconderia nada de quem ja tem a
+        # maquina, e confundiria quem esta com o token errado.
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="prova do console ausente ou invalida",
+        )
+
+    chave = reentrada.emitir(sessao, agora_s=time.time())
+    if chave is None:
+        motivo = (
+            "este servidor tem provedor de identidade: entre por ele"
+            if reentrada.ha_provedor()
+            else "ainda nao ha organizacao: use o convite de primeira execucao"
+        )
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=motivo)
+
+    return JSONResponse(
+        {
+            "url": (
+                f"{settings.public_base_url.rstrip('/')}/api/auth/reentrar?chave={chave.token}"
+            ),
+            "email": chave.email,
+            "vence_em_minutos": settings.bootstrap_minutes,
+            "endereco_suposto": settings.base_url_suposta,
+        }
+    )
+
+
+__all__ = ["CABECALHO_DO_CONSOLE", "roteador"]

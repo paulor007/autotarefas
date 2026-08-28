@@ -51,6 +51,8 @@ Uma capacidade só entra depois que a trilha G entrega o lugar onde ela mora.
 | **A.4** | Assistente de configuração em seis passos, avançadas recolhidas | A.2 | ✅ implementada |
 | **A.5** | A demonstração deixa de se chamar como o produto | A.1 | ✅ implementada |
 | **A.6** | Veredito de proteção: `GET /api/protecao` e o selo do Início | A.2 | ✅ implementada |
+| **A.7** | Chave de reentrada emitida com o serviço no ar, por prova do console | G.2.4 | ✅ implementada |
+| **A.8** | `tools/ensaio.py`: a jornada do cliente num banco separado | A.7 | ✅ implementada |
 
 ### 1.2 Capacidades do Card 02
 
@@ -825,6 +827,70 @@ A janela de atraso usa `proxima_execucao` — a **mesma** função que o agendad
 da máquina usa — com a mesma tolerância de 12 horas. Um teste guarda a
 igualdade das duas constantes: se divergissem, o Agente desistiria de executar
 uma janela enquanto a tela ainda dissesse que está tudo em dia.
+
+---
+
+## 2.22 Testar como cliente exigia acertar três coisas na mão
+
+Nada aqui é funcionalidade nova do produto. É o que faltava para uma pessoa
+percorrer a jornada de um cliente sem tropeçar sempre nas mesmas pedras — e
+duas delas já tinham feito a homologação parar.
+
+**Banco sujo.** Depois do primeiro ensaio sobram organização, máquina pareada e
+execuções antigas. A jornada de um cliente novo começa com o banco vazio, e
+apagar o `autotarefas.db` para conseguir isso seria apagar dado de verdade.
+
+**Porta e endereço.** O `--port` do uvicorn não chega até a aplicação, então
+`PORT` e `PUBLIC_BASE_URL` precisavam ser acertados junto — e errar produzia um
+link impresso que não abre. Foi exatamente o que aconteceu (seção anterior).
+
+**Voltar a entrar.** A chave de reentrada só nascia na partida do serviço.
+Reiniciar o Live no meio de um teste é instrução ruim; pior ainda com backup
+rodando. E a tela de entrada tinha acabado de passar a dizer "a entrada é o
+link que o servidor imprime no console" — se o único jeito de obter esse link
+fosse derrubar o serviço, a frase seria verdadeira e inútil ao mesmo tempo.
+
+### A prova do console, entregue por outro caminho
+
+`POST /api/auth/reentrar/emitir` emite uma chave nova com o serviço no ar. A
+prova exigida é a **mesma** do console: ler um arquivo dentro da pasta do
+serviço, escrito na partida (`.autotarefas/console.token`).
+
+Isso não afrouxa nada, e o argumento é curto: quem consegue ler esse arquivo já
+podia abrir `autotarefas.db`, que tem muito mais. Duas regras sustentam a
+equivalência — um token por partida (uma cópia velha não serve) e o valor nunca
+aparece em resposta HTTP, tela ou log.
+
+Com OIDC configurado a rota recusa com 409: a porta dos fundos existe enquanto
+não há porta da frente.
+
+### O comando
+
+    python tools/ensaio.py comecar --limpo   # do zero, como um cliente novo
+    python tools/ensaio.py entrar            # link de entrada, sem reiniciar
+    python tools/ensaio.py limpar            # apaga o ensaio
+
+Duas decisões que valem registro:
+
+- **o banco do ensaio é outro arquivo.** `--limpo` precisava ser um comando
+  seguro de repetir; apontando para o banco do dia a dia, seria um comando que
+  destrói trabalho;
+- **`limpar` diz o que NÃO apagou.** Apagar o banco do servidor não desinstala
+  o Agente da máquina: ele continua subindo com o Windows e falando com uma
+  organização que não existe mais. O sintoma — máquina que nunca aparece na
+  tela — parece defeito do produto, e não é.
+
+### 2.22.1 O convite podia ficar preso no buffer
+
+Encontrado ao rodar o ensaio com a saída redirecionada para arquivo: o serviço
+subiu e **nenhum convite apareceu**. `stdout` só é line-buffered quando há
+terminal; redirecionado — que é como um serviço costuma rodar — a linha mais
+importante que o serviço imprime ficava esperando o buffer encher.
+
+Um `flush=True` resolve, e um teste guarda: todo `print` de console em
+`_preparar_plataforma` precisa dele. Sem o teste, o próximo `print` acrescentado
+ali nasceria com o mesmo defeito, e ninguém repararia enquanto houvesse
+terminal.
 
 ---
 

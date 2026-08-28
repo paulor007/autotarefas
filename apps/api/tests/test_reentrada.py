@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import time
 from collections.abc import Iterator
+from pathlib import Path
 
 import pytest
 
@@ -234,6 +235,30 @@ class TestALinhaDoConsole:
         linha = reentrada.linha_do_console(chave, "http://localhost:8000")
 
         linha.encode("ascii")  # levanta se houver acento ou moldura
+
+
+class TestOConsoleNaoSeguraNada:
+    def test_as_linhas_do_console_saem_com_flush(self) -> None:
+        """
+        Redirecionar a saida para arquivo nao pode esconder o convite.
+
+        `stdout` so e line-buffered quando ha terminal. Um servico costuma
+        rodar com a saida redirecionada — e ali o convite ficaria preso no
+        buffer ate encher. Quem esperava por ele concluiria que o servidor nao
+        imprimiu nada, e nao ha como descobrir isso lendo o codigo do print.
+        """
+        fonte = (
+            Path(__file__).resolve().parents[3] / "apps" / "api" / "app" / "main.py"
+        ).read_text(encoding="utf-8")
+
+        trecho = fonte[
+            fonte.index("def _preparar_plataforma") : fonte.index("@asynccontextmanager")
+        ]
+        prints = trecho.count("print(")
+        assert prints > 0
+        assert trecho.count("flush=True") == prints, (
+            "todo `print` de console precisa de `flush=True`"
+        )
 
 
 class TestOndeSeCai:

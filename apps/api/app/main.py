@@ -46,7 +46,7 @@ from . import (
 )
 from .config import settings
 from .db.atual import banco, definir_banco
-from .identidade import bootstrap, reentrada
+from .identidade import bootstrap, console, reentrada
 from .identidade import rotas as rotas_identidade
 from .identidade.sessao_web import segredo_e_efemero
 
@@ -94,13 +94,25 @@ def _preparar_plataforma() -> None:
     O convite vai para o **console**, e nao para a tela: e a unica parte do
     fluxo que exige provar acesso a maquina onde o servico roda.
     """
+    # A prova de acesso a maquina, para o comando que pede uma chave nova sem
+    # derrubar o servico. Sorteada a cada partida: uma copia velha nao serve.
+    console.gerar()
+
     with banco().sessao() as sessao:
         if bootstrap.esta_vazio(sessao):
             convite = bootstrap.emitir(agora_s=time.time())
             # `print` de proposito, e nao log: o convite tem que aparecer no
             # console de quem subiu o servico. Um log com nivel configuravel
             # poderia estar desligado justo na hora em que o dono precisa dele.
-            print(bootstrap.linha_do_console(convite, settings.public_base_url))  # noqa: T201
+            # `flush` porque esta linha e a mais importante que o servico
+            # imprime, e stdout so e line-buffered quando ha terminal.
+            # Redirecionado para arquivo — que e como um servico costuma
+            # rodar — o convite ficaria preso no buffer, e quem esperava por
+            # ele concluiria que o servidor nao imprimiu nada.
+            print(  # noqa: T201
+                bootstrap.linha_do_console(convite, settings.public_base_url),
+                flush=True,
+            )
         else:
             # Ja ha organizacao. Sem provedor de identidade, o dono nao tem por
             # onde entrar depois que a sessao vence — ficaria trancado do lado
@@ -109,11 +121,15 @@ def _preparar_plataforma() -> None:
             # configurado, `emitir` devolve `None` e nada e impresso.
             chave = reentrada.emitir(sessao, agora_s=time.time())
             if chave is not None:
-                print(reentrada.linha_do_console(chave, settings.public_base_url))  # noqa: T201
+                print(  # noqa: T201 — ver o `flush` acima
+                    reentrada.linha_do_console(chave, settings.public_base_url),
+                    flush=True,
+                )
     if segredo_e_efemero():
         print(  # noqa: T201 — ver acima
             "  [aviso] SESSION_SECRET nao definido: as sessoes nao sobrevivem "
-            "ao reinicio do servico.\n"
+            "ao reinicio do servico.\n",
+            flush=True,
         )
 
 
