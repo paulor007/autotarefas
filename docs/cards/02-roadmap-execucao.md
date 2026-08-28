@@ -45,6 +45,12 @@ Uma capacidade só entra depois que a trilha G entrega o lugar onde ela mora.
 | **G.2.4** | Reentrada pelo console, em servidor sem provedor de identidade | G.2.2 | ✅ implementada |
 | **G.2.5** | Revogar corta o canal aberto e recusa comando | G.4.1 | ✅ implementada |
 | **G.10.5** | Partida automática cai para o logon do usuário quando falta privilégio | G.10 | ✅ implementada |
+| **A.1** | `/` (vitrine) e `/app` (produto) deixam de ser a mesma página | G.9 | ✅ implementada |
+| **A.2** | Navegação do produto: Início, Backups, Dispositivos, Atividade, Configurações | A.1 | ✅ implementada |
+| **A.3** | Sem máquina, a tela de backup vira a porta do pareamento, com volta | A.2 | ✅ implementada |
+| **A.4** | Assistente de configuração em seis passos, avançadas recolhidas | A.2 | ✅ implementada |
+| **A.5** | A demonstração deixa de se chamar como o produto | A.1 | ✅ implementada |
+| **A.6** | Veredito de proteção: `GET /api/protecao` e o selo do Início | A.2 | ✅ implementada |
 
 ### 1.2 Capacidades do Card 02
 
@@ -717,6 +723,108 @@ O caminho foi exercitado na máquina real, com nome de sonda e limpeza no fim:
 removido. Os testes automatizados cobrem a decisão (qual caminho, em qual
 recusa, o que a mensagem diz); a resposta do Windows continua sendo coisa que só
 a máquina responde.
+
+---
+
+## 2.21 A reorganização: o produto estava no rodapé da própria vitrine
+
+Nenhum defeito de código motivou esta etapa. O motivo foi alguém procurar
+"Parear nova máquina", não achar, e clicar em **Sair** — que era o botão em
+evidência na mesma tela.
+
+**O diagnóstico.** O AutoTarefas era uma página só, com cinco âncoras:
+`#catalogo`, `#execucao`, `#terminal`, `#artefatos`, `#empresa`. O produto
+inteiro — organização, dispositivos, políticas, histórico, auditoria — era a
+última seção dela. Quem já era cliente rolava a vitrine toda para chegar ao
+próprio produto; quem procurava parear passava por cinco telas de demonstração
+antes de encontrar.
+
+Havia ainda dois "Backup automático verificável" na mesma página: o envio
+avulso pelo navegador, até 10 MB por arquivo, e o produto. Quem experimentava o
+primeiro concluía que tinha o segundo.
+
+### O que mudou
+
+| Antes | Depois |
+| --- | --- |
+| uma página, cinco âncoras | `/` vitrine, `/app` produto |
+| produto na última seção | produto em cinco seções próprias |
+| "Sair" no topo do painel | "Sair" em Configurações |
+| formulário de vinte campos | assistente de seis passos, avançadas recolhidas |
+| dois "Backup automático verificável" | "Empacotamento verificável" e o produto |
+| a conclusão era do usuário | selo de proteção com o veredito e os motivos |
+
+### Três decisões que foram tomadas contra a proposta original
+
+**O upload de 10 MB não foi removido; foi rebaixado.** É a única coisa que
+alguém experimenta em trinta segundos sem instalar nada, e portanto a única
+porta de entrada de um produto que exige instalar um programa. O problema nunca
+foi ele existir: foi ele estar no mesmo nível do produto, com nome quase igual.
+
+**O pareamento não entrou no assistente.** Adotar uma máquina leva de cinco a
+quinze minutos, exige baixar e executar um programa, e quase sempre acontece em
+OUTRO computador. Um assistente que esperasse isso no meio viraria beco: a
+pessoa abandonaria a configuração para ir instalar, e voltaria do zero. O
+assistente começa perguntando a máquina; quando não há nenhuma, ele leva ao
+pareamento com o caminho de volta na URL.
+
+**"A cada X horas" não foi criado.** A retenção do produto conta dias
+(diárias/semanais/mensais). Backup de hora em hora produziria vinte e quatro
+cópias disputando uma vaga diária: vinte e três apagadas no mesmo dia, sem
+explicação plausível na tela. Se a necessidade for várias vezes ao dia, o
+caminho é mais de uma política — ou mudar o modelo de retenção primeiro, que é
+decisão de produto, não campo a mais no formulário.
+
+### 2.21.1 O que a reorganização encontrou de quebrado
+
+Quatro defeitos, nenhum deles procurado:
+
+**A caixa "Conferir o pacote depois de gerar" nunca ligou em nada.** A tela
+mandava `verificar: true`; o Pydantic descartava o campo em silêncio, porque
+`Politica` não tem esse campo. A conferência no destino sempre foi
+incondicional. Um controle marcável que não controla nada é "botão sem função"
+com outro nome. A caixa saiu, virou fato declarado, e `Politica` passou a usar
+`extra="forbid"` — o próximo campo fantasma vira 400 com o nome do campo, na
+primeira tentativa.
+
+**O `.gitignore` parecia certo e não ignorava nada.** Um formatador de Markdown
+trocou cada `*` por `_` ou `\*`. Ficaram desprotegidos `*.db`, `*.key`, `*.pem`,
+`*.log` e mais uma dúzia. Nada chegou a ser commitado — foi sorte, não regra.
+Nenhuma suíte pegou, porque um `.gitignore` quebrado não quebra teste nenhum.
+Agora quebra.
+
+**Dispositivos afirmava "Nenhuma máquina pareada ainda" enquanto carregava.**
+Lista vazia e "ainda não perguntei" não são a mesma coisa. A frase era falsa,
+curta, e aparecia exatamente para quem tem máquina pareada.
+
+**Depois de criar a organização, nenhuma tela dizia qual era.** Efeito colateral
+de tirar o "Sair" do cabeçalho: o nome da empresa estava colado nele e quase
+desceu junto. Foi encontrado pela homologação de ponta a ponta, no mesmo dia.
+
+### 2.21.2 A regra de "protegido"
+
+A decisão mais delicada da reorganização. Um veredito que erra para o lado
+otimista é pior do que nenhum: troca a desconfiança saudável por confiança
+falsa, e a pessoa descobre no dia em que precisa restaurar.
+
+O nível da organização é o **pior** entre os backups ativos. Cada motivo aponta
+um fato registrado; nada é estimado.
+
+Duas coisas ficaram **fora** do veredito, de propósito:
+
+- **máquina desligada não é falha.** O computador da loja fecha à noite. Marcar
+  "em risco" por desconexão faria a tela acusar problema toda noite e treinaria
+  o cliente a ignorá-la. Se o desligamento atrapalhou o backup, a consequência
+  aparece pela janela de atraso;
+- **destino alcançável agora não é consultável.** Só a máquina sabe se o disco
+  externo está plugado, e perguntar a cada carregamento falharia justamente com
+  a máquina desligada. Um destino que sumiu faz a execução falhar, e a falha é
+  fato registrado.
+
+A janela de atraso usa `proxima_execucao` — a **mesma** função que o agendador
+da máquina usa — com a mesma tolerância de 12 horas. Um teste guarda a
+igualdade das duas constantes: se divergissem, o Agente desistiria de executar
+uma janela enquanto a tela ainda dissesse que está tudo em dia.
 
 ---
 

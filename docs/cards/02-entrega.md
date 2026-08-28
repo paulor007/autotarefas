@@ -9,6 +9,15 @@ arquivo que você pode abrir.
 Quem homologa é você, com o roteiro de
 [02-homologacao-manual.md](02-homologacao-manual.md).
 
+> **Depois deste documento veio a reorganização do produto.** As capacidades
+> descritas aqui continuam todas valendo; o que mudou foi **onde elas
+> aparecem**: `/` virou a vitrine, `/app` virou o produto, e o painel único
+> virou cinco seções. A tela também passou a responder "meus dados estão
+> protegidos?" com um veredito conservador. O registro completo está em
+> [02-roadmap-execucao.md](02-roadmap-execucao.md), seção 2.21 — inclusive os
+> quatro defeitos que a reorganização encontrou, entre eles uma caixa de
+> configuração que nunca ligou em nada.
+
 ---
 
 ## 1. O que mudou no produto

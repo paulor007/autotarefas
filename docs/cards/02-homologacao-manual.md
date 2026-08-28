@@ -53,6 +53,38 @@ a cada partida, um link de reentrada — porque sem provedor OIDC configurado el
 
 ---
 
+## Onde as coisas ficam
+
+O AutoTarefas tem dois endereços, e eles servem a pessoas diferentes:
+
+| Endereço | Para quem | O que tem |
+| --- | --- | --- |
+| `/` | quem está avaliando | catálogo e demonstrações, sem conta |
+| `/app` | quem já é cliente | o produto, com sessão |
+
+Dentro de `/app` há cinco seções, sempre visíveis numa barra:
+
+| Seção | O que se faz nela |
+| --- | --- |
+| **Início** | a resposta para "meus dados estão protegidos?" |
+| **Backups** | configurar e operar as políticas |
+| **Dispositivos** | parear máquinas, ver pastas, restaurar, revogar |
+| **Atividade** | execuções e auditoria |
+| **Configurações** | organização, papel e **Sair** |
+
+> **"Sair" fica em Configurações, e só lá.** Ele já foi o botão mais destacado
+> do painel, ao lado do nome da empresa, e foi clicado por engano por quem
+> procurava "Parear nova máquina". Encerrar a sessão não é uma função do
+> produto.
+
+> **A demonstração da vitrine não é backup.** Em `/`, o cartão
+> **Empacotamento verificável de arquivos** recebe arquivos pelo navegador, até
+> 10 MB cada, e empacota uma vez. Ele já se chamou "Backup automático
+> verificável" — igual ao produto — e essa confusão é o motivo de ele ter sido
+> renomeado.
+
+---
+
 ## Parte 1 — a empresa e a máquina
 
 ### 1. Criar organização e usuário
@@ -60,14 +92,20 @@ a cada partida, um link de reentrada — porque sem provedor OIDC configurado el
 Abra o endereço impresso no console, preencha nome da empresa, seu e-mail e seu
 nome, e clique em **Criar organização**.
 
-**Precisa acontecer:** a tela passa a mostrar o nome da empresa e o seu papel.
+**Precisa acontecer:** o cabeçalho passa a mostrar o nome da empresa e o seu
+e-mail, e a barra das cinco seções aparece. Você cai em **Início**, que diz
+**"Nenhum backup configurado"** — o que é verdade, e não um defeito.
 
 > **O que provaria mentira:** abrir o mesmo link de novo e conseguir criar uma
 > segunda organização. O convite é de uso único.
 
+> **O que também provaria mentira:** o Início dizer "Protegido" antes de existir
+> qualquer política.
+
 ### 2. Baixar o Agente
 
-Em **Dispositivos**, clique em **Parear nova máquina**. A tela mostra o nome do
+Clique em **Dispositivos**, na barra, e depois em **Parear nova máquina**.
+A tela mostra o nome do
 arquivo, o tamanho e se precisa de Python — **antes** do clique. Baixe.
 
 **Precisa acontecer:** o download é um `.exe` de ~29 MB, e a tela diz "não
@@ -149,15 +187,29 @@ como administrador.
 
 ### 5 e 6. Criar política e escolher destino
 
-Em **Políticas de backup**, clique em **Nova política**. Escolha as pastas, o
-destino, o horário, a retenção, o retry e os avisos. Marque **Copiar só o que
-mudou**.
+Clique em **Backups**. Como ainda não há nenhuma política, o assistente já
+abre. Ele tem seis passos numerados:
+
+1. **Máquina** — qual computador, e como chamar este backup;
+2. **O que proteger** — as pastas autorizadas no passo 4;
+3. **Destino** — para onde vai a cópia;
+4. **Quando** — frequência e hora;
+5. **Quanto guardar** — diários, semanais e mensais;
+6. **Ativar** — a frase do que vai acontecer, e o botão.
+
+Retry, aviso por e-mail e **Copiar só o que mudou** ficam em **Configurações
+avançadas**, recolhido. Abra e marque o incremental.
 
 Se você tem um disco externo: escolha **Disco externo** e aponte para a letra
 dele. Se não tem: escolha **Outra pasta desta máquina** — e note que a tela
 avisa que isso **não protege** contra o disco morrer.
 
-**Precisa acontecer:** ao salvar, a tela diz se a política **já foi aplicada** na
+**Antes de clicar em Ativar backup, leia o passo 6.** Ele escreve, em
+português, o que você acabou de combinar: quantas pastas, de qual máquina, para
+onde, com que frequência e quanto será guardado. Se a frase não descrever o que
+você quis, algum campo acima está errado.
+
+**Precisa acontecer:** ao ativar, a tela diz se a política **já foi aplicada** na
 máquina ou se vale a partir da próxima conexão.
 
 > **O que provaria mentira:** escolher "Disco externo" apontando para uma pasta
@@ -166,7 +218,7 @@ máquina ou se vale a partir da próxima conexão.
 
 ### 7. Executar com o navegador aberto
 
-Clique em **Executar agora** na política.
+Em **Backups**, clique em **Executar agora** na política.
 
 **Precisa acontecer:** "Backup concluído" com o nome do pacote; o arquivo existe
 na pasta de backups **e** no destino escolhido.
@@ -188,12 +240,38 @@ tocar em nada.
 
 ### 10 e 11. Reabrir o Live, conferir histórico e saúde
 
-Abra o Live de novo.
+Abra `/app` de novo. Vá em **Atividade**.
 
-**Precisa acontecer:** você continua logado; a execução de madrugada aparece no
-histórico marcada como **"Pelo horário agendado"**, com o nome do pacote.
+**Precisa acontecer:** você continua logado; a execução de madrugada aparece nas
+execuções marcada como **"Pelo horário agendado"**, com o nome do pacote. Em
+**Dispositivos**, a máquina aparece como **Conectado**.
 
 > **O que provaria mentira:** o histórico mostrar só o que você mandou fazer.
+
+### 11.1. O veredito de proteção
+
+Volte a **Início**.
+
+**Precisa acontecer:** o selo do topo diz uma destas quatro coisas, e nenhuma
+outra:
+
+| Selo | Quando |
+| --- | --- |
+| **Nenhum backup configurado** | não há política ativa |
+| **Proteção em risco** | nunca rodou, atrasou além do horário combinado, a última tentativa falhou, a máquina foi revogada, ou nenhuma pasta foi escolhida |
+| **Proteção parcial** | funciona, com ressalva: cópia no mesmo computador, sem horário marcado, ou última execução com ressalva |
+| **Protegido** | nada a apontar |
+
+Cada ressalva aparece escrita embaixo, com o nome do backup a que pertence.
+
+> **O que provaria mentira, e é o mais importante desta tela:** ver
+> **Protegido** com o destino apontando para uma pasta do mesmo `C:`. Isso tem
+> que dizer **Proteção parcial**, com o motivo — porque cópia ao lado do
+> original não sobrevive ao disco morrer.
+
+> **O que NÃO deve acontecer:** desligar a máquina e o selo virar "em risco" por
+> causa disso. Computador fechado à noite é normal. O que conta é a execução que
+> deixou de acontecer, não a desconexão.
 
 ---
 
@@ -234,7 +312,7 @@ com o conteúdo original.
 
 ### 15, 16 e 17. Alterar, executar de novo, comprovar incremental
 
-Altere **um** arquivo. Clique em **Executar agora**.
+Altere **um** arquivo. Em **Backups**, clique em **Executar agora**.
 
 **Precisa acontecer:** ao conferir o novo pacote, o arquivo alterado aparece
 copiado e os demais aparecem como **inalterados**, citando o pacote anterior.
@@ -271,7 +349,7 @@ configurado. O selo diz **Trilha íntegra**.
 Este passo não estava na lista original. Ele entrou porque a primeira
 homologação encontrou um botão que não fazia o que dizia.
 
-Com a máquina **conectada**, clique em **Revogar** no dispositivo.
+Com a máquina **conectada**, vá em **Dispositivos** e clique em **Revogar**.
 
 **Precisa acontecer:**
 
