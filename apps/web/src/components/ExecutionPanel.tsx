@@ -34,7 +34,7 @@ const SPREADSHEET_JOURNEY_ID = "validate";
 function entradaTitulo(automation: Automation): string {
   // "Proteger" era a palavra do produto. Aqui nao se protege nada: se
   // empacota o que a pessoa acabou de entregar, uma vez.
-  if (automation.id === "backup") return "Empacotar arquivos avulsos";
+  if (automation.id === "backup") return "Compactar com comprovante";
   return `Arquivo de entrada ${uploadLabel(automation.upload)}`;
 }
 
@@ -252,13 +252,14 @@ export default function ExecutionPanel({
             {selected?.has_product_version && (
               <div className="rounded-lg border border-white/8 bg-ink px-4 py-3">
                 <p className="text-[0.85rem] font-semibold text-fg">
-                  Isto é a demonstração. O backup automático é o produto.
+                  Isto compacta o que você enviar. O Backup automático protege o
+                  que você já tem.
                 </p>
                 <p className="mt-1 text-[0.85rem] text-muted">
                   Aqui você entrega arquivos, uma vez, com limite de 10 MB por
                   arquivo — que é limite do navegador. Você faz, você baixa,
-                  você guarda. Serve para ver o manifesto e a verificação
-                  funcionando sem instalar nada.
+                  você guarda. Serve para ver o comprovante funcionando sem
+                  instalar nada.
                 </p>
                 <p className="mt-2 text-[0.85rem] text-muted">
                   O <strong>Backup automático</strong> protege pastas inteiras

@@ -59,12 +59,32 @@ export default function PortaDeEntrada({
           </a>
         </>
       ) : (
-        <p className="mt-2 text-sm text-muted">
-          Este servidor ainda não tem um provedor de identidade configurado,
-          então não há como entrar por aqui. Quem administra o servidor precisa
-          configurar <code>OIDC_ISSUER</code>, <code>OIDC_CLIENT_ID</code> e{" "}
-          <code>OIDC_CLIENT_SECRET</code>.
-        </p>
+        <>
+          {/* Esta tela dizia "não há como entrar por aqui" e parava. Quem a lê
+              é, quase sempre, a própria pessoa que administra o servidor — e
+              ela ficava olhando uma tela sem nada para clicar, sem saber que a
+              entrada existe e está no console. O caminho tem que estar escrito
+              onde a pessoa emperrou. */}
+          <p className="mt-2 text-sm text-muted">
+            Este servidor não tem provedor de identidade, então não há login por
+            formulário. A entrada é <strong className="text-fg">o link que o
+            próprio servidor imprime no console</strong> quando sobe.
+          </p>
+          <ol className="mt-3 flex list-decimal flex-col gap-1 pl-5 text-sm text-muted">
+            <li>Volte ao terminal onde o AutoTarefas está rodando.</li>
+            <li>
+              Se o link já venceu, reinicie o serviço — cada partida imprime um
+              novo.
+            </li>
+            <li>Abra o link. Ele vale uma vez e por 30 minutos.</li>
+          </ol>
+          <p className="mt-3 text-[0.8rem] text-muted">
+            Para uma empresa com contas próprias, o caminho é outro: configurar{" "}
+            <code>OIDC_ISSUER</code>, <code>OIDC_CLIENT_ID</code> e{" "}
+            <code>OIDC_CLIENT_SECRET</code>. Aí esta tela passa a mostrar o botão
+            de entrar com a conta da empresa.
+          </p>
+        </>
       )}
     </section>
   );

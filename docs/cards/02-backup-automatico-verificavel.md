@@ -60,8 +60,12 @@ amostra existir.
 > — envio avulso de arquivos, até 10 MB cada, empacotados uma vez — chamava-se
 > igual, e as duas coisas conviviam na mesma página. Quem experimentava a
 > demonstração concluía que já tinha backup automático. Ela passou a se chamar
-> **`Empacotamento verificável de arquivos`**, com o subtítulo "Experimente sem
+> **`Compactar arquivos com comprovante`**, com o subtítulo "Experimente sem
 > instalar nada", e vive em `/` (a vitrine). O produto vive em `/app`.
+>
+> "Empacotamento verificável" foi o primeiro nome tentado, e era jargão nosso:
+> ninguém que administra uma padaria diz "empacotar" nem "verificável".
+> "Compactar" e "comprovante" são palavras que a pessoa já usa.
 
 O que evolui é o **estado de cada execução**, que carrega o nível de prova
 alcançado:

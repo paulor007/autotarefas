@@ -90,11 +90,10 @@ Dentro de `/app` há cinco seções, sempre visíveis numa barra:
 > procurava "Parear nova máquina". Encerrar a sessão não é uma função do
 > produto.
 
-> **A demonstração da vitrine não é backup.** Em `/`, o cartão
-> **Empacotamento verificável de arquivos** recebe arquivos pelo navegador, até
-> 10 MB cada, e empacota uma vez. Ele já se chamou "Backup automático
-> verificável" — igual ao produto — e essa confusão é o motivo de ele ter sido
-> renomeado.
+> **A demonstração da vitrine não é backup.** Em `/`, o cartão **Compactar
+> arquivos com comprovante** recebe arquivos pelo navegador, até 10 MB cada, e
+> compacta uma vez. Ele já se chamou "Backup automático verificável" — igual ao
+> produto — e essa confusão é o motivo de ele ter sido renomeado.
 
 ---
 

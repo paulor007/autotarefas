@@ -751,7 +751,7 @@ primeiro concluía que tinha o segundo.
 | produto na última seção | produto em cinco seções próprias |
 | "Sair" no topo do painel | "Sair" em Configurações |
 | formulário de vinte campos | assistente de seis passos, avançadas recolhidas |
-| dois "Backup automático verificável" | "Empacotamento verificável" e o produto |
+| dois "Backup automático verificável" | "Compactar arquivos com comprovante" e o produto |
 | a conclusão era do usuário | selo de proteção com o veredito e os motivos |
 
 ### Três decisões que foram tomadas contra a proposta original

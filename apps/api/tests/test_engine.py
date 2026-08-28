@@ -639,10 +639,10 @@ def test_card_de_backup_tem_o_nome_do_problema(client: TestClient) -> None:
     # que roda no computador do cliente pelo Agente. O que existe aqui e a
     # demonstracao dele, e dois nomes quase iguais para coisas diferentes foi
     # exatamente o que confundiu quem usou.
-    assert backup["title"] == "Empacotamento verificável de arquivos"
+    assert backup["title"] == "Compactar arquivos com comprovante"
     assert backup["has_product_version"] is True
     assert "ZIP" not in backup["title"]
-    assert "manifesto" in backup["description"].lower()
+    assert "comprovante" in backup["description"].lower()
 
 
 def test_modos_declaram_o_que_existe_e_o_que_falta(client: TestClient) -> None:

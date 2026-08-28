@@ -118,10 +118,15 @@ describe("porta de entrada", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByText(/não tem um provedor de identidade/i),
+        screen.getByText(/não tem provedor de identidade/i),
       ).toBeTruthy();
     });
-    expect(screen.queryByText(/Entrar com a conta da empresa/i)).toBeNull();
+    // Por PAPEL, e não por texto: a tela agora explica, em prosa, que existe
+    // esse caminho para quem configurar OIDC. O que não pode existir é o
+    // link — botão que não funciona é a mentira mais fácil de cometer.
+    expect(
+      screen.queryByRole("link", { name: /Entrar com a conta da empresa/i }),
+    ).toBeNull();
   });
 
   it("com provedor configurado, oferece a entrada", async () => {
@@ -141,6 +146,25 @@ describe("porta de entrada", () => {
     });
   });
 
+  it("sem provedor, a tela diz ONDE está a entrada", async () => {
+    // Antes ela dizia "não há como entrar por aqui" e parava. Quem lê essa
+    // tela é, quase sempre, a própria pessoa que administra o servidor — e ela
+    // ficava olhando uma tela sem nada para clicar, sem saber que a entrada
+    // existe e está no console.
+    mockRotas({
+      "/api/auth/estado": {
+        corpo: { ...SEM_ORGANIZACAO, precisa_bootstrap: false },
+      },
+    });
+    render(<Produto />);
+
+    await waitFor(() => {
+      expect(screen.getByText(/imprime no console/i)).toBeTruthy();
+    });
+    expect(screen.getByText(/reinicie o serviço/i)).toBeTruthy();
+    expect(screen.getByText(/vale uma vez e por 30 minutos/i)).toBeTruthy();
+  });
+
   it("deslogado não mostra a navegação do produto", async () => {
     mockRotas({
       "/api/auth/estado": {
@@ -151,7 +175,7 @@ describe("porta de entrada", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByText(/não tem um provedor de identidade/i),
+        screen.getByText(/não tem provedor de identidade/i),
       ).toBeTruthy();
     });
     expect(screen.queryByRole("navigation", { name: /Seções/i })).toBeNull();

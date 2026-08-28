@@ -87,13 +87,13 @@ AUTOMATIONS: tuple[Automation, ...] = (
     Automation(
         "backup",
         "arquivos",
-        "Empacotamento verificável de arquivos",
+        "Compactar arquivos com comprovante",
         "Experimente sem instalar nada",
-        "Gera um pacote .zip com manifesto: o SHA-256 de cada arquivo, a lista do "
-        "que não pôde ser lido e a soma do pacote inteiro. Depois de criado, você "
-        "pode conferir a integridade sem precisar dos arquivos originais. Uma vez, "
-        "com os arquivos que você entregar — backup de pastas, no horário e "
-        "sozinho, é o produto.",
+        "Junta os arquivos num .zip e escreve, junto, um comprovante: a "
+        "impressão digital de cada arquivo, o que não pôde ser lido e a soma do "
+        "pacote inteiro. Meses depois dá para conferir se nada mudou, sem "
+        "precisar dos originais. Acontece uma vez, com os arquivos que você "
+        "entregar — proteger pastas no horário, sozinho, é o Backup automático.",
         False,
         "folder",
         "Envie os arquivos que quer empacotar agora.",
