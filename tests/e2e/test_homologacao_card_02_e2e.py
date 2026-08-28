@@ -369,6 +369,34 @@ def _ir_para(pagina: Page, secao: str) -> Any:
     return _painel(pagina)
 
 
+def _abrir_assistente(painel: Any) -> None:
+    """
+    Deixa o assistente de configuracao aberto, esteja ele aberto ou nao.
+
+    Sem nenhuma politica, a tela ja abre o assistente sozinho — clicar em
+    "Configurar backup" ali o FECHARIA. Um clique incondicional faria a
+    homologacao alternar de estado conforme o que existisse antes dela.
+
+    A espera na primeira linha nao e enfeite: `count()` responde na hora, e a
+    secao acaba de trocar. Sem ela, a leitura acontece com a tela ainda vazia,
+    conclui "esta fechado" e vai clicar num botao que, quando aparecer, ja vai
+    estar dizendo "Cancelar".
+    """
+    painel.get_by_role(
+        "button", name=re.compile("^(Ativar backup|Configurar backup|Cancelar)$")
+    ).first.wait_for()
+    if painel.get_by_role("button", name="Ativar backup").count() == 0:
+        painel.get_by_role("button", name="Configurar backup").click()
+        painel.get_by_role("button", name="Ativar backup").wait_for()
+
+
+def _abrir_avancadas(painel: Any) -> None:
+    """Expande "Configuracoes avancadas", onde moram retry e incremental."""
+    detalhes = painel.locator("details").filter(has_text="Configurações avançadas")
+    if not detalhes.evaluate("no => no.open"):
+        detalhes.get_by_text("Configurações avançadas").click()
+
+
 def _nova_politica(painel: Any, cenario: Cenario, *, hora: str, nome: str) -> None:
     """
     Cria uma politica pela tela, com as escolhas que a homologacao usa.
@@ -377,17 +405,20 @@ def _nova_politica(painel: Any, cenario: Cenario, *, hora: str, nome: str) -> No
     decidido. Incremental fica ligado desde o inicio: os passos 15 a 17 medem
     exatamente isso, e ligar depois criaria uma corrente que comeca no meio.
     """
-    painel.get_by_role("button", name="Nova política").click()
+    _abrir_assistente(painel)
     painel.get_by_label("Nome da política").fill(nome)
     painel.get_by_label("Tipo de destino").select_option("local")
     painel.get_by_label("Caminho do destino").fill(str(cenario.maquina.destino))
-    painel.get_by_label(re.compile("Copiar só o que mudou")).check()
     if hora:
         painel.get_by_label("Frequência").select_option("diario")
         painel.get_by_label("Hora", exact=True).fill(hora)
     else:
         painel.get_by_label("Frequência").select_option("desligado")
-    painel.get_by_role("button", name="Salvar política").click()
+
+    _abrir_avancadas(painel)
+    painel.get_by_label(re.compile("Copiar só o que mudou")).check()
+
+    painel.get_by_role("button", name="Ativar backup").click()
 
     painel.get_by_text(re.compile("Política salva", re.IGNORECASE)).wait_for()
     painel.get_by_text(nome).first.wait_for()
@@ -621,12 +652,12 @@ def test_06_destino_externo_de_mentira_e_recusado_pela_tela(
     # A honestidade sobre o destino local ja esta na tela.
     assert painel.get_by_text(re.compile("não protege contra o disco morrer")).count() > 0
 
-    painel.get_by_role("button", name="Nova política").click()
+    _abrir_assistente(painel)
     painel.get_by_label("Nome da política").fill("Externo de mentira")
     painel.get_by_label("Tipo de destino").select_option("externo")
     painel.get_by_label("Caminho do destino").fill(str(cenario.maquina.destino))
     painel.get_by_label("Frequência").select_option("desligado")
-    painel.get_by_role("button", name="Salvar política").click()
+    painel.get_by_role("button", name="Ativar backup").click()
     painel.get_by_text("Externo de mentira").first.wait_for()
 
     linha = painel.locator("li", has_text="Externo de mentira")
@@ -996,7 +1027,7 @@ def test_19_provocar_falha_controlada(cenario: Cenario, janela: Janela) -> None:
 
     quando = (datetime.now() + timedelta(minutes=2)).strftime("%H:%M")
 
-    painel.get_by_role("button", name="Nova política").click()
+    _abrir_assistente(painel)
     painel.get_by_label("Nome da política").fill("Rede fora do ar")
     painel.get_by_label("Tipo de destino").select_option("rede")
     # Endereco UNC que nao existe: o Agente confere o destino ANTES de ler o
@@ -1004,9 +1035,11 @@ def test_19_provocar_falha_controlada(cenario: Cenario, janela: Janela) -> None:
     painel.get_by_label("Caminho do destino").fill(r"\127.0.0.1\naoexiste$\backups")
     painel.get_by_label("Frequência").select_option("diario")
     painel.get_by_label("Hora", exact=True).fill(quando)
+    _abrir_avancadas(painel)
     painel.get_by_label("Tentativas").fill("2")
     painel.get_by_label(re.compile("Espera inicial")).fill("1")
-    painel.get_by_role("button", name="Salvar política").click()
+
+    painel.get_by_role("button", name="Ativar backup").click()
 
     painel.get_by_text(re.compile("Política salva", re.IGNORECASE)).wait_for()
     painel.get_by_text("Rede fora do ar").first.wait_for()

@@ -79,16 +79,27 @@ describe("Políticas de backup", () => {
     expect(porta.getAttribute("href")).toBe(
       "/app/dispositivos?voltar=%2Fapp%2Fbackups",
     );
-    expect(screen.queryByRole("button", { name: /nova política/i })).toBeNull();
+    expect(screen.queryByRole("button", { name: /configurar backup/i })).toBeNull();
   });
 
-  it("sem política, diz que o backup só acontece quando alguém clica", async () => {
-    // Lista vazia sem explicação faria alguém supor que já existe agendamento.
+  it("com máquina e sem política, o assistente já abre", async () => {
+    // Quem chega aqui nesse estado veio configurar. Exigir um clique para
+    // revelar o formulário seria cobrar um clique por uma tela vazia.
     mockRotas(BASE);
 
     render(<Politicas papel="dono" />);
 
+    expect(await screen.findByRole("button", { name: /ativar backup/i })).toBeTruthy();
+  });
+
+  it("quem só lê vê a explicação, e não o assistente", async () => {
+    // Lista vazia sem explicação faria alguém supor que já existe agendamento.
+    mockRotas(BASE);
+
+    render(<Politicas papel="leitor" />);
+
     expect(await screen.findByText(/nenhuma política ainda/i)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /ativar backup/i })).toBeNull();
   });
 
   it("quem não administra não vê o botão de criar", async () => {
@@ -97,7 +108,7 @@ describe("Políticas de backup", () => {
     render(<Politicas papel="leitor" />);
 
     await screen.findByText(/nenhuma política ainda/i);
-    expect(screen.queryByRole("button", { name: /nova política/i })).toBeNull();
+    expect(screen.queryByRole("button", { name: /configurar backup/i })).toBeNull();
   });
 
   it("as pastas oferecidas são as autorizadas na máquina", async () => {
@@ -106,7 +117,6 @@ describe("Políticas de backup", () => {
     mockRotas(BASE);
 
     render(<Politicas papel="dono" />);
-    await userEvent.click(await screen.findByRole("button", { name: /nova política/i }));
 
     expect(await screen.findByText("C:\\Loja\\Dados")).toBeTruthy();
   });
@@ -115,10 +125,9 @@ describe("Políticas de backup", () => {
     mockRotas({ ...BASE, "/consultar": SEM_RAIZ });
 
     render(<Politicas papel="dono" />);
-    await userEvent.click(await screen.findByRole("button", { name: /nova política/i }));
 
     expect(await screen.findByText(/não copiaria nada/i)).toBeTruthy();
-    const salvar = await screen.findByRole("button", { name: /salvar política/i });
+    const salvar = await screen.findByRole("button", { name: /ativar backup/i });
     expect((salvar as HTMLButtonElement).disabled).toBe(true);
   });
 
@@ -155,14 +164,13 @@ describe("Políticas de backup", () => {
     );
 
     render(<Politicas papel="dono" />);
-    await userEvent.click(await screen.findByRole("button", { name: /nova política/i }));
     await screen.findByText("C:\\Loja\\Dados");
 
     await userEvent.type(
       screen.getByLabelText(/caminho do destino/i),
       "E:\\Backups",
     );
-    await userEvent.click(screen.getByRole("button", { name: /salvar política/i }));
+    await userEvent.click(screen.getByRole("button", { name: /ativar backup/i }));
 
     await waitFor(() => expect(chamadas).toBe(1));
     expect(await screen.findByText(/já aplicada na máquina/i)).toBeTruthy();
@@ -200,9 +208,8 @@ describe("Políticas de backup", () => {
     );
 
     render(<Politicas papel="dono" />);
-    await userEvent.click(await screen.findByRole("button", { name: /nova política/i }));
     await screen.findByText("C:\\Loja\\Dados");
-    await userEvent.click(screen.getByRole("button", { name: /salvar política/i }));
+    await userEvent.click(screen.getByRole("button", { name: /ativar backup/i }));
 
     expect(await screen.findByText(/proxima conexao/i)).toBeTruthy();
     expect(screen.queryByText(/já aplicada na máquina/i)).toBeNull();
@@ -328,5 +335,81 @@ describe("Políticas de backup", () => {
     expect(corpo.incremental).toBe(true);
     expect(corpo.origens).toEqual(["C:\Loja\Dados"]);
     expect(await screen.findByText(/backup concluído/i)).toBeTruthy();
+  });
+});
+
+describe("assistente de configuração", () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("o que é raro fica atrás de Configurações avançadas", async () => {
+    // Retry, cifra, assinatura e VSS têm padrão sensato e quase ninguém muda.
+    // Deixá-los sempre à vista fazia a tela parecer difícil e escondia as
+    // quatro decisões que importam.
+    mockRotas(BASE);
+
+    render(<Politicas papel="dono" />);
+
+    const avancadas = await screen.findByText(/Configurações avançadas/i);
+    const bloco = avancadas.closest("details");
+    expect(bloco).toBeTruthy();
+    expect((bloco as HTMLDetailsElement).open).toBe(false);
+    expect(bloco?.contains(screen.getByLabelText("Tentativas"))).toBe(true);
+    expect(
+      bloco?.contains(screen.getByLabelText(/Copiar só o que mudou/i)),
+    ).toBe(true);
+
+    // E as decisões que importam ficam fora dele.
+    expect(bloco?.contains(screen.getByLabelText("Tipo de destino"))).toBe(
+      false,
+    );
+    expect(bloco?.contains(screen.getByLabelText("Frequência"))).toBe(false);
+  });
+
+  it("antes de ativar, a tela diz em português o que vai acontecer", async () => {
+    // Uma tela só de campos deixa a pessoa ativar sem nunca ter visto, junto,
+    // o que combinou.
+    mockRotas(BASE);
+
+    render(<Politicas papel="dono" />);
+    await screen.findByText("C:\\Loja\\Dados");
+
+    const frase = screen.getByRole("status").textContent ?? "";
+    expect(frase).toContain("1 pasta");
+    expect(frase).toContain("PC da loja");
+    expect(frase).toContain("um disco externo");
+    expect(frase).toContain("todo dia às 02:00");
+    expect(frase).toContain("7 diários");
+  });
+
+  it("sem horário, o resumo não promete backup automático", async () => {
+    mockRotas(BASE);
+
+    render(<Politicas papel="dono" />);
+    await screen.findByText("C:\\Loja\\Dados");
+    await userEvent.selectOptions(
+      screen.getByLabelText("Frequência"),
+      "desligado",
+    );
+
+    expect(screen.getByText(/só executa quando alguém clicar/i)).toBeTruthy();
+    expect(screen.getByRole("status").textContent).toContain(
+      "só quando alguém mandar",
+    );
+  });
+
+  it("sem pasta escolhida, ativar fica indisponível e a tela diz por quê", async () => {
+    mockRotas(BASE);
+
+    render(<Politicas papel="dono" />);
+    const pasta = await screen.findByText("C:\\Loja\\Dados");
+    await userEvent.click(
+      pasta.closest("label")?.querySelector("input") as HTMLInputElement,
+    );
+
+    expect(screen.getByText(/Escolha ao menos uma pasta/i)).toBeTruthy();
+    const ativar = screen.getByRole("button", { name: /ativar backup/i });
+    expect((ativar as HTMLButtonElement).disabled).toBe(true);
   });
 });

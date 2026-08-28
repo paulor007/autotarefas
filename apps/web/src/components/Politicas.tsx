@@ -1,11 +1,10 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
+import AssistenteDeBackup from "./AssistenteDeBackup";
 import { cliqueDeNavegacao, comVolta, enderecoDa } from "../lib/rotas";
 
 import {
   ErroDaPlataforma,
-  consultarDispositivo,
-  criarPolitica,
   executarBackup,
   listarDispositivos,
   listarPoliticas,
@@ -25,21 +24,6 @@ const ADMINISTRAM = new Set(["dono", "administrador"]);
 
 /** O pareamento, com o caminho de volta para esta mesma tela. */
 const PARA_PAREAR = comVolta(enderecoDa("dispositivos"), enderecoDa("backups"));
-
-/** O que o formulário começa oferecendo. */
-const PADRAO: ConfiguracaoDePolitica = {
-  origens: [],
-  destino: { tipo: "externo", caminho: "" },
-  agendamento: { tipo: "diario", hora: "02:00", dia_da_semana: 0, dia_do_mes: 1 },
-  retencao: { diarias: 7, semanais: 4, mensais: 12 },
-  retry: { tentativas: 3, espera_inicial_min: 5 },
-  notificacao: { quando: "problema", emails: [] },
-  usar_vss: false,
-  cifrar: false,
-  assinar: true,
-  verificar: true,
-  incremental: false,
-};
 
 /**
  * Políticas de backup: o que copiar, para onde, quando, por quanto tempo.
@@ -72,6 +56,7 @@ export default function Politicas({ papel }: Props) {
   // Como em Dispositivos: lista vazia e "ainda nao perguntei" sao coisas
   // diferentes, e so uma delas merece a tela de "nenhuma maquina".
   const [carregado, setCarregado] = useState(false);
+  const jaDecidiu = useRef(false);
 
   const administra = ADMINISTRAM.has(papel);
 
@@ -84,15 +69,29 @@ export default function Politicas({ papel }: Props) {
         listarPoliticas(),
         listarDispositivos(),
       ]);
+      const maquinas = comDispositivos.dispositivos.filter(
+        (item) => item.estado !== "revogado",
+      );
       setPoliticas(comPoliticas.politicas);
-      setDispositivos(comDispositivos.dispositivos.filter((item) => item.estado !== "revogado"));
+      setDispositivos(maquinas);
+      // Quem chega aqui com maquina e sem nenhuma politica veio configurar —
+      // e obriga-lo a clicar em "Configurar backup" para ver o assistente
+      // seria cobrar um clique por uma tela vazia. So na PRIMEIRA carga:
+      // depois de cancelar, reabrir sozinho seria teimosia.
+      setAbrindo((atual) => {
+        if (jaDecidiu.current) return atual;
+        jaDecidiu.current = true;
+        return (
+          administra && comPoliticas.politicas.length === 0 && maquinas.length > 0
+        );
+      });
       setErro("");
     } catch (e: unknown) {
       setErro(mensagemDe(e));
     } finally {
       setCarregado(true);
     }
-  }, []);
+  }, [administra]);
 
   useEffect(() => {
     void carregar();
@@ -146,7 +145,7 @@ export default function Politicas({ papel }: Props) {
             onClick={() => setAbrindo((atual) => !atual)}
             className="rounded-lg border border-white/12 px-3 py-1.5 text-sm font-semibold text-fg hover:border-white/25"
           >
-            {abrindo ? "Cancelar" : "Nova política"}
+            {abrindo ? "Cancelar" : "Configurar backup"}
           </button>
         )}
       </div>
@@ -173,8 +172,9 @@ export default function Politicas({ papel }: Props) {
         </div>
       )}
 
-      {abrindo && (
-        <Formulario
+      {abrindo && administra && (
+        <AssistenteDeBackup
+          mensagemDe={mensagemDe}
           dispositivos={dispositivos}
           aoSalvar={async (resultado) => {
             setAbrindo(false);
@@ -252,347 +252,6 @@ export default function Politicas({ papel }: Props) {
   );
 }
 
-interface PropsDoFormulario {
-  dispositivos: Dispositivo[];
-  aoSalvar: (resultado: Politica & { sincronizacao: Sincronizacao }) => Promise<void>;
-  aoFalhar: (mensagem: string) => void;
-}
-
-/** O formulário. Um campo por decisão, com o padrão já preenchido. */
-function Formulario({ dispositivos, aoSalvar, aoFalhar }: PropsDoFormulario) {
-  const [nome, setNome] = useState("Backup diário");
-  const [dispositivoId, setDispositivoId] = useState(dispositivos[0]?.id ?? "");
-  const [raizes, setRaizes] = useState<string[]>([]);
-  const [origens, setOrigens] = useState<string[]>([]);
-  const [config, setConfig] = useState<ConfiguracaoDePolitica>(PADRAO);
-  const [salvando, setSalvando] = useState(false);
-  const [semRaizes, setSemRaizes] = useState("");
-
-  useEffect(() => {
-    if (!dispositivoId) return;
-    setSemRaizes("");
-    consultarDispositivo(dispositivoId)
-      .then((resposta) => {
-        const autorizadas = resposta.estado.raizes ?? [];
-        setRaizes(autorizadas);
-        setOrigens(autorizadas);
-        if (autorizadas.length === 0) {
-          setSemRaizes(
-            "Esta máquina não tem pasta autorizada: a política não copiaria nada. A autorização é dada no próprio computador, pelo Agente.",
-          );
-        }
-      })
-      .catch((e: unknown) => setSemRaizes(mensagemDe(e)));
-  }, [dispositivoId]);
-
-  const salvar = async () => {
-    setSalvando(true);
-    try {
-      const resultado = await criarPolitica({
-        nome,
-        dispositivo_id: dispositivoId,
-        configuracao: { ...config, origens },
-      });
-      await aoSalvar(resultado);
-    } catch (e: unknown) {
-      aoFalhar(mensagemDe(e));
-    } finally {
-      setSalvando(false);
-    }
-  };
-
-  return (
-    <div className="mt-3 rounded-lg border border-white/12 bg-bg/40 px-4 py-3">
-      <div className="flex flex-col gap-3 text-[0.85rem]">
-        <label className="flex flex-col gap-1">
-          <span className="text-muted">Nome</span>
-          <input
-            aria-label="Nome da política"
-            value={nome}
-            onChange={(e) => setNome(e.target.value)}
-            className="rounded-lg border border-white/12 bg-surface px-2 py-1 text-fg"
-          />
-        </label>
-
-        <label className="flex flex-col gap-1">
-          <span className="text-muted">Máquina</span>
-          <select
-            aria-label="Máquina"
-            value={dispositivoId}
-            onChange={(e) => setDispositivoId(e.target.value)}
-            className="rounded-lg border border-white/12 bg-surface px-2 py-1 text-fg"
-          >
-            {dispositivos.map((item) => (
-              <option key={item.id} value={item.id}>
-                {item.nome}
-              </option>
-            ))}
-          </select>
-        </label>
-
-        <fieldset className="flex flex-col gap-1">
-          <legend className="text-muted">Pastas a copiar</legend>
-          {semRaizes && <p className="text-[0.8rem] text-danger">{semRaizes}</p>}
-          {raizes.map((raiz) => (
-            <label key={raiz} className="flex items-center gap-2 font-mono text-[0.8rem]">
-              <input
-                type="checkbox"
-                checked={origens.includes(raiz)}
-                onChange={(e) =>
-                  setOrigens((atual) =>
-                    e.target.checked
-                      ? [...atual, raiz]
-                      : atual.filter((item) => item !== raiz),
-                  )
-                }
-              />
-              <span className="text-fg">{raiz}</span>
-            </label>
-          ))}
-        </fieldset>
-
-        <div className="flex flex-wrap gap-3">
-          <label className="flex flex-col gap-1">
-            <span className="text-muted">Destino</span>
-            <select
-              aria-label="Tipo de destino"
-              value={config.destino.tipo}
-              onChange={(e) =>
-                setConfig({ ...config, destino: { ...config.destino, tipo: e.target.value } })
-              }
-              className="rounded-lg border border-white/12 bg-surface px-2 py-1 text-fg"
-            >
-              <option value="externo">Disco externo</option>
-              <option value="rede">Pasta de rede</option>
-              <option value="nuvem">Nuvem compatível com S3</option>
-              <option value="local">Outra pasta desta máquina</option>
-              <option value="nenhum">Só nesta máquina</option>
-            </select>
-          </label>
-          <label className="flex flex-1 flex-col gap-1">
-            <span className="text-muted">Caminho do destino</span>
-            <input
-              aria-label="Caminho do destino"
-              value={config.destino.caminho}
-              placeholder="E:\\Backups  ou  \\\\servidor\\backups"
-              onChange={(e) =>
-                setConfig({
-                  ...config,
-                  destino: { ...config.destino, caminho: e.target.value },
-                })
-              }
-              className="rounded-lg border border-white/12 bg-surface px-2 py-1 font-mono text-fg"
-            />
-          </label>
-        </div>
-
-        {config.destino.tipo === "nenhum" && (
-          <p className="text-[0.8rem] text-signal">
-            O pacote fica só nesta máquina. Isso não protege contra o disco
-            morrer nem contra ransomware.
-          </p>
-        )}
-
-        <div className="flex flex-wrap gap-3">
-          <label className="flex flex-col gap-1">
-            <span className="text-muted">Quando</span>
-            <select
-              aria-label="Frequência"
-              value={config.agendamento.tipo}
-              onChange={(e) =>
-                setConfig({
-                  ...config,
-                  agendamento: { ...config.agendamento, tipo: e.target.value },
-                })
-              }
-              className="rounded-lg border border-white/12 bg-surface px-2 py-1 text-fg"
-            >
-              <option value="diario">Todo dia</option>
-              <option value="semanal">Toda semana</option>
-              <option value="mensal">Todo mês</option>
-              <option value="desligado">Só quando eu mandar</option>
-            </select>
-          </label>
-          <label className="flex flex-col gap-1">
-            <span className="text-muted">Hora</span>
-            <input
-              aria-label="Hora"
-              value={config.agendamento.hora}
-              onChange={(e) =>
-                setConfig({
-                  ...config,
-                  agendamento: { ...config.agendamento, hora: e.target.value },
-                })
-              }
-              className="w-24 rounded-lg border border-white/12 bg-surface px-2 py-1 font-mono text-fg"
-            />
-          </label>
-        </div>
-
-        <fieldset className="flex flex-wrap gap-3">
-          <legend className="text-muted">Guardar por quanto tempo</legend>
-          <Numero
-            rotulo="Diários"
-            valor={config.retencao.diarias}
-            aoMudar={(v) => setConfig({ ...config, retencao: { ...config.retencao, diarias: v } })}
-          />
-          <Numero
-            rotulo="Semanais"
-            valor={config.retencao.semanais}
-            aoMudar={(v) => setConfig({ ...config, retencao: { ...config.retencao, semanais: v } })}
-          />
-          <Numero
-            rotulo="Mensais"
-            valor={config.retencao.mensais}
-            aoMudar={(v) => setConfig({ ...config, retencao: { ...config.retencao, mensais: v } })}
-          />
-        </fieldset>
-
-        <fieldset className="flex flex-wrap gap-3">
-          <legend className="text-muted">Se falhar</legend>
-          <Numero
-            rotulo="Tentativas"
-            valor={config.retry.tentativas}
-            aoMudar={(v) => setConfig({ ...config, retry: { ...config.retry, tentativas: v } })}
-          />
-          <Numero
-            rotulo="Espera inicial (min)"
-            valor={config.retry.espera_inicial_min}
-            aoMudar={(v) =>
-              setConfig({ ...config, retry: { ...config.retry, espera_inicial_min: v } })
-            }
-          />
-        </fieldset>
-
-        <label className="flex flex-col gap-1">
-          <span className="text-muted">Avisar por e-mail</span>
-          <div className="flex flex-wrap items-center gap-2">
-            <select
-              aria-label="Quando avisar"
-              value={config.notificacao.quando}
-              onChange={(e) =>
-                setConfig({
-                  ...config,
-                  notificacao: { ...config.notificacao, quando: e.target.value },
-                })
-              }
-              className="rounded-lg border border-white/12 bg-surface px-2 py-1 text-fg"
-            >
-              <option value="problema">Só quando houver problema</option>
-              <option value="sempre">Sempre</option>
-              <option value="nunca">Nunca</option>
-            </select>
-            <input
-              aria-label="E-mails para aviso"
-              placeholder="voce@empresa.com.br"
-              value={config.notificacao.emails.join(", ")}
-              onChange={(e) =>
-                setConfig({
-                  ...config,
-                  notificacao: {
-                    ...config.notificacao,
-                    emails: e.target.value
-                      .split(",")
-                      .map((item) => item.trim())
-                      .filter(Boolean),
-                  },
-                })
-              }
-              className="flex-1 rounded-lg border border-white/12 bg-surface px-2 py-1 text-fg"
-            />
-          </div>
-        </label>
-
-        <fieldset className="flex flex-col gap-1">
-          <legend className="text-muted">Como copiar</legend>
-          <Marcador
-            rotulo="Copiar só o que mudou (incremental)"
-            valor={config.incremental}
-            aoMudar={(v) => setConfig({ ...config, incremental: v })}
-          />
-          <Marcador
-            rotulo="Proteger o pacote com senha (AES-256)"
-            valor={config.cifrar}
-            aoMudar={(v) => setConfig({ ...config, cifrar: v })}
-          />
-          <Marcador
-            rotulo="Assinar o manifesto, para detectar adulteração"
-            valor={config.assinar}
-            aoMudar={(v) => setConfig({ ...config, assinar: v })}
-          />
-          <Marcador
-            rotulo="Conferir o pacote depois de gerar"
-            valor={config.verificar}
-            aoMudar={(v) => setConfig({ ...config, verificar: v })}
-          />
-          <Marcador
-            rotulo="Copiar arquivo aberto usando instantâneo (VSS, exige administrador)"
-            valor={config.usar_vss}
-            aoMudar={(v) => setConfig({ ...config, usar_vss: v })}
-          />
-        </fieldset>
-
-        <button
-          type="button"
-          onClick={() => void salvar()}
-          disabled={salvando || !dispositivoId || origens.length === 0}
-          className="self-start rounded-lg border border-white/12 px-3 py-1.5 text-[0.8rem] font-semibold text-fg hover:border-white/25 disabled:opacity-50"
-        >
-          {salvando ? "Salvando…" : "Salvar política"}
-        </button>
-      </div>
-    </div>
-  );
-}
-
-function Numero({
-  rotulo,
-  valor,
-  aoMudar,
-}: {
-  rotulo: string;
-  valor: number;
-  aoMudar: (valor: number) => void;
-}) {
-  return (
-    <label className="flex flex-col gap-1">
-      <span className="text-muted">{rotulo}</span>
-      <input
-        type="number"
-        aria-label={rotulo}
-        value={valor}
-        min={0}
-        onChange={(e) => aoMudar(Number(e.target.value))}
-        className="w-24 rounded-lg border border-white/12 bg-surface px-2 py-1 text-fg"
-      />
-    </label>
-  );
-}
-
-function Marcador({
-  rotulo,
-  valor,
-  aoMudar,
-}: {
-  rotulo: string;
-  valor: boolean;
-  aoMudar: (valor: boolean) => void;
-}) {
-  return (
-    <label className="flex items-center gap-2 text-[0.8rem] text-muted">
-      <input type="checkbox" checked={valor} onChange={(e) => aoMudar(e.target.checked)} />
-      <span>{rotulo}</span>
-    </label>
-  );
-}
-
-/**
- * O recado depois de salvar.
- *
- * Junta as duas coisas que a pessoa precisa saber e que são fáceis de supor
- * errado: se a política já chegou à máquina, e se o destino escolhido protege
- * de alguma coisa.
- */
 function recado(sincronizacao: Sincronizacao, protege: boolean): string {
   const aplicacao = sincronizacao.aplicada
     ? "Política salva e já aplicada na máquina."
