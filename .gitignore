@@ -1,24 +1,23 @@
 # ============================================
-
 # AUTOTAREFAS - .gitignore
-
 # ============================================
-
 # Arquivos e pastas ignorados pelo git.
-
-# Codificação: UTF-8
-
+# Codificacao: UTF-8
+#
+# ATENCAO: este arquivo ja foi corrompido uma vez por um formatador de
+# Markdown, que trocou cada `*` por `_` ou `\*`. O efeito e silencioso: as
+# linhas continuam parecendo certas e nao ignoram mais nada. Chegou a deixar
+# `*.pem` e `*.key` desprotegidos. Se for editar, nao passe este arquivo por
+# nenhum formatador de texto.
 # ============================================
 
 # === PYTHON ===
-
-**pycache**/
-_.py[cod]
-_$py.class
-\*.so
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
 
 # Distribution / packaging
-
 .Python
 build/
 develop-eggs/
@@ -33,23 +32,20 @@ sdist/
 var/
 wheels/
 share/python-wheels/
-_.egg-info/
+*.egg-info/
 .installed.cfg
-_.egg
+*.egg
 MANIFEST
 
 # PyInstaller
-
-_.manifest
-_.spec
+*.manifest
+*.spec
 
 # Installer logs
-
 pip-log.txt
 pip-delete-this-directory.txt
 
 # === AMBIENTES VIRTUAIS ===
-
 venv/
 ENV/
 env/
@@ -57,130 +53,111 @@ env/
 .env/
 
 # === TESTES E COBERTURA ===
-
 htmlcov/
 .tox/
 .nox/
 .coverage
-.coverage._
+.coverage.*
 .cache
 nosetests.xml
 coverage.xml
 coverage.json
 coverage.lcov
-_.cover
-\*.py,cover
+*.cover
+*.py,cover
 .hypothesis/
 .pytest_cache/
 cover/
 
 # === TYPE CHECKING ===
-
 .mypy_cache/
 .dmypy.json
 dmypy.json
 
 # === LINTING ===
-
 .ruff_cache/
 
 # === SECURITY SCANNERS ===
-
 .secrets.baseline.bak
 
 # === IDEs ===
-
-# VS Code (mantém configs compartilhadas)
-
-.vscode/_
+# VS Code (mantem configs compartilhadas)
+.vscode/*
 !.vscode/settings.json
 !.vscode/tasks.json
 !.vscode/launch.json
 !.vscode/extensions.json
-_.code-workspace
+*.code-workspace
 
 # PyCharm / IntelliJ
-
 .idea/
-_.iml
-_.ipr
-\*.iws
+*.iml
+*.ipr
+*.iws
 
 # Sublime Text
-
-_.sublime-project
-_.sublime-workspace
+*.sublime-project
+*.sublime-workspace
 
 # Vim
-
-_.swp
-_.swo
-\*~
+*.swp
+*.swo
+*~
 
 # === SISTEMA OPERACIONAL ===
-
 # macOS
-
-.DS*Store
+.DS_Store
 .AppleDouble
 .LSOverride
-.*\*
+._*
 
 # Windows
-
 Thumbs.db
 ehthumbs.db
 Desktop.ini
 $RECYCLE.BIN/
-\*.lnk
+*.lnk
 
 # Linux
-
 .fuse_hidden*
 .directory
 .Trash-*
-.nfs\*
+.nfs*
 
 # === LOGS E DADOS LOCAIS ===
-
-_.log
+*.log
 logs/
-_.sqlite
-_.sqlite3
-_.db
+*.sqlite
+*.sqlite3
+*.db
 
-# === SECRETS E CONFIGURAÇÕES LOCAIS ===
-
+# === SECRETS E CONFIGURACOES LOCAIS ===
 .env
 .env.local
-.env._.local
+.env.*.local
 secrets.yaml
 secrets.json
-_.pem
-\*.key
+*.pem
+*.key
 
-# === ARQUIVOS TEMPORÁRIOS ===
-
-_.tmp
-_.temp
-_.bak
-_.backup
+# === ARQUIVOS TEMPORARIOS ===
+*.tmp
+*.temp
+*.bak
+*.backup
 tmp/
 temp/
 
 # === JUPYTER NOTEBOOKS ===
-
 .ipynb_checkpoints/
-\*.ipynb
+*.ipynb
 
-# === DOCUMENTAÇÃO ===
-
+# === DOCUMENTACAO ===
 site/
-docs/\_build/
+docs/_build/
 docs/.cache/
 
 # === DADOS DO AUTOTAREFAS (runtime) ===
-
 .autotarefas/
 backups/
 reports/
@@ -191,20 +168,16 @@ screenshots/
 /dashboard.html
 
 # === PLAYWRIGHT (browsers e cache) ===
-
 .playwright/
 playwright-report/
 test-results/
 
-# === DEPENDÊNCIAS NODE (caso futuras docs/frontend) ===
-
+# === DEPENDENCIAS NODE ===
 node_modules/
 package-lock.json
 yarn.lock
-
-site/
-
-site/
+# Preserva o lockfile do frontend Live para npm ci e CI reproduzivel
+!apps/web/package-lock.json
 
 # === LIVE SYSTEM (capturador de execucoes) ===
 # Saida gerada por examples/capture_runs.py (artefatos locais, nao versionar).
@@ -212,15 +185,13 @@ site/
 examples/output/
 emails_recebidos/
 
-# Preserva o lockfile do frontend Live para npm ci e CI reproduzivel
-!apps/web/package-lock.json
-
 # Executavel do Agente (G.10). Dezenas de MB que se refazem em um comando:
 # `python tools/construir_agente.py`. No repositorio, incharia o historico para
 # sempre.
 dist-agente/
 
 # Banco local da plataforma (G.2). Dado de cliente nunca e versionado.
+# As linhas `*.db*` acima ja cobrem; estas ficam pelo nome para quem le.
 autotarefas.db
 autotarefas.db-journal
 autotarefas.db-wal
