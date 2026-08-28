@@ -594,6 +594,34 @@ class TestEnderecoDoConvite:
             assert resposta.status_code == HTTP_OK, (caminho, resposta.status_code)
             assert "text/html" in resposta.headers["content-type"]
 
+    def test_recarregar_dentro_do_produto_nao_cai_em_404(self) -> None:
+        """
+        `/app/dispositivos` e um endereco que o usuario tem nas maos.
+
+        Ele aparece na barra do navegador, entra nos favoritos e volta num F5.
+        Se so `/app` fosse declarado, qualquer recarregamento uma secao adentro
+        derrubaria quem estivesse no meio de uma configuracao — e a culpa
+        pareceria do produto, nao do servidor de arquivos.
+        """
+        from fastapi.testclient import TestClient
+
+        from apps.api.app.main import _frontend_dist, app
+
+        if not _frontend_dist.is_dir():
+            pytest.skip("frontend nao buildado: rode `npm --prefix apps/web run build`")
+
+        cliente = TestClient(app)
+        for caminho in (
+            "/app/inicio",
+            "/app/backups",
+            "/app/dispositivos",
+            "/app/atividade",
+            "/app/configuracoes",
+        ):
+            resposta = cliente.get(caminho)
+            assert resposta.status_code == HTTP_OK, (caminho, resposta.status_code)
+            assert "text/html" in resposta.headers["content-type"], caminho
+
     def test_a_linha_do_console_aponta_para_uma_dessas_rotas(self) -> None:
         """
         A frase impressa e o codigo que serve a rota nao podem divergir.

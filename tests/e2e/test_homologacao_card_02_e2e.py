@@ -349,8 +349,11 @@ def _painel(pagina: Page) -> object:
     O escopo importa: o Live publico tem os proprios botoes ("Executar agora"
     do cartao de demonstracao, por exemplo), e um seletor solto acertaria o
     errado — provando que a demo funciona, e nao que o backup funciona.
+
+    Era `#empresa`, a ultima secao da vitrine. Hoje o produto tem endereco
+    proprio (`/app`) e este e o corpo dele.
     """
-    return pagina.locator("#empresa")
+    return pagina.locator("#produto")
 
 
 def _nova_politica(painel: Any, cenario: Cenario, *, hora: str, nome: str) -> None:
@@ -716,7 +719,8 @@ def test_09_executar_pelo_agendamento(cenario: Cenario) -> None:
 
 def test_10_reabrir_o_live(cenario: Cenario, janela: Janela) -> None:
     """10. Voltar ao Live nao pede login de novo: o cookie tem prazo."""
-    pagina = janela.abrir(cenario.url)
+    # O produto, e nao a raiz: `/` e a vitrine, para quem ainda esta avaliando.
+    pagina = janela.abrir(f"{cenario.url}/app")
 
     _painel(pagina).get_by_text("Padaria Sol").first.wait_for()
     assert _painel(pagina).get_by_text("Parear nova máquina").count() > 0

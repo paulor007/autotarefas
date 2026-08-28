@@ -367,7 +367,12 @@ _frontend_dist = settings.repo_root / "apps" / "web" / "dist"
 #: resposta e 404. Como e o servidor que IMPRIME esse endereco no console da
 #: primeira execucao, o cliente seguiria o proprio link do produto e bateria
 #: numa porta fechada.
-ROTAS_DA_INTERFACE = ("/primeiro-acesso",)
+#:
+#: `/app` entrou pelo mesmo motivo, com um agravante: ele nao e um endereco
+#: solto, e a raiz do produto. Quem salva `/app/dispositivos` nos favoritos, ou
+#: recarrega a pagina com F5, pede esse caminho ao servidor — e sem rota
+#: declarada recebe 404 no proprio produto que ja estava usando.
+ROTAS_DA_INTERFACE = ("/primeiro-acesso", "/app")
 
 if _frontend_dist.is_dir():
     _index = _frontend_dist / "index.html"
@@ -379,6 +384,19 @@ if _frontend_dist.is_dir():
 
         Registrado ANTES do `mount`: rota declarada ganha do arquivo estatico, e
         e isso que faz o endereco do convite abrir a tela em vez de 404.
+        """
+        return FileResponse(_index)
+
+    @app.get("/app", include_in_schema=False)
+    @app.get("/app/{_secao:path}", include_in_schema=False)
+    def _pagina_do_produto(_secao: str = "") -> FileResponse:
+        """
+        Toda rota do produto devolve a mesma interface.
+
+        Quem decide o que mostrar e o roteador do front (`src/lib/rotas.ts`).
+        Ao servidor cabe so nao responder 404 para um caminho que o proprio
+        produto usa — porque recarregar a pagina e um gesto normal, e nao pode
+        derrubar quem esta no meio de uma configuracao.
         """
         return FileResponse(_index)
 

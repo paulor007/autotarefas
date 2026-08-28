@@ -1,11 +1,12 @@
 import { CheckSquare } from "lucide-react";
 
+import { cliqueDeNavegacao, PRODUTO } from "../lib/rotas";
+
 const LINKS: [string, string][] = [
   ["Catálogo", "#catalogo"],
   ["Execução", "#execucao"],
   ["Terminal", "#terminal"],
   ["Artefatos", "#artefatos"],
-  ["Sua empresa", "#empresa"],
 ];
 
 export default function Navbar({ online }: { online: boolean }) {
@@ -34,14 +35,25 @@ export default function Navbar({ online }: { online: boolean }) {
           ))}
         </div>
 
-        <div className="flex items-center gap-2">
-          <span
-            className={`h-2 w-2 rounded-full ${online ? "animate-pulse-dot bg-ok" : "bg-muted"}`}
-            aria-hidden
-          />
-          <span className="hidden text-xs font-medium text-muted sm:inline">
-            {online ? "Sistema operacional" : "Conectando…"}
-          </span>
+        <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2">
+            <span
+              className={`h-2 w-2 rounded-full ${online ? "animate-pulse-dot bg-ok" : "bg-muted"}`}
+              aria-hidden
+            />
+            <span className="hidden text-xs font-medium text-muted sm:inline">
+              {online ? "Sistema operacional" : "Conectando…"}
+            </span>
+          </div>
+          {/* A porta do produto. Era um `#empresa` no meio dos outros links,
+              apontando para o fim desta mesma pagina. */}
+          <a
+            href={PRODUTO}
+            onClick={cliqueDeNavegacao(PRODUTO)}
+            className="rounded-lg border border-signal/40 bg-signal/10 px-3 py-1.5 text-sm font-semibold text-signal transition-colors hover:border-signal/70"
+          >
+            Entrar
+          </a>
         </div>
       </div>
     </nav>

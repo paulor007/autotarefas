@@ -23,7 +23,11 @@ export default defineConfig(({ mode }) => {
 
   return {
     plugins: [react(), tailwindcss()],
-    base: "./",
+    // Absoluto, e nao "./". Com caminho relativo, `/app/backups` pediria os
+    // assets em `/app/assets/...` e receberia 404 — a pagina abriria em branco
+    // em qualquer rota com mais de um nivel. O dist e servido pelo FastAPI na
+    // raiz da propria origem, entao "/" e o valor correto.
+    base: "/",
     server: {
       port: devPort,
       proxy: {

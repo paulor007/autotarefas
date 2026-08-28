@@ -8,6 +8,7 @@ import type { Automation, UploadKind } from "../lib/api";
 import DemoSource from "./DemoSource";
 import FileDrop from "./FileDrop";
 import SectionHeader from "./SectionHeader";
+import { cliqueDeNavegacao, PRODUTO } from "../lib/rotas";
 
 // Automacoes que realmente tem exemplo disponivel no backend.
 const SAMPLE_IDS = new Set(["validate", "backup", "organize", "send_api"]);
@@ -261,7 +262,11 @@ export default function ExecutionPanel({
                   computador, no horário, sozinho, com o navegador fechado, para
                   disco externo ou nuvem, com retenção e restauração. Isso existe
                   e está em{" "}
-                  <a href="#empresa" className="text-signal underline">
+                  <a
+                    href={PRODUTO}
+                    onClick={cliqueDeNavegacao(PRODUTO)}
+                    className="text-signal underline"
+                  >
                     Backup nas suas máquinas
                   </a>
                   , que exige conta e o Agente instalado — porque nenhum
