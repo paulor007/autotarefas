@@ -138,7 +138,15 @@ export default function Politicas({ papel }: Props) {
   return (
     <section>
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h2 className="text-lg font-semibold text-fg">Políticas de backup</h2>
+        {/* "Backups" e a palavra da barra e a palavra do cliente. "Politica" e
+            jargao, e aparece adiante em cada botao — entao o subtitulo
+            apresenta o termo em vez de supor que ele ja e conhecido. */}
+        <div>
+          <h2 className="text-lg font-semibold text-fg">Backups</h2>
+          <p className="text-[0.8rem] text-muted">
+            Cada backup é uma política: o que copiar, para onde e quando.
+          </p>
+        </div>
         {administra && dispositivos.length > 0 && (
           <button
             type="button"
