@@ -1,5 +1,14 @@
 # Card 02 — roteiro único de homologação manual
 
+> **Para quem é este documento:** para o **proprietário**, conferir o produto
+> com as próprias mãos antes de homologar o card. Ele cita caminhos do
+> repositório, comandos de teste e formatos de download — coisas que só quem
+> mantém o servidor precisa saber.
+>
+> **Não é o documento do cliente.** Para explicar o produto a uma empresa que
+> vai usá-lo, existe um roteiro separado, sem nada de repositório dentro. Os
+> dois cobrem a mesma jornada; se um mudar, o outro precisa mudar junto.
+
 Este é o roteiro para **você** conferir o produto com as próprias mãos. Ele
 cobre os mesmos vinte passos que a suíte automatizada percorre com navegador
 real (`tests/e2e/test_homologacao_card_02_e2e.py`), mais os quatro que só uma
@@ -36,6 +45,11 @@ Ele vale 30 minutos e serve uma vez só.
 a cada partida, um link de reentrada — porque sem provedor OIDC configurado ele
 é o único jeito de entrar. Vale uma vez, 30 minutos. Com OIDC configurado, nada
 é impresso e o caminho é o provedor.
+
+> **Limitação conhecida:** o link é emitido **só na partida do serviço**. Se
+> você voltar horas depois, ele já venceu, e é preciso **reiniciar o Live** para
+> receber outro. Não há, nesta versão, um comando que emita um link novo com o
+> serviço no ar.
 
 ---
 
