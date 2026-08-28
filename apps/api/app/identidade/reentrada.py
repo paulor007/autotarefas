@@ -148,6 +148,27 @@ def usar(token: str, *, agora_s: float) -> Chave:
     return chave
 
 
+def _nota_do_endereco() -> str:
+    """
+    Diz que o host do link foi suposto, quando foi.
+
+    O `--port` do uvicorn nao chega ate a aplicacao: quem sobe em outra porta
+    recebe um link com a porta errada, e o unico jeito de descobrir e seguir o
+    link e bater numa porta fechada. Entao o console admite o palpite em vez de
+    apresenta-lo como endereco.
+
+    Com `PUBLIC_BASE_URL` definido nao ha palpite, e a nota some.
+    """
+    if not settings.base_url_suposta:
+        return ""
+    return (
+        "  |\n"
+        "  |  O endereco acima foi SUPOSTO a partir de PORT. Se o seu Live\n"
+        "  |  esta em outra porta, troque a porta no link (a chave vale do\n"
+        "  |  mesmo jeito), ou defina PUBLIC_BASE_URL antes de subir.\n"
+    )
+
+
 def linha_do_console(chave: Chave, base: str) -> str:
     """
     Texto impresso no console para o dono voltar a entrar.
@@ -164,7 +185,8 @@ def linha_do_console(chave: Chave, base: str) -> str:
         f"  |  {base.rstrip('/')}/api/auth/reentrar?chave={chave.token}\n"
         f"  |  Dono: {chave.email}\n"
         f"  |  Vence em {settings.bootstrap_minutes} minutos.\n"
-        "  +--------------------------------------------------------------\n"
+        + _nota_do_endereco()
+        + "  +--------------------------------------------------------------\n"
     )
 
 

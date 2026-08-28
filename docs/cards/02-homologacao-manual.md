@@ -32,13 +32,26 @@ Você vai precisar de:
 Suba o Live:
 
 ```bash
-python -m uvicorn apps.api.app.main:app --port 8000
+python -m uvicorn apps.api.app.main:app --port 7860
 ```
 
 O console imprime, uma única vez, o endereço de primeiro acesso com o convite.
 Ele vale 30 minutos e serve uma vez só.
 
-> **O que provaria mentira:** abrir `http://localhost:8000` sem o convite e
+> **Use `--port 7860`, e não outra porta.** O `--port` que você passa ao uvicorn
+> não chega até a aplicação: ela monta o link do console a partir de `PORT`, que
+> vale 7860. Numa porta diferente, o link impresso aponta para o lugar errado —
+> o console avisa que supôs, mas você teria que corrigir a porta na mão toda
+> vez. Se precisar mesmo de outra porta, defina as duas juntas:
+>
+> ```bash
+> PORT=8000 PUBLIC_BASE_URL=http://localhost:8000 python -m uvicorn apps.api.app.main:app --port 8000
+> ```
+>
+> E note que `8000` é a porta do `mkdocs serve`: com a documentação aberta, o
+> Live não sobe.
+
+> **O que provaria mentira:** abrir `http://localhost:7860` sem o convite e
 > conseguir criar organização assim mesmo.
 
 **Se você já criou a organização antes e a sessão venceu:** o console imprime,
@@ -391,7 +404,7 @@ executável, acrescente `?formato=zip` ao endereço do download.
    abrir o terminal no lugar errado dá "o termo não é reconhecido";
 2. se o Windows recusar por política de execução:
    `Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass`;
-3. `.\instalar.ps1 -Codigo SEU-CODIGO -Servidor http://localhost:8000`;
+3. `.\instalar.ps1 -Codigo SEU-CODIGO -Servidor http://localhost:7860`;
 4. autorize a pasta:
    `.\venv\Scripts\python.exe -m apps.agente.agente autorizar C:\caminho\da\pasta`
 

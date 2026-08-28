@@ -168,10 +168,10 @@ e gerar o dashboard não tocam na ordem nem no conteúdo da aba de dados.
 
 ```bash
 npm --prefix apps/web run build
-python -m uvicorn apps.api.app.main:app --port 8000
+python -m uvicorn apps.api.app.main:app --port 7860
 ```
 
-Abra `http://127.0.0.1:8000`, escolha o card e teste com estas fixtures
+Abra `http://127.0.0.1:7860`, escolha o card e teste com estas fixtures
 sintéticas (`tests/fixtures/dominios/`):
 
 | Arquivo | O que deve acontecer |

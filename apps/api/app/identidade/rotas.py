@@ -36,6 +36,9 @@ from .sessao_web import (
 
 roteador = APIRouter(prefix="/api/auth", tags=["identidade"])
 
+#: Para onde vai quem acabou de entrar. O produto, nunca a vitrine.
+DEPOIS_DE_ENTRAR = "/app"
+
 #: Cliente HTTP usado para falar com o provedor. E uma variavel de modulo para
 #: a suite trocar por um cliente ligado ao provedor de teste — sem isso, testar
 #: OIDC exigiria um provedor real e uma credencial do proprietario.
@@ -184,7 +187,8 @@ def retorno(request: Request, sessao: SessaoBanco, code: str = "", state: str = 
         return resposta_erro
 
     resposta = RedirectResponse(
-        settings.public_base_url or "/", status_code=status.HTTP_303_SEE_OTHER
+        f"{settings.public_base_url.rstrip('/')}{DEPOIS_DE_ENTRAR}",
+        status_code=status.HTTP_303_SEE_OTHER,
     )
     resposta.delete_cookie(COOKIE_FLUXO, path="/")
     _gravar_sessao(
@@ -258,7 +262,9 @@ def reentrar(request: Request, chave: str = "") -> Response:
     except reentrada.ReentradaIndisponivel as erro:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(erro)) from erro
 
-    resposta = RedirectResponse(url="/", status_code=status.HTTP_303_SEE_OTHER)
+    # `/app`, e nao `/`. Quem segue um link de entrar quer estar DENTRO: cair na
+    # vitrine obriga a clicar em "Entrar" de novo, logo depois de entrar.
+    resposta = RedirectResponse(url=DEPOIS_DE_ENTRAR, status_code=status.HTTP_303_SEE_OTHER)
     _gravar_sessao(
         resposta,
         SessaoWeb(usuario_id=usada.usuario_id, organizacao_id=usada.organizacao_id),

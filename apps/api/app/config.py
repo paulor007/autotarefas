@@ -102,9 +102,27 @@ class Settings:
     #: `Secure` no cookie. Desligado so em desenvolvimento local, porque
     #: `Secure` sem HTTPS impede o navegador de guardar o cookie.
     cookie_secure: bool = field(default_factory=lambda: _env_bool("COOKIE_SECURE", False))
-    #: Endereco publico do Live, usado para montar o retorno do provedor OIDC.
+    #: Endereco publico do Live: retorno do provedor OIDC e os links que o
+    #: console imprime.
+    #:
+    #: O padrao era `http://localhost:5173` — a porta do servidor de
+    #: DESENVOLVIMENTO do front. Ela nunca e onde o backend escuta. Quem subia
+    #: so o backend, que e o caminho de qualquer instalacao real, recebia no
+    #: console um link para uma porta onde nao havia nada. Foi o que aconteceu:
+    #: `--port 8000`, link impresso apontando para `:5173`.
+    #:
+    #: Agora o padrao e a propria porta do servico. Continua sendo uma
+    #: suposicao — o `--port` do uvicorn nao chega ate aqui — e por isso o
+    #: console DIZ que supos, e como corrigir.
     public_base_url: str = field(
-        default_factory=lambda: os.environ.get("PUBLIC_BASE_URL", "http://localhost:5173").strip()
+        default_factory=lambda: os.environ.get(
+            "PUBLIC_BASE_URL", f"http://localhost:{_env_int('PORT', 7860)}"
+        ).strip()
+    )
+    #: Alguem definiu `PUBLIC_BASE_URL`, ou o valor acima foi suposto? O
+    #: console usa isto para nao apresentar um palpite como se fosse fato.
+    base_url_suposta: bool = field(
+        default_factory=lambda: not os.environ.get("PUBLIC_BASE_URL", "").strip()
     )
 
     #: Provedor OIDC. Vazio = nenhum provedor configurado; a tela de entrada

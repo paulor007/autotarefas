@@ -23,7 +23,7 @@ from collections.abc import Iterator
 
 import pytest
 
-from apps.api.app.config import settings
+from apps.api.app.config import Settings, settings
 from apps.api.app.db import repositorio as repo
 from apps.api.app.db.models import Papel
 from apps.api.app.db.sessao import Banco
@@ -234,6 +234,93 @@ class TestALinhaDoConsole:
         linha = reentrada.linha_do_console(chave, "http://localhost:8000")
 
         linha.encode("ascii")  # levanta se houver acento ou moldura
+
+
+class TestOndeSeCai:
+    def test_quem_entra_cai_no_produto(self) -> None:
+        """
+        Seguir um link de entrar e cair na vitrine e entrar e nao entrar.
+
+        Antes o destino era `/`, e quem usava o link de reentrada precisava
+        clicar em "Entrar" logo depois de ter entrado — na tela de catalogo,
+        que nao e o lugar de quem ja e cliente.
+        """
+        from apps.api.app.identidade.rotas import DEPOIS_DE_ENTRAR
+
+        assert DEPOIS_DE_ENTRAR == "/app"
+
+
+class TestOEnderecoImpresso:
+    """
+    O console imprime um endereco que a pessoa vai seguir.
+
+    Ja aconteceu duas vezes de ele nao levar a lugar nenhum: primeiro porque
+    `/primeiro-acesso` nao era uma rota servida, depois porque o host vinha da
+    porta do servidor de DESENVOLVIMENTO do front (`:5173`), onde o backend
+    nunca escuta. Quem subia so o backend — o caminho de qualquer instalacao
+    real — recebia um link para uma porta vazia.
+    """
+
+    def test_o_padrao_nunca_e_a_porta_do_front_de_desenvolvimento(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.delenv("PUBLIC_BASE_URL", raising=False)
+        monkeypatch.setenv("PORT", "9111")
+
+        padrao = Settings()
+
+        assert "5173" not in padrao.public_base_url
+        assert padrao.public_base_url == "http://localhost:9111"
+        assert padrao.base_url_suposta is True
+
+    def test_endereco_definido_nao_e_palpite(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("PUBLIC_BASE_URL", "https://autotarefas.exemplo")
+
+        definido = Settings()
+
+        assert definido.public_base_url == "https://autotarefas.exemplo"
+        assert definido.base_url_suposta is False
+
+    def test_quando_o_endereco_e_palpite_o_console_admite(
+        self, banco: Banco, sem_provedor: None
+    ) -> None:
+        """
+        O `--port` do uvicorn nao chega ate a aplicacao.
+
+        Como o palpite pode estar errado, ele nao pode ser apresentado como
+        fato: quem subiu em outra porta precisa saber que basta trocar a porta
+        no link, em vez de concluir que a chave nao funciona.
+        """
+        del sem_provedor
+        _organizacao(banco)
+        with banco.sessao() as sessao:
+            chave = reentrada.emitir(sessao, agora_s=AGORA)
+        assert chave is not None
+
+        anteriores = _ajustar(base_url_suposta=True)
+        try:
+            linha = reentrada.linha_do_console(chave, "http://localhost:7860")
+        finally:
+            _ajustar(**anteriores)
+
+        assert "SUPOSTO" in linha
+        assert "PUBLIC_BASE_URL" in linha
+        linha.encode("ascii")  # a nota tambem passa pelo console do Windows
+
+    def test_com_endereco_definido_a_nota_some(self, banco: Banco, sem_provedor: None) -> None:
+        del sem_provedor
+        _organizacao(banco)
+        with banco.sessao() as sessao:
+            chave = reentrada.emitir(sessao, agora_s=AGORA)
+        assert chave is not None
+
+        anteriores = _ajustar(base_url_suposta=False)
+        try:
+            linha = reentrada.linha_do_console(chave, "https://autotarefas.exemplo")
+        finally:
+            _ajustar(**anteriores)
+
+        assert "SUPOSTO" not in linha
 
 
 def test_o_relogio_usado_e_o_de_verdade() -> None:
