@@ -4,13 +4,13 @@
     {
       "name": "live-backend",
       "runtimeExecutable": "venv/Scripts/python.exe",
-      "runtimeArgs": [
-        "-m",
-        "uvicorn",
-        "apps.api.app.main:app",
-        "--port",
-        "7860"
-      ],
+      "runtimeArgs": ["-m", "uvicorn", "apps.api.app.main:app", "--port", "7860"],
+      "port": 7860
+    },
+    {
+      "name": "live-vitrine",
+      "runtimeExecutable": "venv/Scripts/python.exe",
+      "runtimeArgs": ["tools/servir_vitrine.py"],
       "port": 7860
     },
     {
