@@ -51,10 +51,20 @@ def segredo_e_efemero() -> bool:
 
 @dataclass(frozen=True)
 class SessaoWeb:
-    """Quem esta logado, e por qual organizacao."""
+    """Quem esta logado, por qual organizacao, e com que direito."""
 
     usuario_id: str
     organizacao_id: str
+    #: Sessao que **nao pode mudar nada**, independente do papel no banco.
+    #:
+    #: O papel (`leitor`, `operador`, `dono`) foi desenhado para gente de
+    #: dentro da empresa. A demonstracao publica poe uma sessao na mao da
+    #: internet inteira, e ali "leitor" nao basta como unica defesa: qualquer
+    #: rota futura que esqueca o portao viraria uma porta aberta.
+    #:
+    #: Esta marca viaja assinada no cookie e e conferida ANTES de qualquer
+    #: rota, num ponto so. Uma rota nova nasce trancada.
+    somente_leitura: bool = False
 
 
 def _serializador(sal: str) -> URLSafeTimedSerializer:
@@ -64,7 +74,11 @@ def _serializador(sal: str) -> URLSafeTimedSerializer:
 def escrever_sessao(sessao: SessaoWeb) -> str:
     """Valor assinado do cookie de sessao."""
     return _serializador(_SAL_SESSAO).dumps(
-        {"usuario": sessao.usuario_id, "organizacao": sessao.organizacao_id}
+        {
+            "usuario": sessao.usuario_id,
+            "organizacao": sessao.organizacao_id,
+            "so_leitura": sessao.somente_leitura,
+        }
     )
 
 
@@ -85,7 +99,15 @@ def ler_sessao(valor: str | None) -> SessaoWeb | None:
     organizacao = str(dados.get("organizacao") or "")
     if not usuario or not organizacao:
         return None
-    return SessaoWeb(usuario_id=usuario, organizacao_id=organizacao)
+    # Ausente = somente leitura. Um cookie antigo, de antes desta marca
+    # existir, entra pelo lado seguro: o pior que acontece e alguem de dentro
+    # precisar entrar de novo. O contrario — cookie velho virando sessao com
+    # poder de escrita — seria o erro que nao da para desfazer.
+    return SessaoWeb(
+        usuario_id=usuario,
+        organizacao_id=organizacao,
+        somente_leitura=bool(dados.get("so_leitura", True)),
+    )
 
 
 def escrever_fluxo(dados: dict[str, str]) -> str:

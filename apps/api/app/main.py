@@ -46,7 +46,7 @@ from . import (
 )
 from .config import settings
 from .db.atual import banco, definir_banco
-from .identidade import bootstrap, console, reentrada
+from .identidade import bootstrap, console, reentrada, somente_leitura
 from .identidade import rotas as rotas_identidade
 from .identidade.sessao_web import segredo_e_efemero
 
@@ -166,6 +166,11 @@ async def _encerrar_tarefas(tarefas: set[asyncio.Task[None]]) -> None:
 
 
 app = FastAPI(title=settings.app_name, version=settings.version, lifespan=lifespan)
+
+# A tranca da demonstracao publica, antes de qualquer rota. Registrada aqui e
+# nao em cada rota de proposito: e o que faz a garantia valer tambem para a
+# rota que ainda nao foi escrita. Ver `identidade/somente_leitura.py`.
+app.middleware("http")(somente_leitura.barrar_escrita)
 
 app.add_middleware(
     CORSMiddleware,
