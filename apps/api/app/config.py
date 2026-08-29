@@ -134,6 +134,24 @@ class Settings:
     oidc_client_secret: str = field(
         default_factory=lambda: os.environ.get("OIDC_CLIENT_SECRET", "").strip()
     )
+    #: Publica uma demonstracao que qualquer visitante abre, sem conta.
+    #:
+    #: Existe para o produto poder ser mostrado num portfolio: quem chega
+    #: clica e ja esta dentro. A sessao emitida e SEMPRE somente leitura.
+    #:
+    #: Sem valor padrao verdadeiro, de proposito: uma instalacao de cliente
+    #: nunca ganha esta porta por descuido de quem implanta.
+    demonstracao_publica: bool = field(
+        default_factory=lambda: _env_bool("DEMONSTRACAO_PUBLICA", False)
+    )
+    #: Qual organizacao a demonstracao mostra, pelo nome.
+    #:
+    #: Escolhida a dedo, e nao "a primeira que aparecer": num servidor com mais
+    #: de uma organizacao, adivinhar seria a receita para publicar o dado de um
+    #: cliente por acidente.
+    demonstracao_org: str = field(
+        default_factory=lambda: os.environ.get("DEMONSTRACAO_ORG", "").strip()
+    )
     #: Minutos de validade do link de bootstrap de primeira execucao.
     bootstrap_minutes: int = field(default_factory=lambda: _env_int("BOOTSTRAP_MINUTES", 30))
 

@@ -18,7 +18,7 @@ from pydantic import BaseModel, EmailStr, Field
 
 from ..config import settings
 from ..db.models import Usuario
-from . import bootstrap, console, oidc, reentrada
+from . import bootstrap, console, demonstracao, oidc, reentrada
 from .dependencias import SessaoBanco
 from .entrada import acolher, organizacoes_do_usuario
 from .oidc import ErroDeIdentidade
@@ -88,6 +88,13 @@ def estado(request: Request, sessao: SessaoBanco) -> dict[str, Any]:
         "autenticado": False,
         "provedor_configurado": settings.oidc_configurado,
         "precisa_bootstrap": bootstrap.esta_vazio(sessao),
+        # A tela precisa saber DUAS coisas diferentes: que este servidor
+        # publica uma demonstracao (para entrar sozinha, sem pedir nada), e que
+        # a sessao em curso nao muda nada (para nao oferecer botao que o
+        # servidor vai recusar). Uma nao implica a outra: o dono pode abrir a
+        # mesma instalacao com sessao de escrita.
+        "demonstracao_publica": demonstracao.ligada(),
+        "somente_leitura": False,
         "usuario": None,
         "organizacao": None,
         "organizacoes": [],
@@ -104,6 +111,7 @@ def estado(request: Request, sessao: SessaoBanco) -> dict[str, Any]:
         return corpo
 
     corpo["autenticado"] = True
+    corpo["somente_leitura"] = dados.somente_leitura
     corpo["usuario"] = {"id": usuario.id, "nome": usuario.nome, "email": usuario.email}
     corpo["organizacao"] = {
         "id": vinculo.organizacao.id,
@@ -268,6 +276,37 @@ def reentrar(request: Request, chave: str = "") -> Response:
     _gravar_sessao(
         resposta,
         SessaoWeb(usuario_id=usada.usuario_id, organizacao_id=usada.organizacao_id),
+    )
+    return resposta
+
+
+@roteador.get("/visitante")
+def entrar_como_visitante(sessao: SessaoBanco) -> Response:
+    """
+    Entra na demonstracao publica, sem conta e sem digitar nada.
+
+    E a rota que o botao "Acessar projeto" do portfolio alcanca. Do outro lado
+    nao ha simulacao: e o mesmo banco, o mesmo agendador e o mesmo Agente de um
+    ambiente que pertence ao projeto e roda de verdade.
+
+    A sessao sai marcada como somente leitura, e a marca e conferida pelo
+    middleware antes de qualquer rota — ver `somente_leitura.py`. O papel no
+    banco e `leitor`, o que da duas travas independentes: afrouxar uma nao
+    abre a outra.
+    """
+    try:
+        entrada = demonstracao.abrir(sessao)
+    except demonstracao.DemonstracaoIndisponivel as erro:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(erro)) from erro
+
+    resposta = RedirectResponse(url=DEPOIS_DE_ENTRAR, status_code=status.HTTP_303_SEE_OTHER)
+    _gravar_sessao(
+        resposta,
+        SessaoWeb(
+            usuario_id=entrada.usuario_id,
+            organizacao_id=entrada.organizacao_id,
+            somente_leitura=True,
+        ),
     )
     return resposta
 
