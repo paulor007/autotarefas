@@ -109,6 +109,11 @@ export default function Politicas({ papel }: Props) {
         tipo_do_destino: item.configuracao.destino.tipo,
         usar_vss: item.configuracao.usar_vss,
         incremental: item.configuracao.incremental,
+        // Sem isto a execução nasce órfã: aparece no histórico, mas não
+        // pertence a política nenhuma — e o veredito de proteção, que agrupa
+        // por política, seguia dizendo "nunca concluiu uma execução" logo
+        // depois de uma execução concluída.
+        politica_id: item.id,
       });
       setAviso(
         resultado.ok

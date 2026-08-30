@@ -174,3 +174,59 @@ class TestASituacao:
             ).completa
             is False
         )
+
+
+class TestASemeadura:
+    """
+    Executar uma vez cada politica que nunca rodou.
+
+    Sem isto, um ambiente recem-publicado mostra "Protecao em risco - este
+    backup nunca concluiu uma execucao" ate a primeira janela do agendamento.
+    E verdade, e e uma verdade inutil para quem chegou agora.
+    """
+
+    def politica(self, identificador: str) -> dict[str, object]:
+        return {"id": identificador, "nome": f"Politica {identificador}"}
+
+    def execucao(self, politica_id: str, resultado: str) -> dict[str, object]:
+        return {"politica_id": politica_id, "resultado": resultado}
+
+    def test_sem_historico_todas_precisam_rodar(self) -> None:
+        politicas = [self.politica("p1"), self.politica("p2")]
+
+        pendentes = vitrine.politicas_sem_sucesso(politicas, [])
+
+        assert [item["id"] for item in pendentes] == ["p1", "p2"]
+
+    def test_quem_ja_concluiu_fica_de_fora(self) -> None:
+        """O que torna o comando seguro de repetir a cada deploy."""
+        politicas = [self.politica("p1"), self.politica("p2")]
+        execucoes = [self.execucao("p1", "sucesso")]
+
+        pendentes = vitrine.politicas_sem_sucesso(politicas, execucoes)
+
+        assert [item["id"] for item in pendentes] == ["p2"]
+
+    def test_execucao_com_ressalva_conta_como_concluida(self) -> None:
+        # O backup aconteceu e o pacote existe. Rodar de novo por causa de uma
+        # ressalva encheria o historico sem resolver a ressalva.
+        politicas = [self.politica("p1")]
+        execucoes = [self.execucao("p1", "com_ressalva")]
+
+        assert vitrine.politicas_sem_sucesso(politicas, execucoes) == []
+
+    def test_falha_nao_conta_como_concluida(self) -> None:
+        politicas = [self.politica("p1")]
+        execucoes = [self.execucao("p1", "falha")]
+
+        pendentes = vitrine.politicas_sem_sucesso(politicas, execucoes)
+
+        assert [item["id"] for item in pendentes] == ["p1"]
+
+    def test_execucao_de_outra_politica_nao_conta(self) -> None:
+        politicas = [self.politica("p1")]
+        execucoes = [self.execucao("p2", "sucesso")]
+
+        pendentes = vitrine.politicas_sem_sucesso(politicas, execucoes)
+
+        assert [item["id"] for item in pendentes] == ["p1"]

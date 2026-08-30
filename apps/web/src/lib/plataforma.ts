@@ -265,6 +265,8 @@ export function executarBackup(
     tipo_do_destino?: string;
     enviar_para_nuvem?: boolean;
     incremental?: boolean;
+    /** De qual política veio o pedido. Sem isto a execução nasce órfã. */
+    politica_id?: string;
   } = {},
 ): Promise<ResultadoDeBackup> {
   return pedir(`/api/dispositivos/${encodeURIComponent(id)}/backup`, {

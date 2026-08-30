@@ -38,6 +38,7 @@ import subprocess  # nosec B404
 import sys
 from dataclasses import dataclass
 from pathlib import Path
+from urllib.parse import urlsplit
 
 import click
 
@@ -431,6 +432,164 @@ def preparar(servidor: str) -> None:
         configuracao = _garantir_maquina(sessao, contexto, servidor)
         configuracao = _garantir_pastas(configuracao)
         _garantir_politicas(sessao, contexto, organizacao, configuracao)
+
+    click.echo(_resumo())
+
+
+def _sessao_de_operacao(servidor: str) -> object:
+    """
+    Uma sessao de dono, obtida pelas portas do proprio produto.
+
+    Nao ha atalho aqui de proposito. O caminho e o mesmo que um operador
+    usaria: a prova do console (ler um arquivo na pasta do servico) troca por
+    uma chave de reentrada, e a chave troca por sessao. Forjar um cookie
+    exigiria o segredo de assinatura do servidor, que este processo nao tem —
+    e se tivesse, o teste que valida a porta deixaria de valer alguma coisa.
+    """
+    import httpx
+
+    from apps.api.app.identidade import console
+
+    token = console.ler()
+    if not token:
+        click.echo(
+            "Nao encontrei a prova do console. Ela e escrita quando o Live sobe.\n"
+            "O servidor da vitrine esta rodando?",
+            err=True,
+        )
+        raise SystemExit(1)
+
+    cliente = httpx.Client(base_url=servidor, timeout=30.0, follow_redirects=True)
+    resposta = cliente.post(
+        "/api/auth/reentrar/emitir",
+        headers={"X-AutoTarefas-Console": token},
+    )
+    if resposta.status_code != 200:  # noqa: PLR2004 — o unico caso de sucesso
+        detalhe = resposta.json().get("detail", resposta.text)
+        click.echo(f"O Live recusou emitir a chave: {detalhe}", err=True)
+        raise SystemExit(1)
+
+    # So a CHAVE, e nao a URL inteira. O endereco devolvido e montado com
+    # `PUBLIC_BASE_URL` (`localhost`), e este cliente pode estar falando com
+    # `127.0.0.1`: seguir a URL como veio grava o cookie num host e faz o
+    # pedido seguinte no outro, e a sessao "some" sem nenhum erro visivel.
+    chave = urlsplit(resposta.json()["url"]).query
+    cliente.get(f"/api/auth/reentrar?{chave}")
+    return cliente
+
+
+def _esperar_maquina(cliente: object, limite_s: float) -> bool:
+    """
+    Espera o Agente abrir o canal.
+
+    Backup nao e coisa que o servidor faca sozinho: sem canal aberto, o pedido
+    seria recusado com "a maquina esta desligada" — que estaria certo, e nao
+    ajudaria ninguem que acabou de subir os dois processos.
+    """
+    import time
+
+    fim = time.monotonic() + limite_s
+    while time.monotonic() < fim:
+        resposta = cliente.get("/api/agente/conectados")  # type: ignore[attr-defined]
+        if resposta.status_code == 200 and any(  # noqa: PLR2004
+            item["conectado"] for item in resposta.json()["conectados"]
+        ):
+            return True
+        time.sleep(1.0)
+    return False
+
+
+def politicas_sem_sucesso(
+    politicas: list[dict[str, object]], execucoes: list[dict[str, object]]
+) -> list[dict[str, object]]:
+    """
+    Quais politicas ainda nao concluiram nenhuma execucao.
+
+    E o que torna a semeadura segura de repetir: rodar de novo depois de um
+    deploy nao executa backup a toa, e um ambiente que ja tem historico e
+    deixado em paz.
+    """
+    concluidas = {
+        str(item.get("politica_id"))
+        for item in execucoes
+        if item.get("resultado") in {"sucesso", "com_ressalva"}
+    }
+    return [item for item in politicas if str(item["id"]) not in concluidas]
+
+
+@vitrine.command(
+    name="primeira-execucao",
+    help="Executa uma vez cada politica que nunca rodou.",
+)
+@click.option(
+    "--servidor",
+    default="http://127.0.0.1:7860",
+    show_default=True,
+    help="Endereco do Live da vitrine.",
+)
+@click.option(
+    "--espera",
+    default=60.0,
+    show_default=True,
+    help="Segundos para o Agente aparecer conectado.",
+)
+def primeira_execucao(servidor: str, espera: float) -> None:
+    """
+    Da ao ambiente publico um historico real desde o primeiro minuto.
+
+    Sem isto, um ambiente recem-publicado mostra "Protecao em risco - este
+    backup nunca concluiu uma execucao" ate a primeira janela do agendamento.
+    E verdade, e e uma verdade inutil para quem chegou agora.
+
+    O que roda aqui e backup de verdade: o mesmo comando, pelo mesmo canal,
+    com as escolhas da propria politica. Fica registrado como MANUAL no
+    historico, porque foi manual — a tela nao vai chamar isto de agendado.
+    """
+    _preparar_ambiente()
+    _todos_os_modelos()
+
+    cliente = _sessao_de_operacao(servidor)
+    if not _esperar_maquina(cliente, espera):
+        click.echo(
+            "A maquina da vitrine nao apareceu conectada. Suba o Agente antes:\n"
+            "  python tools/vitrine.py agente",
+            err=True,
+        )
+        raise SystemExit(1)
+
+    politicas = cliente.get("/api/politicas").json()["politicas"]  # type: ignore[attr-defined]
+    execucoes = cliente.get("/api/historico").json()["execucoes"]  # type: ignore[attr-defined]
+    pendentes = politicas_sem_sucesso(politicas, execucoes)
+
+    if not pendentes:
+        click.echo("Todas as politicas ja tem execucao concluida. Nada a fazer.")
+        return
+
+    for politica in pendentes:
+        configuracao = politica["configuracao"]
+        click.echo(f"Executando: {politica['nome']} ...")
+        resposta = cliente.post(  # type: ignore[attr-defined]
+            f"/api/dispositivos/{politica['dispositivo_id']}/backup",
+            json={
+                "origens": configuracao["origens"],
+                "destino_externo": configuracao["destino"]["caminho"],
+                "tipo_do_destino": configuracao["destino"]["tipo"],
+                "usar_vss": configuracao["usar_vss"],
+                "incremental": configuracao["incremental"],
+                # Sem isto a execucao nasce orfa, e a proxima chamada deste
+                # comando executaria tudo de novo achando que nada rodou.
+                "politica_id": politica["id"],
+            },
+            timeout=300.0,
+        )
+        corpo = resposta.json()
+        if resposta.status_code != 200 or not corpo.get("ok"):  # noqa: PLR2004
+            click.echo(
+                f"  [ERRO] {corpo.get('erro') or corpo.get('detail') or resposta.text}",
+                err=True,
+            )
+            continue
+        click.echo(f"  Concluido: {corpo.get('pacote', 'pacote gerado')}")
 
     click.echo(_resumo())
 

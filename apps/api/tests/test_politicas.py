@@ -350,3 +350,64 @@ def test_politica_gravada_pode_ser_relida_pelo_nucleo(banco: Banco) -> None:
 
     assert configuracao.agendamento.dia_do_mes == 28
     assert EstadoDispositivo.ATIVO
+
+
+class TestAExecucaoSabeDeQualPoliticaVeio:
+    """
+    "Executar agora" numa politica produzia uma execucao orfa.
+
+    A linha aparecia no historico sem pertencer a politica nenhuma. E o
+    veredito de protecao agrupa POR politica: um backup que acabara de rodar
+    com sucesso deixava a propria politica em "nunca concluiu uma execucao" —
+    o oposto do que tinha acabado de acontecer, na mesma tela.
+    """
+
+    def test_a_politica_citada_fica_gravada_na_execucao(self, banco: Banco) -> None:
+        contexto = _organizacao(banco)
+        dispositivo_id = _dispositivo(banco, contexto)
+        with banco.sessao() as sessao:
+            politica = politicas.criar(sessao, contexto, _pedido(dispositivo_id))
+            politica_id = politica.id
+
+        pedido = dispositivos.PedidoDeBackup(politica_id=politica_id)
+        with banco.sessao() as sessao:
+            achada = dispositivos._politica_da_organizacao(sessao, contexto, pedido.politica_id)
+
+        assert achada == politica_id
+
+    def test_backup_avulso_continua_sem_politica(self, banco: Banco) -> None:
+        """
+        O botao da tela de maquinas roda um backup que nao e de politica alguma.
+
+        Inventar um vinculo ali sujaria o historico de uma politica com uma
+        execucao que ela nao pediu.
+        """
+        contexto = _organizacao(banco)
+
+        with banco.sessao() as sessao:
+            assert dispositivos._politica_da_organizacao(sessao, contexto, "") == ""
+
+    def test_politica_de_outra_organizacao_e_ignorada(self, banco: Banco) -> None:
+        """
+        Conferir, e nao confiar no id que chegou.
+
+        Aceitar como veio carimbaria a execucao de uma empresa com a politica
+        de outra — e o veredito de protecao passaria a somar coisas de
+        organizacoes diferentes.
+        """
+        dona = _organizacao(banco, "Padaria")
+        alheia = _organizacao(banco, "Mercado")
+        dispositivo_alheio = _dispositivo(banco, alheia, chave="k2")
+        with banco.sessao() as sessao:
+            da_outra = politicas.criar(sessao, alheia, _pedido(dispositivo_alheio)).id
+
+        with banco.sessao() as sessao:
+            achada = dispositivos._politica_da_organizacao(sessao, dona, da_outra)
+
+        assert achada == ""
+
+    def test_politica_que_nao_existe_e_ignorada(self, banco: Banco) -> None:
+        contexto = _organizacao(banco)
+
+        with banco.sessao() as sessao:
+            assert dispositivos._politica_da_organizacao(sessao, contexto, "nao-existe") == ""

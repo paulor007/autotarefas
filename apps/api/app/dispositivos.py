@@ -408,6 +408,36 @@ class PedidoDeBackup(BaseModel):
     #: politica se comportar como a execucao agendada dela: um botao que roda
     #: diferente do horario faria o cliente testar outra coisa.
     incremental: bool = False
+    #: De qual politica veio o pedido, quando veio de uma.
+    #:
+    #: Sem isto, "Executar agora" numa politica produzia uma execucao ORFA: o
+    #: historico mostrava a linha, mas ela nao pertencia a politica nenhuma. E
+    #: o veredito de protecao agrupa por politica — entao um backup que
+    #: acabara de rodar com sucesso deixava a politica dele em "nunca concluiu
+    #: uma execucao", que e o oposto do que tinha acabado de acontecer.
+    #:
+    #: Vazio continua valido: o botao da tela de maquinas roda um backup avulso,
+    #: que nao pertence a politica alguma.
+    politica_id: str = ""
+
+
+def _politica_da_organizacao(sessao: Session, contexto: repo.Contexto, politica_id: str) -> str:
+    """
+    Confirma que a politica citada e desta organizacao. Vazio se nao for.
+
+    Conferir, e nao confiar: aceitar o id como veio deixaria uma execucao de
+    uma empresa carimbada com a politica de outra — e o veredito de protecao,
+    que agrupa por politica, passaria a somar coisas de organizacoes
+    diferentes.
+    """
+    if not politica_id:
+        return ""
+    from .politicas import Politica as RegistroDePolitica
+
+    achada = sessao.execute(
+        repo.escopo(RegistroDePolitica, contexto).where(RegistroDePolitica.id == politica_id)
+    ).scalar_one_or_none()
+    return achada.id if achada is not None else ""
 
 
 def _parametros_do_backup(pedido: PedidoDeBackup) -> dict[str, Any]:
@@ -466,6 +496,7 @@ async def executar_backup_agora(
     execucao = Execucao(
         organizacao_id=contexto.organizacao_id,
         dispositivo_id=dispositivo_id,
+        politica_id=_politica_da_organizacao(sessao, contexto, pedido.politica_id),
         origem="manual",
         resultado=ResultadoExecucao.EM_ANDAMENTO,
     )
