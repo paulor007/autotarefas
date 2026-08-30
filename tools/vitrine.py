@@ -495,6 +495,80 @@ def preparar(servidor: str) -> None:
     click.echo(_resumo())
 
 
+@vitrine.command(help="Imprime um link para entrar na vitrine como DONO.")
+@click.option(
+    "--servidor",
+    default="http://127.0.0.1:7860",
+    show_default=True,
+    help="Endereco do Live, que precisa estar no ar.",
+)
+def entrar(servidor: str) -> None:
+    """
+    O link de quem ADMINISTRA a vitrine, e nao o de quem a visita.
+
+    Sao duas portas diferentes, e a confusao entre elas custa tempo: abrir
+    `/app` no navegador entra como **visitante**, em sessao somente leitura —
+    e ai nao ha o que testar, porque nada muda. Para criar politica, executar
+    backup ou restaurar, e preciso ser o dono.
+
+    A prova exigida e ler um arquivo dentro da pasta do servico, que e a mesma
+    do console. Quem consegue isso ja podia abrir o banco, que tem muito mais.
+
+    O link vale uma vez e vence rapido. Perdeu, rode de novo.
+    """
+    _preparar_ambiente()
+
+    chave = _chave_de_reentrada(servidor)
+    click.echo("")
+    click.echo("  Abra este endereco no navegador para entrar como DONO:")
+    click.echo("")
+    click.echo(f"    {servidor}/api/auth/reentrar?{chave}")
+    click.echo("")
+    click.echo("  Vale uma vez. Para ver o que um visitante ve, abra /app numa")
+    click.echo("  janela anonima — la a sessao e somente leitura.")
+    click.echo("", nl=True)
+
+
+def _chave_de_reentrada(servidor: str) -> str:
+    """
+    Troca a prova do console por uma chave de reentrada.
+
+    Devolve so a QUERY, e nao a URL montada pelo servidor: aquela vem com
+    `PUBLIC_BASE_URL`, que pode estar em `localhost` enquanto quem chama fala
+    com `127.0.0.1`. Cookie gravado num host e pedido seguinte no outro faz a
+    sessao "sumir" sem nenhum erro visivel.
+    """
+    import httpx
+
+    from apps.api.app.identidade import console
+
+    token = console.ler()
+    if not token:
+        click.echo(
+            "Nao encontrei a prova do console. Ela e escrita quando o Live sobe.\n"
+            "O servidor da vitrine esta rodando? (python tools/servir_vitrine.py)",
+            err=True,
+        )
+        raise SystemExit(1)
+
+    try:
+        resposta = httpx.post(
+            f"{servidor}/api/auth/reentrar/emitir",
+            headers={"X-AutoTarefas-Console": token},
+            timeout=30.0,
+        )
+    except httpx.HTTPError as erro:
+        click.echo(f"Nao foi possivel falar com o Live em {servidor}: {erro}", err=True)
+        raise SystemExit(1) from erro
+
+    if resposta.status_code != 200:  # noqa: PLR2004 — o unico caso de sucesso
+        detalhe = resposta.json().get("detail", resposta.text)
+        click.echo(f"O Live recusou emitir a chave: {detalhe}", err=True)
+        raise SystemExit(1)
+
+    return urlsplit(resposta.json()["url"]).query
+
+
 def _sessao_de_operacao(servidor: str) -> object:
     """
     Uma sessao de dono, obtida pelas portas do proprio produto.
