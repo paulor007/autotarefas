@@ -64,6 +64,7 @@ class Servico:
             ficha = await executar_politica(
                 item.politica,
                 self.local.carregar(),
+                self._relatar_do_agendamento(item),
                 politica_id=item.id,
                 politica_nome=item.nome,
             )
@@ -72,6 +73,46 @@ class Servico:
             raise
         self._anotar(item, comecou, ficha)
         return ficha
+
+    def _relatar_do_agendamento(self, item: PoliticaLocal) -> Any:
+        """
+        Como contar as fases de um backup do horario, quando ha canal.
+
+        O backup disparado da tela ja reporta: o comando traz o proprio
+        `relatar`. O do agendamento nao tinha por onde — e quem estivesse
+        olhando a tela as 03:00 veria uma linha aparecer pronta, sem nada
+        entre o silencio e o resultado.
+
+        Duas regras, e as duas existem para isto continuar sendo enfeite:
+
+        **Nao segura o backup.** Se nao ha canal, `relatar` e `None` e o
+        backup roda igual — que e o caso normal de uma madrugada com a
+        internet caida.
+
+        **Nao derruba o backup.** Qualquer erro ao enviar e engolido. Um
+        socket que fechou no meio da copia nao pode transformar um backup que
+        ia dar certo numa falha registrada.
+        """
+
+        async def relatar(dados: dict[str, Any]) -> None:
+            enviar = self.estado_do_canal.relatar
+            if enviar is None:
+                return
+            with contextlib.suppress(Exception):
+                await enviar(
+                    {
+                        **dados,
+                        # O servidor guarda progresso POR COMANDO. Um backup do
+                        # horario nao tem comando; a politica faz esse papel, e
+                        # o prefixo evita colisao com um id de comando.
+                        "comando": f"politica:{item.id}",
+                        "politica_id": item.id,
+                        "politica_nome": item.nome,
+                        "origem": "agendamento",
+                    }
+                )
+
+        return relatar
 
     def _anotar(self, item: PoliticaLocal, comecou: str, ficha: dict[str, Any]) -> None:
         """Escreve no diário o que esta execução produziu."""

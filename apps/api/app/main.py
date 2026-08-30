@@ -28,6 +28,7 @@ from fastapi.staticfiles import StaticFiles
 from autotarefas.tasks.backup import verify_backup
 
 from . import (
+    atividade,
     canal,
     catalog,
     demo_servers,
@@ -194,6 +195,7 @@ app.include_router(canal.roteador)
 app.include_router(politicas.roteador)
 app.include_router(historico.roteador)
 app.include_router(protecao.roteador)
+app.include_router(atividade.roteador)
 app.include_router(instalador.roteador)
 
 

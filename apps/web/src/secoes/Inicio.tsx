@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 
+import AoVivo from "../components/AoVivo";
 import CartaoDeAutomacao from "../components/CartaoDeAutomacao";
 import SeloDeProtecao from "../components/SeloDeProtecao";
 import { quando } from "../lib/datas";
@@ -103,6 +104,12 @@ export default function Inicio() {
       {/* A resposta antes do detalhe. Quem abre o produto quer saber se esta
           protegido, e nao quantas politicas existem. */}
       <SeloDeProtecao estado={retrato?.protecao ?? null} />
+
+      {/* Entre o veredito e o cartao: o veredito diz se voce esta protegido, e
+          isto diz que o sistema esta VIVO — rodando agora, ou com hora
+          marcada. Sao perguntas diferentes, e a segunda e a que um visitante
+          faz primeiro. */}
+      <AoVivo />
 
       <CartaoDeAutomacao
         carregando={retrato === null}

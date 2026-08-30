@@ -434,6 +434,50 @@ export function obterProtecao(): Promise<EstadoDeProtecao> {
   return pedir("/api/protecao");
 }
 
+/** Um backup rodando neste instante, do jeito que a máquina relatou. */
+export interface ExecucaoAgora {
+  politica_id: string;
+  politica_nome: string;
+  maquina: string;
+  dispositivo_id: string;
+  etapa: string;
+  /** A mesma etapa, em palavras de quem não é da equipe. */
+  etapa_em_portugues: string;
+  /**
+   * Ausente quando a máquina ainda não disse. Nunca zero por padrão: um número
+   * inventado aqui apareceria na tela como fato.
+   */
+  arquivos?: number | null;
+  destino?: string | null;
+  desde: string;
+}
+
+/** Quando cada política dispara pela próxima vez. */
+export interface ProximaExecucao {
+  politica_id: string;
+  nome: string;
+  maquina: string;
+  /**
+   * Instante calculado em hora de parede, e o nome diz por quê: o horário de
+   * uma política é o relógio de QUEM EXECUTA, e o servidor pode estar a três
+   * fusos da máquina. Vazio quando não há agendamento.
+   */
+  proxima_no_relogio_da_maquina: string;
+  /** A regra, que não depende de fuso: `diario`, `semanal`, `mensal`… */
+  quando: string;
+  hora: string;
+}
+
+export interface AtividadeAoVivo {
+  agora: string;
+  executando: ExecucaoAgora[];
+  proximas: ProximaExecucao[];
+}
+
+export function obterAoVivo(): Promise<AtividadeAoVivo> {
+  return pedir("/api/atividade/ao-vivo");
+}
+
 export function listarPoliticas(): Promise<{ politicas: Politica[] }> {
   return pedir("/api/politicas");
 }

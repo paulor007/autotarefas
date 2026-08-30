@@ -56,6 +56,18 @@ class Estado:
     conectado: bool = False
     tentativas: int = 0
     ultimo_erro: str = ""
+    #: Como mandar progresso ao servidor AGORA, quando ha conexao. `None`
+    #: quando nao ha.
+    #:
+    #: Existe para o agendador. Um backup disparado da tela ja reporta as
+    #: fases pelo `relatar` do comando; o do horario nao tinha por onde, e
+    #: quem estivesse olhando a tela as 03:00 veria uma linha aparecer
+    #: pronta, sem nada entre o silencio e o resultado.
+    #:
+    #: Continua sendo enfeite, e nao dependencia: o backup do horario roda
+    #: igual com isto em `None`, que e o caso normal de uma madrugada com a
+    #: internet caida.
+    relatar: Callable[[dict[str, object]], Awaitable[None]] | None = None
 
 
 def _codigo_de_fechamento(fechada: ConnectionClosed) -> int:
@@ -172,6 +184,7 @@ async def atender_comandos(
     configuracao: Configuracao,
     registro: mod_comandos.Registro,
     diario: Diario | None = None,
+    estado: Estado | None = None,
 ) -> None:
     """
     Le mensagens do servidor e executa os comandos, ate a conexao cair.
@@ -185,6 +198,12 @@ async def atender_comandos(
         await conexao.send(json.dumps({**dados, "tipo": "progresso"}))  # type: ignore[attr-defined]
 
     contexto = mod_comandos.Contexto(configuracao=configuracao, relatar=relatar)
+
+    # Empresta o canal ao agendador enquanto ele existir. E devolvido no
+    # `finally` de quem chama: uma referencia a uma conexao morta faria o
+    # backup do horario tentar escrever num socket fechado.
+    if estado is not None:
+        estado.relatar = relatar
 
     if diario is not None:
         await enviar_execucoes(conexao, diario)
@@ -249,8 +268,11 @@ async def manter_conectado(
                 intervalo = float(str(pronto.get("intervalo_batida_s") or 20.0))
                 batidas = asyncio.create_task(bater_coracao(conexao, intervalo, diario))
                 try:
-                    await atender_comandos(conexao, configuracao, conhecidos, diario)
+                    await atender_comandos(
+                        conexao, configuracao, conhecidos, diario, estado=situacao
+                    )
                 finally:
+                    situacao.relatar = None
                     batidas.cancel()
                     with contextlib.suppress(asyncio.CancelledError):
                         await batidas

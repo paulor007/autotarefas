@@ -34,7 +34,7 @@ import contextlib
 import secrets
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
@@ -70,9 +70,32 @@ FECHAR_DISPOSITIVO_INATIVO = 4003
 FECHAR_PROTOCOLO = 4004
 
 
+#: Prefixo do progresso de um backup do horario.
+#:
+#: O agendamento nao tem comando — ninguem pediu, e ninguem espera resposta.
+#: A politica faz o papel de identificador, e o prefixo evita colisao com um
+#: id de comando de verdade.
+PREFIXO_DA_POLITICA = "politica:"
+
+#: Quanto um progresso do horario continua valendo sem noticia nova.
+#:
+#: Se o Agente cair no meio de uma copia, a ultima etapa que ele mandou ficaria
+#: aqui para sempre e a tela diria "copiando" sobre um processo morto. Tres
+#: minutos e folgado para uma etapa longa (um pacote grande fica minutos em
+#: "compactando") e curto para nao sustentar uma mentira por muito tempo.
+VALIDADE_DO_PROGRESSO = timedelta(minutes=3)
+
 #: Prazo padrao de um comando. Generoso: backup de pasta grande demora, e
 #: cortar cedo demais transformaria um trabalho em andamento em falha.
 PRAZO_COMANDO_S = 600.0
+
+
+def _lido(bruto: str) -> datetime | None:
+    """Instante ISO de volta a `datetime`, ou `None` se nao der para ler."""
+    try:
+        return datetime.fromisoformat(bruto)
+    except ValueError:
+        return None
 
 
 class SemResposta(Exception):
@@ -141,9 +164,42 @@ class Conexao:
         return True
 
     def anotar_progresso(self, identificador: str, dados: dict[str, Any]) -> None:
-        """Guarda o ultimo progresso de um comando em andamento."""
-        if identificador in self.pendentes:
-            self.progresso[identificador] = dados
+        """
+        Guarda o ultimo progresso de um comando ou de um backup do horario.
+
+        Comando: so vale enquanto alguem espera a resposta. Progresso de um
+        comando ja respondido e lixo que a tela mostraria como "em andamento".
+
+        Horario (`politica:<id>`): nao ha comando nem quem espere — o
+        agendamento roda por conta propria e reporta de carona no canal. Aqui a
+        limpeza e por tempo, mais abaixo.
+        """
+        if identificador.startswith(PREFIXO_DA_POLITICA) or identificador in self.pendentes:
+            self.progresso[identificador] = {**dados, "recebido_em": agora().isoformat()}
+
+    def acontecendo_agora(self) -> list[dict[str, Any]]:
+        """
+        Backups do horario que estao rodando nesta maquina, agora.
+
+        "Agora" precisa de prazo de validade. Se o Agente cair no meio de uma
+        copia, a ultima etapa que ele mandou fica aqui para sempre — e a tela
+        diria "copiando" sobre um processo que morreu. Sem noticia dentro da
+        janela, o registro deixa de valer: e o mesmo raciocinio da batida do
+        coracao.
+        """
+        limite = agora() - VALIDADE_DO_PROGRESSO
+        vivos: list[dict[str, Any]] = []
+        for identificador, dados in list(self.progresso.items()):
+            if not identificador.startswith(PREFIXO_DA_POLITICA):
+                continue
+            quando = _lido(str(dados.get("recebido_em", "")))
+            if quando is None or quando < limite:
+                self.progresso.pop(identificador, None)
+                continue
+            if dados.get("etapa") == "concluido":
+                continue
+            vivos.append({**dados, "dispositivo_id": self.dispositivo_id, "maquina": self.nome})
+        return vivos
 
 
 class Presenca:
