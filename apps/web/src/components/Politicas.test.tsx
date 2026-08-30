@@ -554,6 +554,25 @@ describe("Backups na demonstração pública", () => {
     expect(screen.getByText(/ainda não leva a credencial/i)).toBeTruthy();
   });
 
+  it("o passo das pastas não abre em erro", async () => {
+    // Perguntar as pastas ao Agente e um POST — a rota manda um comando pelo
+    // canal ate o computador — e o middleware da sessao publica recusa. O
+    // assistente abria com o passo 2 em vermelho e o passo 6 pedindo "escolha
+    // ao menos uma pasta" a quem nao tinha como escolher nenhuma. As pastas
+    // vem das politicas em vigor, que as declaram.
+    mockRotas(COM_POLITICA);
+
+    render(<Politicas papel="leitor" somenteLeitura />);
+    await userEvent.click(
+      await screen.findByRole("button", { name: /ver como se configura/i }),
+    );
+
+    expect(await screen.findByText("/dados")).toBeTruthy();
+    expect(screen.queryByText(/não tem pasta autorizada/i)).toBeNull();
+    expect(screen.getByRole("status").textContent).toContain("1 pasta");
+    expect(screen.getByRole("status").textContent).toContain("PC da loja");
+  });
+
   it("não oferece ativar, e diz por quê", async () => {
     mockRotas(COM_POLITICA);
 

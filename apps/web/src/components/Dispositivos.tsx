@@ -25,6 +25,14 @@ import {
 interface Props {
   /** Papel de quem está olhando: só quem administra parea e revoga. */
   papel: string;
+  /**
+   * Sessão da demonstração pública: o servidor recusa qualquer escrita.
+   *
+   * "Ver pastas autorizadas" parece leitura e não é: a rota é `POST`, porque
+   * manda um comando pelo canal até o computador. Nesta sessão ela responde
+   * 403 — então o botão sai, em vez de existir só para falhar.
+   */
+  somenteLeitura?: boolean;
 }
 
 const ADMINISTRAM = new Set(["dono", "administrador"]);
@@ -50,7 +58,7 @@ const INTERVALO_PRESENCA_MS = 10_000;
  * dado na própria máquina. A tela mostra o que foi autorizado e diz onde
  * autorizar mais.
  */
-export default function Dispositivos({ papel }: Props) {
+export default function Dispositivos({ papel, somenteLeitura = false }: Props) {
   const [dispositivos, setDispositivos] = useState<Dispositivo[]>([]);
   // Lista vazia e "ainda nao perguntei" nao sao a mesma coisa. Sem esta
   // marca, a tela afirmava "Nenhuma maquina pareada ainda" no intervalo
@@ -70,8 +78,8 @@ export default function Dispositivos({ papel }: Props) {
   // onde comecou.
   const voltar = destinoDeVolta(useCaminho());
 
-  const administra = ADMINISTRAM.has(papel);
-  const opera = OPERAM.has(papel);
+  const administra = ADMINISTRAM.has(papel) && !somenteLeitura;
+  const opera = OPERAM.has(papel) && !somenteLeitura;
 
   const carregar = useCallback(async () => {
     try {
@@ -209,6 +217,15 @@ export default function Dispositivos({ papel }: Props) {
         </p>
       )}
 
+      {somenteLeitura && dispositivos.length > 0 && (
+        <p className="mt-4 text-[0.8rem] text-muted">
+          Esta máquina pertence ao ambiente do projeto e roda os backups desta
+          demonstração no horário. Ela foi pareada pelo mesmo código temporário
+          que qualquer cliente usaria, e autorizou as pastas no próprio
+          computador — nenhuma tela concede acesso a disco.
+        </p>
+      )}
+
       <ul className="mt-4 flex flex-col gap-3">
         {dispositivos.map((item) => {
           const online = conectados[item.id] === true;
@@ -273,7 +290,7 @@ export default function Dispositivos({ papel }: Props) {
               )}
 
               <div className="mt-3 flex flex-wrap gap-2">
-                {emServico && (
+                {emServico && !somenteLeitura && (
                   <button
                     type="button"
                     onClick={() => void consultar(item.id)}

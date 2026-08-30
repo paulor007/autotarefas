@@ -374,3 +374,54 @@ describe("voltar de onde se veio", () => {
     expect(screen.queryByText(/Voltar para a configuração/i)).toBeNull();
   });
 });
+
+/**
+ * As maquinas na demonstracao publica.
+ *
+ * "Ver pastas autorizadas" parece leitura e nao e: a rota e `POST`, porque
+ * manda um comando pelo canal ate o computador. Numa sessao publica ela
+ * responde 403 — e um botao que so sabe falhar e um botao sem funcao.
+ */
+describe("Dispositivos na demonstracao publica", () => {
+  it("nao oferece o botao que responderia 403", async () => {
+    mockRotas({
+      "/api/dispositivos": { corpo: { dispositivos: [DISPOSITIVO] } },
+      "/api/agente/conectados": {
+        corpo: {
+          conectados: [
+            { dispositivo_id: "d1", nome: "PC da loja", conectado: true, desde: "" },
+          ],
+          total_conectados: 1,
+        },
+      },
+    });
+
+    render(<Dispositivos papel="leitor" somenteLeitura />);
+
+    await waitFor(() => {
+      expect(screen.getByText("PC da loja")).toBeTruthy();
+    });
+    expect(
+      screen.queryByRole("button", { name: /ver pastas autorizadas/i }),
+    ).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: /executar backup agora/i }),
+    ).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: /parear nova máquina/i }),
+    ).toBeNull();
+  });
+
+  it("explica de quem e a maquina, em vez de deixar o cartao mudo", async () => {
+    mockRotas({
+      "/api/dispositivos": { corpo: { dispositivos: [DISPOSITIVO] } },
+      "/api/agente/conectados": { corpo: { conectados: [], total_conectados: 0 } },
+    });
+
+    render(<Dispositivos papel="leitor" somenteLeitura />);
+
+    expect(
+      await screen.findByText(/pertence ao ambiente do projeto/i),
+    ).toBeTruthy();
+  });
+});

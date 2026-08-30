@@ -85,7 +85,7 @@ function Secao({
     case "backups":
       return <Politicas papel={papel} somenteLeitura={somenteLeitura} />;
     case "dispositivos":
-      return <Dispositivos papel={papel} />;
+      return <Dispositivos papel={papel} somenteLeitura={somenteLeitura} />;
     case "atividade":
       return <Atividade />;
     case "configuracoes":

@@ -206,6 +206,9 @@ export default function Politicas({ papel, somenteLeitura = false }: Props) {
       {abrindo && (administra || explora) && (
         <AssistenteDeBackup
           somenteLeitura={explora}
+          origensConhecidas={[
+            ...new Set((politicas ?? []).flatMap((item) => item.configuracao.origens)),
+          ]}
           mensagemDe={mensagemDe}
           dispositivos={dispositivos}
           aoSalvar={async (resultado) => {
@@ -280,11 +283,14 @@ export default function Politicas({ papel, somenteLeitura = false }: Props) {
               </div>
             </div>
 
+            {/* Sem "ou a nuvem" na frase abaixo. Ela mandava para um destino
+                que o servidor recusa no agendamento — conselho que vira erro
+                quando seguido e a pior forma de ajudar. */}
             {!item.protege_de_verdade && (
               <p className="mt-2 text-[0.8rem] text-signal">
                 O pacote fica só nesta máquina. Isso não protege contra o disco
-                morrer nem contra ransomware — escolha um disco externo, uma
-                pasta de rede ou a nuvem para ter backup de verdade.
+                morrer nem contra ransomware — escolha um disco externo ou uma
+                pasta de rede para ter backup de verdade.
               </p>
             )}
             {item.configuracao.agendamento.tipo === "desligado" && (
