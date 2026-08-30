@@ -57,7 +57,16 @@ class Servico:
         """
         comecou = agora_iso()
         try:
-            ficha = await executar_politica(item.politica, self.local.carregar())
+            # A identidade da politica viaja junto: e ela que define em qual
+            # pasta o pacote cai, e portanto quais pacotes a retencao desta
+            # politica pode alcancar. Sem isso, duas politicas nesta maquina
+            # dividiriam o mesmo monte e apagariam pacote uma da outra.
+            ficha = await executar_politica(
+                item.politica,
+                self.local.carregar(),
+                politica_id=item.id,
+                politica_nome=item.nome,
+            )
         except Exception as erro:
             self._anotar(item, comecou, {"ok": False, "erro": f"{type(erro).__name__}: {erro}"})
             raise

@@ -24,6 +24,7 @@ from pathlib import Path
 
 from autotarefas.tasks.retencao_nomes import data_do_nome, listar_datados
 
+from . import pastas as mod_pastas
 from .backup import PASTA_PADRAO
 from .config import Configuracao
 
@@ -40,6 +41,10 @@ class Pacote:
     tamanho_bytes: int
     criado_em: str
     caminho: Path
+    #: De qual politica este pacote e. Vazio = avulso, sem politica.
+    politica_id: str = ""
+    #: Nome da politica, lido do marcador que fica ao lado dos pacotes.
+    politica_nome: str = ""
 
     def como_dicionario(self) -> dict[str, object]:
         """
@@ -52,6 +57,13 @@ class Pacote:
             "nome": self.nome,
             "tamanho_bytes": self.tamanho_bytes,
             "criado_em": self.criado_em,
+            # De quem e o pacote. Sem isto, a tela de restauracao mostra um
+            # monte de pacotes de politicas diferentes com a mesma cara, e
+            # quem restaura escolhe pela data — que e a informacao que menos
+            # distingue um "diario da contabilidade" de um "mensal do
+            # juridico".
+            "politica_id": self.politica_id,
+            "politica_nome": self.politica_nome,
         }
 
 
@@ -80,29 +92,49 @@ def nome_valido(nome: str) -> bool:
     return data_do_nome(nome) is not None
 
 
+def _pastas_a_varrer(raiz: Path) -> list[Path]:
+    """
+    A raiz e a pasta de cada politica.
+
+    A raiz continua entrando porque o backup avulso mora la, e porque os
+    pacotes gerados antes de existir pasta por politica tambem estao la — eles
+    nao tem como ser atribuidos a ninguem agora (essa era exatamente a
+    informacao que faltava), e some-los da lista seria fazer sumir backup que
+    existe.
+    """
+    return [raiz, *mod_pastas.pastas_de_politica(raiz)]
+
+
 def listar(configuracao: Configuracao) -> list[Pacote]:
     """Pacotes desta maquina, do mais novo para o mais velho."""
-    pasta = pasta_dos_pacotes(configuracao)
-    if pasta is None:
+    raiz = pasta_dos_pacotes(configuracao)
+    if raiz is None:
         return []
 
     encontrados: list[Pacote] = []
-    for quando, caminho in listar_datados(pasta):
-        try:
-            tamanho = caminho.stat().st_size
-        except OSError:
-            # Arquivo que sumiu entre listar e medir. Nao mostrar e melhor do
-            # que mostrar um pacote que a restauracao nao vai encontrar.
-            continue
-        encontrados.append(
-            Pacote(
-                nome=caminho.name,
-                tamanho_bytes=tamanho,
-                criado_em=_iso(quando),
-                caminho=caminho,
+    for pasta in _pastas_a_varrer(raiz):
+        politica_id = mod_pastas.identificador_da_pasta(pasta)
+        politica_nome = mod_pastas.nome_marcado(pasta) if politica_id else ""
+        for quando, caminho in listar_datados(pasta):
+            try:
+                tamanho = caminho.stat().st_size
+            except OSError:
+                # Arquivo que sumiu entre listar e medir. Nao mostrar e melhor
+                # do que mostrar um pacote que a restauracao nao vai encontrar.
+                continue
+            encontrados.append(
+                Pacote(
+                    nome=caminho.name,
+                    tamanho_bytes=tamanho,
+                    criado_em=_iso(quando),
+                    caminho=caminho,
+                    politica_id=politica_id,
+                    politica_nome=politica_nome,
+                )
             )
-        )
-    return encontrados
+    # Ordenado no fim, e nao por pasta: a tela mostra uma linha do tempo da
+    # maquina, e nao um agrupamento por pasta que ninguem pediu.
+    return sorted(encontrados, key=lambda item: item.criado_em, reverse=True)
 
 
 def achar(configuracao: Configuracao, nome: str) -> Path:
@@ -116,16 +148,21 @@ def achar(configuracao: Configuracao, nome: str) -> Path:
         msg = f"'{nome}' nao e um nome de pacote do AutoTarefas"
         raise PacoteDesconhecido(msg)
 
-    pasta = pasta_dos_pacotes(configuracao)
-    if pasta is None:
+    raiz = pasta_dos_pacotes(configuracao)
+    if raiz is None:
         msg = "nenhuma pasta autorizada nesta maquina, entao nao ha pacotes"
         raise PacoteDesconhecido(msg)
 
-    caminho = pasta / nome
-    if not caminho.is_file():
-        msg = f"nao ha pacote chamado '{nome}' nesta maquina"
-        raise PacoteDesconhecido(msg)
-    return caminho
+    # Procura na raiz e nas pastas de politica. O nome ja foi conferido acima,
+    # entao ele nao sai daqui: `nome_valido` recusa separador e `..`, e as
+    # pastas varridas sao as que este Agente mesmo montou.
+    for pasta in _pastas_a_varrer(raiz):
+        caminho = pasta / nome
+        if caminho.is_file():
+            return caminho
+
+    msg = f"nao ha pacote chamado '{nome}' nesta maquina"
+    raise PacoteDesconhecido(msg)
 
 
 def corrente(pacote: Path) -> list[Path]:

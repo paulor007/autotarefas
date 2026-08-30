@@ -214,3 +214,248 @@ class TestIncrementalNaPolitica:
         # A chave e o campo existir e ser um numero: a sincronizacao rodou.
         assert "catalogo_esquecidos" in segunda
         assert isinstance(segunda["catalogo_esquecidos"], int)
+
+
+def _envelhecer(configuracao: Configuracao, politica_id: str, pacote: str, para: str) -> Path:
+    """
+    Faz um pacote recem-criado parecer antigo, renomeando-o.
+
+    A data vem do NOME — e nao da data de modificacao do arquivo —, entao esta
+    e a forma honesta de simular a passagem do tempo: e exatamente o que a
+    retencao vai ler.
+    """
+    raiz = Path(configuracao.raizes[0]).parent / backup_agente.PASTA_PADRAO
+    de = raiz / f"politica-{politica_id}" / pacote
+    alvo = de.with_name(f"backup_{para}.zip")
+    de.rename(alvo)
+    return alvo
+
+
+class TestDuasPoliticasNaMesmaMaquina:
+    """
+    O defeito que este bloco fixa apagava dado do cliente, em silencio.
+
+    Todas as politicas de uma maquina gravavam na mesma pasta. A retencao
+    varre a pasta e decide o que sobra — entao a politica "diario / 7 dias",
+    ao rodar, olhava tambem os pacotes da politica "mensal / 12 meses" e
+    apagava os que tinham mais de sete dias. Regra cumprida a risca, sobre
+    arquivos que nao eram dela.
+
+    Do lado do cliente: configurou doze meses de historico, recebeu sete dias.
+    Sem erro, sem aviso, e sem nada no log que explicasse a falta. Descoberto
+    no dia da restauracao, que e o pior dia possivel.
+    """
+
+    def politica(self, pasta: Path, **extras: object) -> Politica:
+        return Politica(origens=[str(pasta)], **extras)  # type: ignore[arg-type]
+
+    def test_cada_politica_grava_na_propria_pasta(
+        self, autorizada: tuple[Configuracao, Path]
+    ) -> None:
+        configuracao, pasta = autorizada
+
+        primeira = asyncio.run(
+            backup_agente.executar_politica(
+                self.politica(pasta), configuracao, politica_id="p1", politica_nome="Diaria"
+            )
+        )
+        segunda = asyncio.run(
+            backup_agente.executar_politica(
+                self.politica(pasta), configuracao, politica_id="p2", politica_nome="Mensal"
+            )
+        )
+
+        raiz = Path(configuracao.raizes[0]).parent / backup_agente.PASTA_PADRAO
+        assert (raiz / "politica-p1" / primeira["pacote"]).is_file()
+        assert (raiz / "politica-p2" / segunda["pacote"]).is_file()
+
+    def test_a_retencao_de_uma_nao_alcanca_o_pacote_da_outra(
+        self, autorizada: tuple[Configuracao, Path]
+    ) -> None:
+        """
+        O teste que reproduz o estrago: o mensal do ano passado sobrevive a
+        uma diaria de um dia rodando na mesma maquina.
+        """
+        configuracao, pasta = autorizada
+
+        # O pacote do "mensal" e criado pelo PRODUTO, e nao escrito a mao num
+        # caminho que o teste inventou. E o que faz este teste valer: se
+        # alguem tirar a pasta por politica, os dois pacotes voltam a cair no
+        # mesmo lugar e a diaria volta a apagar o mensal — que e o defeito.
+        do_mensal = asyncio.run(
+            backup_agente.executar_politica(
+                self.politica(pasta, retencao=Retencao(diarias=0, semanais=0, mensais=12)),
+                configuracao,
+                politica_id="mensal",
+                politica_nome="Mensal 12 meses",
+            )
+        )
+        antigo = _envelhecer(configuracao, "mensal", do_mensal["pacote"], "2025-01-15_2100")
+
+        asyncio.run(
+            backup_agente.executar_politica(
+                self.politica(pasta, retencao=Retencao(diarias=1, semanais=0, mensais=0)),
+                configuracao,
+                politica_id="diaria",
+                politica_nome="Diaria 7 dias",
+            )
+        )
+
+        assert antigo.is_file(), "a retencao da diaria apagou o pacote do mensal — o defeito voltou"
+
+    def test_o_marcador_diz_de_quem_e_a_pasta(self, autorizada: tuple[Configuracao, Path]) -> None:
+        """Quem abre o disco daqui a um ano nao tem servidor a mao."""
+        from apps.agente.agente import pastas as mod_pastas
+
+        configuracao, pasta = autorizada
+        asyncio.run(
+            backup_agente.executar_politica(
+                self.politica(pasta),
+                configuracao,
+                politica_id="p1",
+                politica_nome="Backup diario 03:00",
+            )
+        )
+
+        raiz = Path(configuracao.raizes[0]).parent / backup_agente.PASTA_PADRAO
+        da_politica = raiz / "politica-p1"
+        assert mod_pastas.nome_marcado(da_politica) == "Backup diario 03:00"
+        assert mod_pastas.identificador_da_pasta(da_politica) == "p1"
+
+    def test_o_catalogo_do_incremental_tambem_e_separado(
+        self, autorizada: tuple[Configuracao, Path]
+    ) -> None:
+        """
+        A outra metade do mesmo defeito, por outro caminho.
+
+        O catalogo mora ao lado dos pacotes. Compartilhado, a segunda politica
+        "copiava so o que mudou" em relacao ao pacote da primeira — que cobre
+        outras pastas. A corrente resultante nunca esteve completa, e isso so
+        apareceria no dia da restauracao.
+        """
+        from autotarefas.tasks import catalogo as mod_catalogo
+
+        configuracao, pasta = autorizada
+        for identificador in ("p1", "p2"):
+            asyncio.run(
+                backup_agente.executar_politica(
+                    self.politica(pasta, incremental=True),
+                    configuracao,
+                    politica_id=identificador,
+                    politica_nome=identificador,
+                )
+            )
+
+        raiz = Path(configuracao.raizes[0]).parent / backup_agente.PASTA_PADRAO
+        assert (raiz / "politica-p1" / mod_catalogo.NOME).is_file()
+        assert (raiz / "politica-p2" / mod_catalogo.NOME).is_file()
+        assert not (raiz / mod_catalogo.NOME).exists()
+
+    def test_o_backup_avulso_continua_na_raiz(self, autorizada: tuple[Configuracao, Path]) -> None:
+        """
+        Sem politica, sem pasta de politica.
+
+        Inventar um dono para o avulso faria a retencao de alguma politica
+        passar a alcanca-lo.
+        """
+        configuracao, pasta = autorizada
+
+        ficha = asyncio.run(backup_agente.executar_politica(self.politica(pasta), configuracao))
+
+        raiz = Path(configuracao.raizes[0]).parent / backup_agente.PASTA_PADRAO
+        assert (raiz / ficha["pacote"]).is_file()
+
+
+class TestARetencaoNoDestinoExterno:
+    """
+    A retencao tambem precisa valer onde a copia de verdade esta.
+
+    Ela rodava so na pasta local. O disco externo e a pasta de rede acumulavam
+    para sempre — ate encher, e a partir dai TODO backup daquela politica
+    falhava por falta de espaco, com a mensagem certa e a causa escondida tres
+    meses atras.
+
+    Havia um segundo estrago, mais silencioso: a promessa "guardo doze meses"
+    so era cumprida no lugar que nao protege contra nada, enquanto o destino
+    que de fato protege guardava tudo, inclusive o que a regra mandava apagar.
+    """
+
+    def test_o_destino_externo_e_faxinado_pela_mesma_regra(
+        self, autorizada: tuple[Configuracao, Path], tmp_path: Path
+    ) -> None:
+        configuracao, pasta = autorizada
+        fora = tmp_path / "disco-externo"
+        politica = Politica(
+            origens=[str(pasta)],
+            destino=Destino(tipo=TipoDeDestino.LOCAL, caminho=str(fora)),
+            retencao=Retencao(diarias=1, semanais=0, mensais=0),
+        )
+
+        primeira = asyncio.run(
+            backup_agente.executar_politica(
+                politica, configuracao, politica_id="p1", politica_nome="Diaria"
+            )
+        )
+        # O pacote de ontem, no destino, que a regra de uma diaria manda ir.
+        antigo = fora / "politica-p1" / "backup_2020-01-01_0200.zip"
+        antigo.write_bytes(b"pacote antigo no destino")
+
+        segunda = asyncio.run(
+            backup_agente.executar_politica(
+                politica, configuracao, politica_id="p1", politica_nome="Diaria"
+            )
+        )
+
+        assert primeira["ok"] is True
+        assert "retencao_no_destino" in segunda
+        assert not antigo.exists(), "o destino externo acumularia para sempre"
+
+    def test_a_copia_recem_entregue_sobrevive_a_faxina_do_destino(
+        self, autorizada: tuple[Configuracao, Path], tmp_path: Path
+    ) -> None:
+        """Entregar e apagar em seguida seria o desfecho mais absurdo possivel."""
+        configuracao, pasta = autorizada
+        fora = tmp_path / "disco-externo"
+        politica = Politica(
+            origens=[str(pasta)],
+            destino=Destino(tipo=TipoDeDestino.LOCAL, caminho=str(fora)),
+            retencao=Retencao(diarias=1, semanais=0, mensais=0),
+        )
+
+        ficha = asyncio.run(
+            backup_agente.executar_politica(
+                politica, configuracao, politica_id="p1", politica_nome="Diaria"
+            )
+        )
+
+        assert (fora / "politica-p1" / ficha["pacote"]).is_file()
+
+    def test_cada_politica_entrega_na_propria_pasta_do_destino(
+        self, autorizada: tuple[Configuracao, Path], tmp_path: Path
+    ) -> None:
+        """
+        Sem isto, a faxina que acabou de nascer apagaria pacote da politica
+        errada — no unico lugar onde a copia realmente protege.
+        """
+        configuracao, pasta = autorizada
+        fora = tmp_path / "disco-externo"
+
+        def politica_para(caminho: Path) -> Politica:
+            return Politica(
+                origens=[str(pasta)],
+                destino=Destino(tipo=TipoDeDestino.LOCAL, caminho=str(caminho)),
+            )
+
+        primeira = asyncio.run(
+            backup_agente.executar_politica(
+                politica_para(fora), configuracao, politica_id="p1", politica_nome="A"
+            )
+        )
+        segunda = asyncio.run(
+            backup_agente.executar_politica(
+                politica_para(fora), configuracao, politica_id="p2", politica_nome="B"
+            )
+        )
+
+        assert (fora / "politica-p1" / primeira["pacote"]).is_file()
+        assert (fora / "politica-p2" / segunda["pacote"]).is_file()

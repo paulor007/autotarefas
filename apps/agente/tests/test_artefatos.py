@@ -121,7 +121,15 @@ class TestListagem:
 
         ficha = artefatos.listar(configuracao)[0].como_dicionario()
 
-        assert set(ficha) == {"nome", "tamanho_bytes", "criado_em"}
+        assert set(ficha) == {
+            "nome",
+            "tamanho_bytes",
+            "criado_em",
+            # De qual politica o pacote e. Nao e caminho: e o identificador
+            # que o servidor ja conhece, porque foi ele que o criou.
+            "politica_id",
+            "politica_nome",
+        }
         assert str(pacotes) not in str(ficha)
 
     def test_sem_pasta_autorizada_nao_ha_pacote(self) -> None:
@@ -228,3 +236,109 @@ class TestCorrente:
         primeiro.unlink()
 
         assert artefatos.corrente(segundo) == []
+
+
+class TestPacotesDentroDaPastaDaPolitica:
+    """
+    Os pacotes deixaram de morar num monte so, e a restauracao tinha que
+    acompanhar.
+
+    Quando cada politica passou a ter a propria pasta, a varredura que so
+    olhava a raiz parou de achar qualquer coisa: a tela de restauracao ficaria
+    vazia com o disco cheio de backup. Pior tipo de defeito — o produto
+    afirmando que nao ha o que restaurar.
+    """
+
+    def _na_politica(self, pacotes: Path, politica_id: str, nome: str) -> Path:
+        from apps.agente.agente import pastas as mod_pastas
+
+        pasta = mod_pastas.pasta_da_politica(pacotes, politica_id)
+        pasta.mkdir(parents=True, exist_ok=True)
+        mod_pastas.marcar(pasta, politica_id=politica_id, nome=f"Politica {politica_id}")
+        return _pacote(pasta, nome)
+
+    def test_a_listagem_acha_os_pacotes_de_cada_politica(
+        self, maquina: tuple[Configuracao, Path]
+    ) -> None:
+        configuracao, pacotes = maquina
+        self._na_politica(pacotes, "p1", "backup_2026-08-25_0200.zip")
+        self._na_politica(pacotes, "p2", "backup_2026-08-26_0300.zip")
+
+        achados = artefatos.listar(configuracao)
+
+        assert {item.nome for item in achados} == {
+            "backup_2026-08-25_0200.zip",
+            "backup_2026-08-26_0300.zip",
+        }
+
+    def test_cada_pacote_diz_de_quem_e(self, maquina: tuple[Configuracao, Path]) -> None:
+        """
+        Sem o dono, a tela mostra uma pilha de pacotes com a mesma cara e quem
+        restaura escolhe pela data — que e justamente o que menos distingue um
+        "diario da contabilidade" de um "mensal do juridico".
+        """
+        configuracao, pacotes = maquina
+        self._na_politica(pacotes, "p1", "backup_2026-08-25_0200.zip")
+
+        achado = artefatos.listar(configuracao)[0]
+
+        assert achado.politica_id == "p1"
+        assert achado.politica_nome == "Politica p1"
+
+    def test_o_avulso_da_raiz_continua_aparecendo_e_sem_dono(
+        self, maquina: tuple[Configuracao, Path]
+    ) -> None:
+        """
+        Sumir com backup que existe seria pior do que a bagunca que havia.
+
+        Os pacotes gerados antes de existir pasta por politica estao na raiz e
+        nao tem como ser atribuidos agora — era exatamente essa informacao que
+        faltava. Eles ficam, sem dono, e nenhuma retencao de politica os
+        alcanca.
+        """
+        configuracao, pacotes = maquina
+        _pacote(pacotes, "backup_2026-08-20_0100.zip")
+        self._na_politica(pacotes, "p1", "backup_2026-08-25_0200.zip")
+
+        achados = artefatos.listar(configuracao)
+        avulso = next(item for item in achados if item.nome == "backup_2026-08-20_0100.zip")
+
+        assert len(achados) == 2
+        assert avulso.politica_id == ""
+
+    def test_a_lista_e_uma_linha_do_tempo_e_nao_um_agrupamento(
+        self, maquina: tuple[Configuracao, Path]
+    ) -> None:
+        configuracao, pacotes = maquina
+        self._na_politica(pacotes, "p1", "backup_2026-08-20_0200.zip")
+        self._na_politica(pacotes, "p2", "backup_2026-08-26_0300.zip")
+        _pacote(pacotes, "backup_2026-08-23_0100.zip")
+
+        nomes = [item.nome for item in artefatos.listar(configuracao)]
+
+        assert nomes == [
+            "backup_2026-08-26_0300.zip",
+            "backup_2026-08-23_0100.zip",
+            "backup_2026-08-20_0200.zip",
+        ]
+
+    def test_achar_encontra_o_pacote_dentro_da_pasta_da_politica(
+        self, maquina: tuple[Configuracao, Path]
+    ) -> None:
+        configuracao, pacotes = maquina
+        esperado = self._na_politica(pacotes, "p1", "backup_2026-08-25_0200.zip")
+
+        assert artefatos.achar(configuracao, "backup_2026-08-25_0200.zip") == esperado
+
+    def test_travessia_continua_recusada_com_as_pastas_novas(
+        self, maquina: tuple[Configuracao, Path]
+    ) -> None:
+        """
+        Mais pastas varridas nao pode virar mais superficie de ataque.
+
+        O nome e conferido antes de virar caminho, e continua sendo.
+        """
+        configuracao, _ = maquina
+
+        with pytest.raises(artefatos.PacoteDesconhecido):
+            artefatos.achar(configuracao, "../../backup_2026-08-25_0200.zip")

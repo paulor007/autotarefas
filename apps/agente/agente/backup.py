@@ -31,6 +31,7 @@ from autotarefas.tasks.politica import Politica as PoliticaDoNucleo
 from autotarefas.tasks.politica import TipoDeDestino as TipoDeDestinoDaPolitica
 
 from . import destinos as mod_destinos
+from . import pastas as mod_pastas
 from . import raizes, vss
 from . import s3 as mod_s3
 from .comandos import Contexto
@@ -63,6 +64,14 @@ class Pedido:
     destino_s3: mod_s3.Credencial | None = None
     #: Copiar so o que mudou, com catalogo ao lado dos pacotes.
     incremental: bool = False
+    #: De qual politica veio este backup. Vazio = avulso.
+    #:
+    #: Nao e etiqueta: e o que separa os pacotes em pastas, e portanto o que
+    #: impede a retencao de uma politica de apagar o pacote de outra. Ver
+    #: `pastas.py`.
+    politica_id: str = ""
+    #: Nome da politica, so para o marcador que fica no disco.
+    politica_nome: str = ""
 
 
 def _destino_padrao(configuracao_raizes: tuple[str, ...]) -> Path:
@@ -103,6 +112,16 @@ def montar_pedido(parametros: dict[str, Any], contexto: Contexto) -> Pedido:
     destino_bruto = parametros.get("destino")
     destino = Path(str(destino_bruto)) if destino_bruto else _destino_padrao(configuracao.raizes)
 
+    politica_id = str(parametros.get("politica_id") or "")
+    if politica_id and not mod_pastas.identificador_valido(politica_id):
+        # Recusa, e nao "ignora e grava na raiz". Gravar na raiz devolveria
+        # exatamente o defeito que a pasta por politica existe para corrigir:
+        # a retencao de uma politica alcancando o pacote de outra.
+        msg = f"identificador de politica invalido: {politica_id!r}"
+        raise BackupRecusado(msg)
+    if politica_id and destino.suffix.lower() != ".zip":
+        destino = mod_pastas.pasta_da_politica(destino, politica_id)
+
     return Pedido(
         origens=tuple(origens),
         destino=destino,
@@ -120,6 +139,8 @@ def montar_pedido(parametros: dict[str, Any], contexto: Contexto) -> Pedido:
         ),
         destino_s3=_credencial_s3(parametros.get("s3")),
         incremental=bool(parametros.get("incremental", False)),
+        politica_id=politica_id,
+        politica_nome=str(parametros.get("politica_nome") or ""),
     )
 
 
@@ -170,6 +191,9 @@ def executar(pedido: Pedido) -> dict[str, Any]:
     """
     alvo = _nome_do_pacote(pedido)
     alvo.parent.mkdir(parents=True, exist_ok=True)
+    # Quem abrir esta pasta daqui a um ano precisa saber de quem sao os
+    # pacotes sem ter o servidor a mao.
+    mod_pastas.marcar(alvo.parent, politica_id=pedido.politica_id, nome=pedido.politica_nome)
 
     catalogo = None
     if pedido.incremental:
@@ -302,9 +326,14 @@ def _preparar_destino(pedido: Pedido) -> mod_destinos.Destino | None:
     """
     if pedido.destino_externo is None:
         return None
+    # A copia externa e um artefato como o pacote local, e precisa do mesmo
+    # dono. Sem a subpasta, duas politicas entregando no mesmo disco externo
+    # voltariam a formar um monte sem dono — e a retencao la, que passa a
+    # existir logo abaixo, apagaria o pacote da politica errada.
+    onde = mod_pastas.pasta_da_politica(pedido.destino_externo, pedido.politica_id)
     try:
         return mod_destinos.preparar(
-            pedido.destino_externo,
+            onde,
             tipo_declarado=pedido.tipo_do_destino,
             origens=pedido.origens,
         )
@@ -316,6 +345,9 @@ async def executar_politica(
     politica: PoliticaDoNucleo,
     configuracao: Configuracao,
     relatar: Any = None,
+    *,
+    politica_id: str = "",
+    politica_nome: str = "",
 ) -> dict[str, Any]:
     """
     Traduz uma politica em um backup, executa e aplica a retencao.
@@ -326,6 +358,12 @@ async def executar_politica(
 
     Falha na retencao vira ressalva, e nao falha: o pacote existe; o que nao
     deu certo foi a faxina.
+
+    `politica_id` diz de quem sao os pacotes. Sem ele, todas as politicas da
+    maquina gravavam no mesmo monte, e a retencao de uma apagava o pacote da
+    outra por cumprir a regra errada — ver `pastas.py`. Continua opcional
+    porque um backup sem politica existe (o "executar agora" avulso), e nesse
+    caso a pasta e a raiz.
     """
     from . import retencao as mod_retencao
 
@@ -333,6 +371,8 @@ async def executar_politica(
         "origens": list(politica.origens),
         "usar_vss": politica.usar_vss,
         "incremental": politica.incremental,
+        "politica_id": politica_id,
+        "politica_nome": politica_nome,
     }
     if politica.destino.tipo in {
         TipoDeDestinoDaPolitica.LOCAL,
@@ -369,6 +409,28 @@ async def executar_politica(
     pasta = _pasta_dos_pacotes(pedido)
     limpeza = await asyncio.to_thread(mod_retencao.aplicar, pasta, politica.retencao)
     ficha["retencao"] = limpeza
+
+    # A retencao tambem vale onde a copia de verdade esta.
+    #
+    # Antes ela rodava so na pasta local. O disco externo e a pasta de rede
+    # acumulavam para sempre — ate encher, e a partir dai todo backup falhava
+    # por falta de espaco. Pior: a promessa "guardo doze meses" so era cumprida
+    # no lugar que nao protege contra nada, enquanto o destino que protege
+    # guardava tudo, inclusive o que a regra mandava apagar.
+    #
+    # A varredura la e a mesma daqui: so entra o que tem o nome que este
+    # produto gera, e so dentro da pasta desta politica.
+    if pedido.destino_externo is not None:
+        fora = mod_pastas.pasta_da_politica(pedido.destino_externo, pedido.politica_id)
+        limpeza_fora = await asyncio.to_thread(mod_retencao.aplicar, fora, politica.retencao)
+        ficha["retencao_no_destino"] = limpeza_fora
+        # A ressalva mais adiante soma os dois lados: um pacote que nao pode
+        # ser apagado no disco externo e tao "nao removido" quanto um daqui.
+        limpeza = {
+            "guardados": limpeza["guardados"],
+            "removidos": limpeza["removidos"],
+            "nao_removidos": limpeza["nao_removidos"] + limpeza_fora["nao_removidos"],
+        }
 
     if politica.incremental:
         # Depois da retencao, e nao antes: o catalogo tem que esquecer os

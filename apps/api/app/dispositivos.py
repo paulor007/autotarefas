@@ -421,6 +421,23 @@ class PedidoDeBackup(BaseModel):
     politica_id: str = ""
 
 
+def _politica_citada(sessao: Session, contexto: repo.Contexto, politica_id: str) -> Any:
+    """
+    O registro da politica citada, se ela for desta organizacao.
+
+    Existe separado de `_politica_da_organizacao` porque o pedido precisa de
+    duas coisas dela: o id, que vira a pasta dos pacotes na maquina, e o nome,
+    que vira o marcador dentro dessa pasta.
+    """
+    if not politica_id:
+        return None
+    from .politicas import Politica as RegistroDePolitica
+
+    return sessao.execute(
+        repo.escopo(RegistroDePolitica, contexto).where(RegistroDePolitica.id == politica_id)
+    ).scalar_one_or_none()
+
+
 def _politica_da_organizacao(
     sessao: Session, contexto: repo.Contexto, politica_id: str
 ) -> str | None:
@@ -437,17 +454,11 @@ def _politica_da_organizacao(
     nao existe politica de id "". O backup avulso — sem politica — morria
     assim, e o erro nao falava de politica nenhuma.
     """
-    if not politica_id:
-        return None
-    from .politicas import Politica as RegistroDePolitica
-
-    achada = sessao.execute(
-        repo.escopo(RegistroDePolitica, contexto).where(RegistroDePolitica.id == politica_id)
-    ).scalar_one_or_none()
-    return achada.id if achada is not None else None
+    achada = _politica_citada(sessao, contexto, politica_id)
+    return str(achada.id) if achada is not None else None
 
 
-def _parametros_do_backup(pedido: PedidoDeBackup) -> dict[str, Any]:
+def _parametros_do_backup(pedido: PedidoDeBackup, politica: Any = None) -> dict[str, Any]:
     """
     So o que foi realmente pedido.
 
@@ -462,6 +473,12 @@ def _parametros_do_backup(pedido: PedidoDeBackup) -> dict[str, Any]:
         "incremental": pedido.incremental,
         "destino_externo": pedido.destino_externo,
         "tipo_do_destino": pedido.tipo_do_destino,
+        # Vai para a maquina, e nao so para o banco: e o `politica_id` que
+        # decide em qual pasta o pacote cai. Sem ele, o "executar agora" de
+        # uma politica gravaria na raiz, fora do alcance da retencao dessa
+        # mesma politica — e o pacote ficaria la para sempre, sem dono.
+        "politica_id": str(politica.id) if politica is not None else "",
+        "politica_nome": str(politica.nome) if politica is not None else "",
     }
     return {chave: valor for chave, valor in escolhas.items() if valor}
 
@@ -500,10 +517,15 @@ async def executar_backup_agora(
             detail="este dispositivo foi revogado; pareie novamente para voltar a usar",
         )
 
+    # Conferida uma vez, usada nos dois lugares: na linha da execucao e no
+    # pedido que vai para a maquina. Mandar o id como veio deixaria o cliente
+    # escolher em que pasta do disco alheio o Agente escreve.
+    politica = _politica_citada(sessao, contexto, pedido.politica_id)
+
     execucao = Execucao(
         organizacao_id=contexto.organizacao_id,
         dispositivo_id=dispositivo_id,
-        politica_id=_politica_da_organizacao(sessao, contexto, pedido.politica_id),
+        politica_id=str(politica.id) if politica is not None else None,
         origem="manual",
         resultado=ResultadoExecucao.EM_ANDAMENTO,
     )
@@ -517,7 +539,7 @@ async def executar_backup_agora(
         dispositivo_id=dispositivo_id,
     )
 
-    parametros = _parametros_do_backup(pedido)
+    parametros = _parametros_do_backup(pedido, politica)
     if pedido.enviar_para_nuvem:
         try:
             parametros["s3"] = credencial_de_nuvem(sessao, contexto)

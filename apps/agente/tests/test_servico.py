@@ -164,7 +164,7 @@ class TestDiarioDeExecucoes:
     def test_execucao_bem_sucedida_vira_linha_no_diario(
         self, servico: Servico, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        async def fingir(_p: Politica, _c: Configuracao) -> dict[str, Any]:
+        async def fingir(_p: Politica, _c: Configuracao, **_extras: object) -> dict[str, Any]:
             return {
                 "ok": True,
                 "pacote": "backup_2026-08-25_0200.zip",
@@ -196,7 +196,7 @@ class TestDiarioDeExecucoes:
         acontecer — registrar nao pode virar engolir.
         """
 
-        async def explodir(_p: Politica, _c: Configuracao) -> dict[str, Any]:
+        async def explodir(_p: Politica, _c: Configuracao, **_extras: object) -> dict[str, Any]:
             msg = "disco externo desconectado"
             raise RuntimeError(msg)
 
@@ -221,7 +221,7 @@ class TestDiarioDeExecucoes:
         restaurar.
         """
 
-        async def com_ressalva(_p: Politica, _c: Configuracao) -> dict[str, Any]:
+        async def com_ressalva(_p: Politica, _c: Configuracao, **_extras: object) -> dict[str, Any]:
             return {
                 "ok": True,
                 "pacote": "backup_2026-08-25_0200.zip",
@@ -250,7 +250,7 @@ class TestDiarioDeExecucoes:
         diz se o problema foi um tropeco ou um disco que nao volta.
         """
 
-        async def explodir(_p: Politica, _c: Configuracao) -> dict[str, Any]:
+        async def explodir(_p: Politica, _c: Configuracao, **_extras: object) -> dict[str, Any]:
             msg = "disco externo desconectado"
             raise RuntimeError(msg)
 
