@@ -322,6 +322,19 @@ class Artefato(Base):
     localizacao: Mapped[str] = mapped_column(Text, nullable=False, default="")
     criado_em: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=agora)
 
+    #: Para onde este pacote foi entregue, e se a copia foi conferida la.
+    #:
+    #: JSON, como o Agente relatou: `[{"tipo": "s3", "destino": "...",
+    #: "conferido_no_destino": true, "objeto": "..."}]`. Vazio quando o pacote
+    #: ficou so na maquina.
+    #:
+    #: Era descartado. A conferencia no destino e a parte do produto que
+    #: sustenta a palavra "verificavel" — o pacote e lido de volta e o SHA-256
+    #: recalculado, porque rede que cai e cabo USB ruim produzem arquivos com o
+    #: tamanho certo e o conteudo errado. Fazer a conferencia e nao guardar o
+    #: resultado deixava a evidencia acontecer e desaparecer.
+    entregas: Mapped[str] = mapped_column(Text, nullable=False, default="")
+
     #: A politica pede destino na nuvem e este pacote ainda nao subiu.
     #:
     #: O agendamento roda offline de proposito; o envio para a nuvem precisa de

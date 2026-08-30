@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 
+import DetalheDaExecucao from "./DetalheDaExecucao";
 import { listarHistorico, type Execucao } from "../lib/plataforma";
 import { quando } from "../lib/datas";
 
@@ -29,6 +30,9 @@ const INTERVALO_MS = 30_000;
 export default function Historico({ dispositivoId = "" }: Props) {
   const [execucoes, setExecucoes] = useState<Execucao[] | null>(null);
   const [erro, setErro] = useState<string | null>(null);
+  // Qual execucao esta aberta. Uma so: abrir varias transformaria a lista
+  // numa parede de detalhes, e o valor dela e ser uma linha do tempo.
+  const [aberta, setAberta] = useState("");
 
   const carregar = useCallback(async () => {
     try {
@@ -115,6 +119,22 @@ export default function Historico({ dispositivoId = "" }: Props) {
                 </li>
               ))}
             </ul>
+          )}
+
+          {/* "Como eu sei?" e a pergunta seguinte a "aconteceu", e e ela que
+              decide se alguem confia. Fica atras de um clique porque a lista
+              existe para ser percorrida: a soma inteira e a trilha em cada
+              linha afogariam a linha do tempo. */}
+          <button
+            type="button"
+            onClick={() => setAberta((atual) => (atual === item.id ? "" : item.id))}
+            className="mt-2 text-[0.75rem] text-signal hover:underline"
+          >
+            {aberta === item.id ? "Fechar evidências" : "Ver evidências"}
+          </button>
+
+          {aberta === item.id && (
+            <DetalheDaExecucao execucaoId={item.id} aoFechar={() => setAberta("")} />
           )}
         </li>
       ))}

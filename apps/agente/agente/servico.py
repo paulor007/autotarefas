@@ -126,6 +126,12 @@ class Servico:
                 # caminho local do cliente: a estrutura de pastas da empresa
                 # não é assunto do servidor.
                 "localizacao": "dispositivo",
+                # A conferência no destino é a parte do produto que sustenta a
+                # palavra "verificável": o pacote é lido de volta e o SHA-256
+                # recalculado. Fazer isso e não contar deixava a evidência
+                # acontecer e desaparecer — e o backup do agendamento é
+                # justamente o que ninguém viu acontecer.
+                "entregas": ficha.get("entregas") or [],
             }
             if deu_certo and ficha.get("pacote")
             else None

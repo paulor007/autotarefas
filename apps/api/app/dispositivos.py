@@ -656,6 +656,23 @@ def _fechar(
     sessao.flush()
 
 
+def _entregas_como_json(brutas: Any) -> str:
+    """
+    As entregas que o Agente relatou, prontas para guardar.
+
+    Guardar isto e o que faz a conferencia no destino virar EVIDENCIA em vez de
+    um acontecimento que ninguem consegue mais consultar. Formato invalido vira
+    vazio: um campo de evidencia com lixo dentro e pior do que um campo vazio,
+    porque parece resposta.
+    """
+    import json
+
+    if not isinstance(brutas, list):
+        return ""
+    limpas = [item for item in brutas if isinstance(item, dict)]
+    return json.dumps(limpas, ensure_ascii=False) if limpas else ""
+
+
 def _registrar_pacote(
     sessao: Session,
     contexto: repo.Contexto,
@@ -688,6 +705,7 @@ def _registrar_pacote(
             # Onde o pacote esta, do ponto de vista do DISPOSITIVO. Nunca um
             # caminho do servidor, e nunca o caminho completo da maquina.
             localizacao="dispositivo",
+            entregas=_entregas_como_json(resposta.get("entregas")),
         )
     )
     sessao.flush()

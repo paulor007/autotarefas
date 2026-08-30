@@ -20,7 +20,7 @@ no meio do envio nao vira duas linhas no historico.
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query, status
@@ -29,7 +29,15 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .db import repositorio as repo
-from .db.models import Artefato, Dispositivo, Execucao, Politica, ResultadoExecucao, agora
+from .db.models import (
+    Artefato,
+    Dispositivo,
+    Execucao,
+    Politica,
+    ResultadoExecucao,
+    agora,
+    em_utc,
+)
 from .identidade.dependencias import ContextoAtual, SessaoBanco
 
 #: Quantas execucoes a tela pede por vez. O suficiente para caber uma semana de
@@ -79,6 +87,13 @@ def _politica_valida(sessao: Session, organizacao_id: str, politica_id: str) -> 
     if politica is None or politica.organizacao_id != organizacao_id:
         return None
     return politica.id
+
+
+def _entregas_como_json(brutas: Any) -> str:
+    """As entregas relatadas pelo Agente, prontas para guardar. Ver `dispositivos`."""
+    from .dispositivos import _entregas_como_json as converter
+
+    return converter(brutas)
 
 
 def registrar_do_agente(
@@ -139,9 +154,32 @@ def registrar_do_agente(
                     # maquina. Quem sobe e o servidor, pedindo ao Agente assim
                     # que houver canal — ver `nuvem.py`.
                     nuvem_pendente=bool(item.get("nuvem_pendente", False)),
+                    entregas=_entregas_como_json(ficha.get("entregas")),
                 )
             )
         sessao.flush()
+
+        # Uma linha por execucao, nomeando o PACOTE.
+        #
+        # A linha do lote, mais abaixo, diz que houve sincronizacao — util para
+        # quem audita o canal, e inutil para quem pergunta "o que prova que
+        # este backup de terca aconteceu?". Sem uma linha que nomeie o pacote,
+        # o detalhe da execucao so conseguia recortar a trilha por janela de
+        # tempo — e o horario da linha e o da SINCRONIZACAO, que pode ser dias
+        # depois da execucao numa maquina que ficou sem internet.
+        pacote = str(ficha.get("nome", "")) if isinstance(ficha, dict) else ""
+        contexto_do_dispositivo = repo.contexto_de_dispositivo(
+            sessao, dispositivo_id=dispositivo.id
+        )
+        repo.registrar(
+            sessao,
+            contexto_do_dispositivo,
+            acao="execucao.registrada",
+            alvo=pacote or str(item.get("politica_nome", ""))[:400],
+            detalhe=execucao.resultado.value,
+            dispositivo_id=dispositivo.id,
+        )
+
         _avisar_se_precisa(sessao, dispositivo, execucao)
         aceitos.append(identificador)
 
@@ -223,16 +261,37 @@ def _como_dicionario(execucao: Execucao, artefatos: list[Artefato]) -> dict[str,
         "arquivos": execucao.arquivos_incluidos,
         "bytes_copiados": execucao.bytes_copiados,
         "ressalva": execucao.ressalva,
-        "artefatos": [
-            {
-                "id": artefato.id,
-                "nome": artefato.nome,
-                "tamanho_bytes": artefato.tamanho_bytes,
-                "sha256": artefato.sha256,
-                "localizacao": artefato.localizacao,
-            }
-            for artefato in artefatos
-        ],
+        "artefatos": [_artefato_como_dicionario(item) for item in artefatos],
+    }
+
+
+def _artefato_como_dicionario(artefato: Artefato) -> dict[str, Any]:
+    """
+    A ficha do pacote, com o que prova onde ele está.
+
+    O nome e o tamanho dizem que algo foi produzido. O `sha256` e as entregas
+    conferidas dizem que o que foi produzido é o que está lá — que é a
+    diferença entre um backup e um arquivo com nome de backup.
+    """
+    import json
+
+    try:
+        entregas = json.loads(artefato.entregas) if artefato.entregas else []
+    except ValueError:
+        entregas = []
+
+    return {
+        "id": artefato.id,
+        "nome": artefato.nome,
+        "tamanho_bytes": artefato.tamanho_bytes,
+        "sha256": artefato.sha256,
+        "localizacao": artefato.localizacao,
+        # Para onde a cópia foi, e se foi conferida lá.
+        "entregas": entregas,
+        "nuvem_pendente": artefato.nuvem_pendente,
+        "nuvem_em": artefato.nuvem_em.isoformat() if artefato.nuvem_em else "",
+        "nuvem_chave": artefato.nuvem_chave,
+        "nuvem_erro": artefato.nuvem_erro,
     }
 
 
@@ -267,6 +326,134 @@ def historico_da_organizacao(
             )
 
     return {"execucoes": listar(sessao, contexto, dispositivo_id=dispositivo_id, limite=limite)}
+
+
+def detalhar(sessao: Session, contexto: repo.Contexto, execucao_id: str) -> dict[str, Any]:
+    """
+    Uma execução inteira, com o que a sustenta.
+
+    A lista do histórico responde "aconteceu". Esta rota responde a pergunta
+    seguinte, que é a que decide se alguém confia: **como eu sei?**
+
+    Por isso ela junta coisas que moram em lugares diferentes — a linha da
+    execução, a ficha do pacote com o SHA-256, para onde a cópia foi e se foi
+    conferida lá, a política que pediu, e as linhas da trilha encadeada
+    daquele momento. Cada uma sozinha é uma afirmação; juntas são um caso.
+    """
+
+    execucao = sessao.execute(
+        repo.escopo(Execucao, contexto).where(Execucao.id == execucao_id)
+    ).scalar_one_or_none()
+    if execucao is None:
+        msg = "execucao nao encontrada nesta organizacao"
+        raise LookupError(msg)
+
+    artefatos = list(
+        sessao.execute(select(Artefato).where(Artefato.execucao_id == execucao.id)).scalars()
+    )
+    corpo = _como_dicionario(execucao, artefatos)
+
+    dispositivo = (
+        sessao.get(Dispositivo, execucao.dispositivo_id) if execucao.dispositivo_id else None
+    )
+    corpo["maquina"] = dispositivo.nome if dispositivo is not None else ""
+
+    politica = sessao.get(Politica, execucao.politica_id) if execucao.politica_id else None
+    if politica is not None:
+        from autotarefas.tasks.politica import Politica as ConfiguracaoDePolitica
+
+        configuracao = ConfiguracaoDePolitica.de_json(politica.configuracao)
+        corpo["politica"] = {
+            "id": politica.id,
+            "nome": politica.nome,
+            # O que a política mandou copiar, para onde, e por quanto tempo
+            # guardar. É contra isto que a execução se compara.
+            "origens": configuracao.origens,
+            "destino": configuracao.destino.model_dump(mode="json"),
+            "agendamento": configuracao.agendamento.model_dump(mode="json"),
+            "retencao": configuracao.retencao.model_dump(mode="json"),
+            "protege_de_verdade": configuracao.protege_de_verdade,
+        }
+    else:
+        corpo["politica"] = None
+
+    corpo["trilha"] = _trilha_da_execucao(sessao, contexto, execucao, artefatos)
+    return corpo
+
+
+#: Folga em torno da execução ao recortar a trilha.
+#:
+#: A execução tem começo e fim; a trilha registra coisas em volta dela — o
+#: pedido que a disparou, a sincronização que a trouxe da máquina, a entrega na
+#: nuvem que só aconteceu quando a internet voltou. Um recorte exato pelos
+#: instantes de início e fim deixaria de fora justamente o que explica.
+FOLGA_DA_TRILHA = timedelta(hours=1)
+
+
+def _trilha_da_execucao(
+    sessao: Session,
+    contexto: repo.Contexto,
+    execucao: Execucao,
+    artefatos: list[Artefato],
+) -> list[dict[str, Any]]:
+    """
+    As linhas da trilha que dizem respeito a esta execução.
+
+    A trilha é encadeada por hash na organização inteira, e é assim que ela
+    vale: cada linha carrega o hash da anterior, e alterar uma no meio quebra a
+    corrente. Aqui só se **recorta** o que diz respeito a esta execução — nada
+    é recalculado, e a corrente continua sendo a da organização.
+
+    O recorte tem dois critérios, e cada um cobre o que o outro não alcança:
+
+    **Pelo nome do pacote.** É o critério forte, e o único que funciona para o
+    backup do agendamento: a linha do registro e a da entrega na nuvem nomeiam
+    o pacote. A entrega na nuvem pode ter acontecido horas depois, quando a
+    internet voltou — e é exatamente uma das coisas que alguém quer ver ao
+    perguntar "onde está esta cópia".
+
+    **Pela janela de tempo.** Cobre o `backup.pedido` de uma execução pedida
+    pela tela, que acontece ANTES de existir pacote para nomear. Não serve
+    sozinho: numa máquina que ficou dias sem internet, a linha do registro tem
+    a hora da SINCRONIZAÇÃO, e não a da execução.
+    """
+    from .db.models import Auditoria
+
+    inicio = em_utc(execucao.iniciada_em) - FOLGA_DA_TRILHA
+    fim = em_utc(execucao.terminada_em or execucao.iniciada_em) + FOLGA_DA_TRILHA
+    alvos = {item.nome for item in artefatos}
+
+    linhas = sessao.execute(
+        repo.escopo(Auditoria, contexto)
+        .where(Auditoria.dispositivo_id == execucao.dispositivo_id)
+        .order_by(Auditoria.quando.desc())
+        .limit(PAGINA)
+    ).scalars()
+
+    return [
+        {
+            "acao": linha.acao,
+            "alvo": linha.alvo,
+            "detalhe": linha.detalhe,
+            "quando": linha.quando.isoformat(),
+            "hash_atual": linha.hash_atual,
+        }
+        for linha in linhas
+        if linha.alvo in alvos or inicio <= em_utc(linha.quando) <= fim
+    ]
+
+
+@roteador.get("/execucao/{execucao_id}")
+def detalhe_da_execucao(
+    execucao_id: str,
+    contexto: ContextoAtual,
+    sessao: SessaoBanco,
+) -> dict[str, Any]:
+    """O que aconteceu numa execução, e o que prova que aconteceu."""
+    try:
+        return detalhar(sessao, contexto, execucao_id)
+    except LookupError as erro:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(erro)) from erro
 
 
 @roteador.get("/auditoria")

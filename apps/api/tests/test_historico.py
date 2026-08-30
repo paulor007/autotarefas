@@ -305,3 +305,173 @@ class TestListagem:
 
         assert any(linha.acao == "execucao.sincronizada" for linha in trilha)
         assert integra, explicacao
+
+
+class TestODetalheDaExecucao:
+    """
+    A lista responde "aconteceu". O detalhe responde "como eu sei?".
+
+    E a pergunta seguinte, e e ela que decide se alguem confia. Por isso o
+    detalhe junta coisas que moram em lugares diferentes — a ficha do pacote
+    com o SHA-256, para onde a copia foi e se foi CONFERIDA la, a politica que
+    pediu, e a trilha encadeada daquele momento. Cada uma sozinha e uma
+    afirmacao; juntas sao um caso.
+    """
+
+    def _com_entregas(self, banco: Banco, contexto: repo.Contexto) -> tuple[str, str]:
+        dispositivo_id = _dispositivo(banco, contexto)
+        item = _item("e1")
+        item["artefato"]["entregas"] = [
+            {
+                "tipo": "s3",
+                "destino": "Amazon S3 · balde backups-da-padaria",
+                "objeto": "padaria/backup_2026-08-25_0200.zip",
+                "conferido_no_destino": True,
+            }
+        ]
+        _gravar(banco, dispositivo_id, [item])
+        return dispositivo_id, "e1"
+
+    def test_traz_o_pacote_com_a_soma_que_prova_o_conteudo(self, banco: Banco) -> None:
+        contexto = _organizacao(banco)
+        _, execucao_id = self._com_entregas(banco, contexto)
+
+        with banco.sessao() as sessao:
+            detalhe = historico.detalhar(sessao, contexto, execucao_id)
+
+        pacote = detalhe["artefatos"][0]
+        assert pacote["nome"] == "backup_2026-08-25_0200.zip"
+        assert pacote["sha256"] == "c" * 64
+        assert pacote["tamanho_bytes"] == 2048
+
+    def test_a_conferencia_no_destino_deixou_de_ser_descartada(self, banco: Banco) -> None:
+        """
+        E a parte do produto que sustenta a palavra "verificavel".
+
+        O pacote e lido de volta no destino e o SHA-256 recalculado, porque
+        rede que cai e cabo USB ruim produzem arquivos com o tamanho certo e o
+        conteudo errado. Fazer a conferencia e nao guardar o resultado deixava
+        a evidencia acontecer e desaparecer.
+        """
+        contexto = _organizacao(banco)
+        _, execucao_id = self._com_entregas(banco, contexto)
+
+        with banco.sessao() as sessao:
+            detalhe = historico.detalhar(sessao, contexto, execucao_id)
+
+        entregas = detalhe["artefatos"][0]["entregas"]
+        assert len(entregas) == 1
+        assert entregas[0]["conferido_no_destino"] is True
+        assert entregas[0]["objeto"] == "padaria/backup_2026-08-25_0200.zip"
+
+    def test_pacote_sem_entrega_nao_inventa_uma(self, banco: Banco) -> None:
+        # "Ficou so na maquina" e uma resposta, e precisa continuar sendo
+        # distinguivel de "foi para algum lugar".
+        contexto = _organizacao(banco)
+        dispositivo_id = _dispositivo(banco, contexto)
+        _gravar(banco, dispositivo_id, [_item("e2")])
+
+        with banco.sessao() as sessao:
+            detalhe = historico.detalhar(sessao, contexto, "e2")
+
+        assert detalhe["artefatos"][0]["entregas"] == []
+
+    def test_entregas_corrompidas_viram_vazio_e_nao_derrubam_a_tela(self, banco: Banco) -> None:
+        """
+        Campo de evidencia com lixo dentro e pior do que vazio: parece resposta.
+        """
+        contexto = _organizacao(banco)
+        dispositivo_id = _dispositivo(banco, contexto)
+        _gravar(banco, dispositivo_id, [_item("e3")])
+        with banco.sessao() as sessao:
+            artefato = sessao.execute(
+                repo.escopo(Artefato, contexto).where(Artefato.execucao_id == "e3")
+            ).scalar_one()
+            artefato.entregas = "{isto nao e json"
+
+        with banco.sessao() as sessao:
+            detalhe = historico.detalhar(sessao, contexto, "e3")
+
+        assert detalhe["artefatos"][0]["entregas"] == []
+
+    def test_diz_de_qual_maquina_e(self, banco: Banco) -> None:
+        contexto = _organizacao(banco)
+        self._com_entregas(banco, contexto)
+
+        with banco.sessao() as sessao:
+            detalhe = historico.detalhar(sessao, contexto, "e1")
+
+        assert detalhe["maquina"] == "PC da loja"
+
+    def test_traz_a_politica_que_pediu_o_backup(self, banco: Banco) -> None:
+        """
+        E contra a politica que a execucao se compara.
+
+        Sem ela, "12 arquivos copiados" nao diz se copiou o que devia — falta o
+        outro lado da conta.
+        """
+        from apps.api.app import politicas
+
+        contexto = _organizacao(banco)
+        dispositivo_id = _dispositivo(banco, contexto)
+        with banco.sessao() as sessao:
+            politica = politicas.criar(
+                sessao,
+                contexto,
+                politicas.PedidoDePolitica(
+                    nome="Diaria",
+                    dispositivo_id=dispositivo_id,
+                    configuracao={
+                        "origens": [r"C:\Loja"],
+                        "destino": {"tipo": "externo", "caminho": r"E:\Backups"},
+                    },
+                ),
+            )
+            politica_id = politica.id
+        _gravar(banco, dispositivo_id, [_item("e4", politica_id=politica_id)])
+
+        with banco.sessao() as sessao:
+            detalhe = historico.detalhar(sessao, contexto, "e4")
+
+        assert detalhe["politica"]["nome"] == "Diaria"
+        assert detalhe["politica"]["origens"] == [r"C:\Loja"]
+        assert detalhe["politica"]["protege_de_verdade"] is True
+
+    def test_backup_avulso_nao_finge_ter_politica(self, banco: Banco) -> None:
+        contexto = _organizacao(banco)
+        dispositivo_id = _dispositivo(banco, contexto)
+        _gravar(banco, dispositivo_id, [_item("e5")])
+
+        with banco.sessao() as sessao:
+            detalhe = historico.detalhar(sessao, contexto, "e5")
+
+        assert detalhe["politica"] is None
+
+    def test_traz_a_trilha_encadeada_do_momento(self, banco: Banco) -> None:
+        contexto = _organizacao(banco)
+        self._com_entregas(banco, contexto)
+
+        with banco.sessao() as sessao:
+            detalhe = historico.detalhar(sessao, contexto, "e1")
+
+        assert detalhe["trilha"], "sem trilha, a evidencia depende de acreditar na tela"
+        assert all(linha["hash_atual"] for linha in detalhe["trilha"])
+
+    def test_execucao_de_outra_organizacao_nao_e_detalhada(self, banco: Banco) -> None:
+        """
+        O isolamento vale aqui como em todo lugar, e aqui ele vale mais: o
+        detalhe carrega nome de pasta e nome de maquina de quem executou.
+        """
+        dona = _organizacao(banco, "Padaria")
+        alheia = _organizacao(banco, "Mercado")
+        dispositivo_id = _dispositivo(banco, dona)
+        _gravar(banco, dispositivo_id, [_item("e6")])
+
+        with banco.sessao() as sessao, pytest.raises(LookupError):
+            historico.detalhar(sessao, alheia, "e6")
+
+    def test_execucao_que_nao_existe_e_recusada(self, banco: Banco) -> None:
+        contexto = _organizacao(banco)
+
+        with banco.sessao() as sessao, pytest.raises(LookupError):
+            historico.detalhar(sessao, contexto, "nao-existe")

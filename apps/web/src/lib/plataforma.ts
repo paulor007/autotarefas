@@ -106,6 +106,20 @@ export function listarAuditoria(): Promise<{
 }
 
 /** Ficha de um pacote produzido por uma execução. */
+/**
+ * Uma entrega do pacote, e se a cópia foi conferida no destino.
+ *
+ * "Chegou" e "chegou e foi conferido" são afirmações diferentes: o pacote é
+ * lido de volta no destino e o SHA-256 recalculado, porque rede que cai e cabo
+ * USB ruim produzem arquivos com o tamanho certo e o conteúdo errado.
+ */
+export interface EntregaDoPacote {
+  tipo: string;
+  destino?: string;
+  objeto?: string;
+  conferido_no_destino?: boolean;
+}
+
 export interface ArtefatoDaExecucao {
   id: string;
   nome: string;
@@ -113,6 +127,13 @@ export interface ArtefatoDaExecucao {
   sha256: string;
   /** Onde o pacote está, do ponto de vista do dispositivo. Nunca um caminho. */
   localizacao: string;
+  /** Vazio quando o pacote ficou só na máquina. */
+  entregas: EntregaDoPacote[];
+  /** A política pede nuvem e este pacote ainda não subiu. */
+  nuvem_pendente: boolean;
+  nuvem_em: string;
+  nuvem_chave: string;
+  nuvem_erro: string;
 }
 
 /** Uma rodada de backup registrada no histórico. */
@@ -476,6 +497,39 @@ export interface AtividadeAoVivo {
 
 export function obterAoVivo(): Promise<AtividadeAoVivo> {
   return pedir("/api/atividade/ao-vivo");
+}
+
+/** Uma linha da trilha encadeada por hash. */
+export interface LinhaDaTrilha {
+  acao: string;
+  alvo: string;
+  detalhe: string;
+  quando: string;
+  hash_atual: string;
+}
+
+/**
+ * Uma execução inteira, com o que a sustenta.
+ *
+ * A lista responde "aconteceu". Isto responde "como eu sei?" — que é a
+ * pergunta seguinte, e a que decide se alguém confia.
+ */
+export interface DetalheDeExecucao extends Execucao {
+  maquina: string;
+  politica: {
+    id: string;
+    nome: string;
+    origens: string[];
+    destino: { tipo: string; caminho: string };
+    agendamento: { tipo: string; hora: string };
+    retencao: { diarias: number; semanais: number; mensais: number };
+    protege_de_verdade: boolean;
+  } | null;
+  trilha: LinhaDaTrilha[];
+}
+
+export function obterDetalheDaExecucao(id: string): Promise<DetalheDeExecucao> {
+  return pedir(`/api/historico/execucao/${encodeURIComponent(id)}`);
 }
 
 export function listarPoliticas(): Promise<{ politicas: Politica[] }> {
