@@ -135,7 +135,12 @@ export default function AssistenteDeBackup({
 
   const maquina =
     dispositivos.find((item) => item.id === dispositivoId)?.nome ?? "a máquina";
-  const pronto = Boolean(dispositivoId) && origens.length > 0;
+  // Duas condicoes diferentes, e por isso dois nomes. A frase do passo 6
+  // depende de haver o que descrever; o botao depende, alem disso, de o
+  // servidor aceitar. Um so nome faria a nuvem selecionada pedir "escolha uma
+  // pasta" — resposta certa para outra pergunta.
+  const descritivel = Boolean(dispositivoId) && origens.length > 0;
+  const pronto = descritivel && config.destino.tipo !== "nuvem";
 
   return (
     <div className="mt-4 rounded-xl border border-white/12 bg-ink px-5 py-4">
@@ -217,7 +222,9 @@ export default function AssistenteDeBackup({
               >
                 <option value="externo">Disco externo</option>
                 <option value="rede">Pasta de rede</option>
-                <option value="nuvem">Nuvem compatível com S3</option>
+                <option value="nuvem">
+                  Nuvem compatível com S3 (ainda não no agendamento)
+                </option>
                 <option value="local">Outra pasta desta máquina</option>
                 <option value="nenhum">Só nesta máquina</option>
               </select>
@@ -243,6 +250,22 @@ export default function AssistenteDeBackup({
             <p className="text-[0.8rem] text-signal">
               O pacote fica no mesmo computador. Isso não protege contra o disco
               morrer nem contra ransomware.
+            </p>
+          )}
+          {/* A opcao continua na lista, e o motivo e honestidade nos dois
+              sentidos: esconder faria parecer que o produto nao sabe subir
+              para S3 (sabe, e confere o objeto depois de subir), e oferecer
+              calada faria o agendamento gravar uma politica cujo pacote nunca
+              sai da maquina — com o painel dizendo "Protegido". O servidor
+              recusa essa politica; a tela diz isso antes de a pessoa preencher
+              o resto. */}
+          {config.destino.tipo === "nuvem" && (
+            <p className="text-[0.8rem] text-signal">
+              O Agente sabe enviar para S3 e conferir o objeto depois de subir,
+              mas o backup <strong>agendado</strong> ainda não leva a credencial
+              da nuvem até a máquina — e o agendamento roda com a internet fora
+              do ar de propósito. Enquanto isso, o backup automático vai para
+              disco externo ou pasta de rede.
             </p>
           )}
         </Passo>
@@ -450,7 +473,7 @@ export default function AssistenteDeBackup({
           {/* `status`: a frase muda a cada escolha, e quem usa leitor de tela
               precisa ouvir a mudanca sem sair do campo onde esta. */}
           <p role="status" className="text-fg">
-            {pronto ? (
+            {descritivel ? (
               <>
                 Copiar{" "}
                 <strong>

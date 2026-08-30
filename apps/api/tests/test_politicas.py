@@ -324,6 +324,88 @@ class TestHonestidade:
             assert politicas.listar(sessao, contexto)[0]["protege_de_verdade"] is True
 
 
+class TestONuvemNaoEAceitaNoAgendamento:
+    """
+    A pior combinação possível do produto, e ela era gravável.
+
+    Uma política com destino `nuvem` passava pelo schema, contava como
+    `protege_de_verdade` (o painel dizia **Protegido**) — e o Agente, ao rodar
+    o agendamento, não tinha ramo para esse tipo: o pacote ficava no próprio
+    computador e a execução terminava com sucesso. Cópia que nunca saiu do
+    lugar, anunciada como proteção.
+
+    A causa é de arquitetura, não de descuido: a credencial mora no cofre da
+    organização, no servidor, e o agendamento roda offline de propósito — se
+    dependesse do canal, o backup pararia toda vez que a internet caísse.
+    Enquanto a credencial não chegar à máquina, o destino é recusado na
+    gravação, com a razão escrita.
+    """
+
+    def test_nuvem_e_recusada_na_criacao(self, banco: Banco) -> None:
+        contexto = _organizacao(banco)
+        dispositivo_id = _dispositivo(banco, contexto)
+
+        with (
+            banco.sessao() as sessao,
+            pytest.raises(politicas.PoliticaRecusada, match="nuvem"),
+        ):
+            politicas.criar(sessao, contexto, _pedido(dispositivo_id, destino={"tipo": "nuvem"}))
+
+    def test_a_recusa_diz_o_que_fazer_em_vez_de_so_negar(self, banco: Banco) -> None:
+        contexto = _organizacao(banco)
+        dispositivo_id = _dispositivo(banco, contexto)
+
+        with banco.sessao() as sessao:
+            try:
+                politicas.criar(
+                    sessao, contexto, _pedido(dispositivo_id, destino={"tipo": "nuvem"})
+                )
+            except politicas.PoliticaRecusada as erro:
+                recado = str(erro)
+
+        assert "disco externo" in recado
+        assert "pasta de rede" in recado
+
+    def test_alterar_para_nuvem_tambem_e_recusado(self, banco: Banco) -> None:
+        """A porta dos fundos: criar no externo e depois trocar o destino."""
+        contexto = _organizacao(banco)
+        dispositivo_id = _dispositivo(banco, contexto)
+        with banco.sessao() as sessao:
+            registro = politicas.criar(
+                sessao,
+                contexto,
+                _pedido(dispositivo_id, destino={"tipo": "externo", "caminho": "E:\\b"}),
+            )
+            politica_id = registro.id
+
+        with (
+            banco.sessao() as sessao,
+            pytest.raises(politicas.PoliticaRecusada, match="nuvem"),
+        ):
+            politicas.alterar(
+                sessao, contexto, politica_id, _pedido(dispositivo_id, destino={"tipo": "nuvem"})
+            )
+
+    def test_os_outros_destinos_continuam_passando(self, banco: Banco) -> None:
+        """Guarda contra a recusa virar uma peneira grossa demais."""
+        contexto = _organizacao(banco)
+        dispositivo_id = _dispositivo(banco, contexto)
+
+        for tipo, caminho in (
+            ("nenhum", ""),
+            ("local", "D:\\b"),
+            ("externo", "E:\\b"),
+            ("rede", "\\\\servidor\\backups"),
+        ):
+            with banco.sessao() as sessao:
+                registro = politicas.criar(
+                    sessao,
+                    contexto,
+                    _pedido(dispositivo_id, destino={"tipo": tipo, "caminho": caminho}),
+                )
+                assert registro.id
+
+
 def test_politica_gravada_pode_ser_relida_pelo_nucleo(banco: Banco) -> None:
     """
     O formato é o mesmo dos dois lados.
@@ -385,7 +467,7 @@ class TestAExecucaoSabeDeQualPoliticaVeio:
         contexto = _organizacao(banco)
 
         with banco.sessao() as sessao:
-            assert dispositivos._politica_da_organizacao(sessao, contexto, "") == ""
+            assert dispositivos._politica_da_organizacao(sessao, contexto, "") is None
 
     def test_politica_de_outra_organizacao_e_ignorada(self, banco: Banco) -> None:
         """
@@ -404,10 +486,44 @@ class TestAExecucaoSabeDeQualPoliticaVeio:
         with banco.sessao() as sessao:
             achada = dispositivos._politica_da_organizacao(sessao, dona, da_outra)
 
-        assert achada == ""
+        assert achada is None
 
     def test_politica_que_nao_existe_e_ignorada(self, banco: Banco) -> None:
         contexto = _organizacao(banco)
 
         with banco.sessao() as sessao:
-            assert dispositivos._politica_da_organizacao(sessao, contexto, "nao-existe") == ""
+            assert dispositivos._politica_da_organizacao(sessao, contexto, "nao-existe") is None
+
+    def test_a_execucao_sem_politica_e_gravavel_de_verdade(self, banco: Banco) -> None:
+        """
+        O teste que faltava: os outros conferiam a funcao, e nao a LINHA.
+
+        `politica_id` e chave estrangeira, e o banco roda com
+        `PRAGMA foreign_keys=ON`. String vazia nao e nulo — nao existe politica
+        de id "" —, entao o backup avulso morria no INSERT inteiro, com um erro
+        que nao falava de politica nenhuma. Uma funcao que devolve o valor
+        combinado e uma linha que o banco recusa sao coisas diferentes, e so a
+        segunda e o produto.
+        """
+        from apps.api.app.db.models import Execucao, ResultadoExecucao
+
+        contexto = _organizacao(banco)
+        dispositivo_id = _dispositivo(banco, contexto)
+
+        with banco.sessao() as sessao:
+            sessao.add(
+                Execucao(
+                    organizacao_id=contexto.organizacao_id,
+                    dispositivo_id=dispositivo_id,
+                    politica_id=dispositivos._politica_da_organizacao(sessao, contexto, ""),
+                    origem="manual",
+                    resultado=ResultadoExecucao.EM_ANDAMENTO,
+                )
+            )
+            sessao.flush()
+
+        with banco.sessao() as sessao:
+            gravadas = sessao.execute(repo.escopo(Execucao, contexto)).scalars().all()
+
+        assert len(gravadas) == 1
+        assert gravadas[0].politica_id is None

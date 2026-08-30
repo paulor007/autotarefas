@@ -66,6 +66,28 @@ class TestTraducao:
         with pytest.raises(backup_agente.BackupRecusado, match="administrador"):
             asyncio.run(backup_agente.executar_politica(politica, configuracao))
 
+    def test_destino_nuvem_para_em_vez_de_fingir(
+        self, autorizada: tuple[Configuracao, Path]
+    ) -> None:
+        """
+        A falha mais cara que este produto sabe cometer, e ela era silenciosa.
+
+        `nuvem` nao tinha ramo aqui: a politica caia fora do `if`, o backup
+        rodava, o pacote ficava no proprio computador e a ficha voltava com
+        `ok: True`. Do lado do painel isso virava **Protegido** — porque nuvem
+        conta como destino de verdade — para uma copia que nunca saiu do lugar.
+
+        A credencial de nuvem mora no cofre da organizacao, no servidor, e o
+        agendamento roda offline de proposito. Enquanto ela nao chegar aqui, a
+        execucao para com o motivo escrito. Backup nenhum e melhor do que
+        backup que mente sobre onde esta: com nenhum, ainda da para reagir.
+        """
+        configuracao, pasta = autorizada
+        politica = Politica(origens=[str(pasta)], destino=Destino(tipo=TipoDeDestino.NUVEM))
+
+        with pytest.raises(ValueError, match="nuvem"):
+            asyncio.run(backup_agente.executar_politica(politica, configuracao))
+
 
 class TestRetencaoNaPolitica:
     def test_retencao_apaga_os_antigos_depois_do_backup(

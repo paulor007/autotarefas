@@ -111,6 +111,21 @@ class TestODestino:
         assert destino["tipo"] == "rede"
         assert destino["caminho"] == "\\\\servidor\\backups"
 
+    def test_nuvem_e_recusada_com_a_alternativa_na_mensagem(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """
+        Parar no provisionamento, e nao no meio dele.
+
+        Sem isto, `VITRINE_DESTINO_TIPO=nuvem` passaria por aqui e morreria
+        depois, num 400 do servidor, com quatro politicas pela metade — e a
+        mensagem falaria de schema, nao do motivo real.
+        """
+        monkeypatch.setenv("VITRINE_DESTINO_TIPO", "nuvem")
+
+        with pytest.raises(SystemExit, match="rede"):
+            vitrine.destino_configurado()
+
     def test_o_tipo_local_reprova_no_veredito_de_protecao(self) -> None:
         """
         Amarra as duas pontas: o que a vitrine configura e o que o painel julga.

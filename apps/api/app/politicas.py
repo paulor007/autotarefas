@@ -22,6 +22,7 @@ from pydantic import BaseModel, Field, ValidationError
 from sqlalchemy.orm import Session
 
 from autotarefas.tasks.politica import Politica as ConfiguracaoDePolitica
+from autotarefas.tasks.politica import TipoDeDestino
 
 from .db import repositorio as repo
 from .db.models import Dispositivo, EstadoDispositivo, Politica, agora
@@ -50,14 +51,47 @@ class PedidoDePolitica(BaseModel):
     configuracao: dict[str, Any] = Field(default_factory=dict)
 
 
+#: O que o Agente sabe fazer sozinho, no horario, sem falar com o servidor.
+#:
+#: `nuvem` fica de fora, e a ausencia e deliberada. O envio para S3 existe e
+#: funciona — o Agente verifica o objeto depois de subir — mas a credencial
+#: mora no cofre da organizacao, no servidor, e o agendamento roda **offline**
+#: por decisao de projeto: se dependesse do canal, o backup pararia sempre que
+#: a internet caisse, que e justamente a madrugada em que ninguem esta olhando.
+#:
+#: Enquanto a credencial nao for entregue a maquina, uma politica com destino
+#: `nuvem` produziria um pacote que nunca sai do computador — e o painel a
+#: contaria como "Protegido", porque `protege_de_verdade` considera nuvem um
+#: destino de verdade. Backup que se declara protegido e nao saiu do lugar e a
+#: falha mais cara que este produto pode ter.
+DESTINOS_QUE_O_AGENDAMENTO_ENTREGA = frozenset(
+    {
+        TipoDeDestino.NENHUM,
+        TipoDeDestino.LOCAL,
+        TipoDeDestino.EXTERNO,
+        TipoDeDestino.REDE,
+    }
+)
+
+RECUSA_DA_NUVEM = (
+    "destino 'nuvem': o backup agendado ainda nao leva a credencial de nuvem "
+    "ate a maquina, entao o pacote ficaria no proprio computador enquanto o "
+    "painel diria 'Protegido'. Use disco externo ou pasta de rede."
+)
+
+
 def _validar(bruta: dict[str, Any]) -> ConfiguracaoDePolitica:
     try:
-        return ConfiguracaoDePolitica.model_validate(bruta)
+        configuracao = ConfiguracaoDePolitica.model_validate(bruta)
     except ValidationError as erro:
         primeira = erro.errors()[0]
         campo = ".".join(str(parte) for parte in primeira.get("loc", ()))
         msg = f"{campo or 'configuracao'}: {primeira.get('msg', 'valor invalido')}"
         raise PoliticaRecusada(msg) from erro
+
+    if configuracao.destino.tipo not in DESTINOS_QUE_O_AGENDAMENTO_ENTREGA:
+        raise PoliticaRecusada(RECUSA_DA_NUVEM)
+    return configuracao
 
 
 def _dispositivo_da_organizacao(

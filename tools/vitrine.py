@@ -127,6 +127,17 @@ def destino_configurado() -> dict[str, str]:
     import os
 
     tipo = os.environ.get("VITRINE_DESTINO_TIPO", "local").strip() or "local"
+    if tipo == "nuvem":
+        # Recusa aqui, com a razao, em vez de deixar o provisionamento morrer
+        # com um 400 do servidor no meio de quatro politicas. O agendamento
+        # nao leva a credencial de nuvem ate a maquina — e o painel contaria
+        # essa politica como "Protegido" para um pacote que nunca saiu.
+        msg = (
+            "VITRINE_DESTINO_TIPO=nuvem: o backup agendado ainda nao entrega "
+            "na nuvem. Para a vitrine ficar 'Protegido' de verdade, use "
+            "VITRINE_DESTINO_TIPO=rede com um caminho em OUTRA maquina."
+        )
+        raise SystemExit(msg)
     caminho = os.environ.get("VITRINE_DESTINO_CAMINHO", "").strip()
     return {"tipo": tipo, "caminho": caminho or str(DESTINO)}
 

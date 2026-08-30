@@ -421,23 +421,30 @@ class PedidoDeBackup(BaseModel):
     politica_id: str = ""
 
 
-def _politica_da_organizacao(sessao: Session, contexto: repo.Contexto, politica_id: str) -> str:
+def _politica_da_organizacao(
+    sessao: Session, contexto: repo.Contexto, politica_id: str
+) -> str | None:
     """
-    Confirma que a politica citada e desta organizacao. Vazio se nao for.
+    Confirma que a politica citada e desta organizacao. `None` se nao for.
 
     Conferir, e nao confiar: aceitar o id como veio deixaria uma execucao de
     uma empresa carimbada com a politica de outra — e o veredito de protecao,
     que agrupa por politica, passaria a somar coisas de organizacoes
     diferentes.
+
+    `None`, e nao string vazia. A coluna e chave estrangeira: `""` nao e nulo,
+    e o SQLite com `PRAGMA foreign_keys=ON` recusa a insercao inteira porque
+    nao existe politica de id "". O backup avulso — sem politica — morria
+    assim, e o erro nao falava de politica nenhuma.
     """
     if not politica_id:
-        return ""
+        return None
     from .politicas import Politica as RegistroDePolitica
 
     achada = sessao.execute(
         repo.escopo(RegistroDePolitica, contexto).where(RegistroDePolitica.id == politica_id)
     ).scalar_one_or_none()
-    return achada.id if achada is not None else ""
+    return achada.id if achada is not None else None
 
 
 def _parametros_do_backup(pedido: PedidoDeBackup) -> dict[str, Any]:

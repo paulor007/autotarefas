@@ -412,6 +412,26 @@ describe("assistente de configuração", () => {
     const ativar = screen.getByRole("button", { name: /ativar backup/i });
     expect((ativar as HTMLButtonElement).disabled).toBe(true);
   });
+
+  it("com a nuvem escolhida, ativar fica indisponível — o servidor recusaria", async () => {
+    // E a frase do passo 6 continua descrevendo a escolha. Antes, um unico
+    // `pronto` fazia a tela responder "escolha ao menos uma pasta" para quem
+    // tinha escolhido as pastas e mexido no destino — resposta certa para
+    // outra pergunta.
+    mockRotas(BASE);
+
+    render(<Politicas papel="dono" />);
+    await screen.findByText("C:\\Loja\\Dados");
+    await userEvent.selectOptions(
+      screen.getByLabelText("Tipo de destino"),
+      "nuvem",
+    );
+
+    const ativar = screen.getByRole("button", { name: /ativar backup/i });
+    expect((ativar as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByRole("status").textContent).toContain("a nuvem");
+    expect(screen.queryByText(/Escolha ao menos uma pasta/i)).toBeNull();
+  });
 });
 
 /**
@@ -512,6 +532,26 @@ describe("Backups na demonstração pública", () => {
     );
 
     expect(screen.getByRole("status").textContent).toContain("a nuvem");
+  });
+
+  it("a nuvem se apresenta com o que ainda não faz", async () => {
+    // A opcao fica na lista porque o Agente sabe subir para S3 e conferir o
+    // objeto depois. O que ele nao sabe e fazer isso no HORARIO: a credencial
+    // esta no cofre do servidor, e o agendamento roda offline de proposito.
+    // Oferecer calada gravaria uma politica cujo pacote nunca sai da maquina,
+    // com o painel dizendo "Protegido".
+    mockRotas(COM_POLITICA);
+
+    render(<Politicas papel="leitor" somenteLeitura />);
+    await userEvent.click(
+      await screen.findByRole("button", { name: /ver como se configura/i }),
+    );
+    await userEvent.selectOptions(
+      await screen.findByLabelText("Tipo de destino"),
+      "nuvem",
+    );
+
+    expect(screen.getByText(/ainda não leva a credencial/i)).toBeTruthy();
   });
 
   it("não oferece ativar, e diz por quê", async () => {
