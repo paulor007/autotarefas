@@ -111,20 +111,37 @@ class TestODestino:
         assert destino["tipo"] == "rede"
         assert destino["caminho"] == "\\\\servidor\\backups"
 
-    def test_nuvem_e_recusada_com_a_alternativa_na_mensagem(
+    def test_nuvem_sem_credencial_e_recusada_no_provisionamento(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """
-        Parar no provisionamento, e nao no meio dele.
+        Parar aqui, e nao no meio das quatro politicas.
 
-        Sem isto, `VITRINE_DESTINO_TIPO=nuvem` passaria por aqui e morreria
-        depois, num 400 do servidor, com quatro politicas pela metade — e a
-        mensagem falaria de schema, nao do motivo real.
+        Sem balde, o pacote seria feito e nao teria para onde ir — e a politica
+        que o painel conta como protecao nunca entregaria nada. A mensagem diz
+        exatamente qual variavel falta, porque "configure a nuvem" mandaria a
+        pessoa procurar onde.
         """
         monkeypatch.setenv("VITRINE_DESTINO_TIPO", "nuvem")
+        for nome in vitrine.OBRIGATORIOS_DE_NUVEM:
+            monkeypatch.delenv(nome, raising=False)
 
-        with pytest.raises(SystemExit, match="rede"):
+        with pytest.raises(SystemExit, match="VITRINE_S3_BALDE"):
             vitrine.destino_configurado()
+
+    def test_nuvem_com_credencial_e_aceita_e_nao_usa_caminho(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # O balde nao e um caminho em disco: ele vem do cofre. Preencher
+        # `caminho` aqui faria o schema do nucleo guardar um valor que ninguem
+        # le, e a tela mostraria uma pasta que nao existe.
+        monkeypatch.setenv("VITRINE_DESTINO_TIPO", "nuvem")
+        for nome in vitrine.OBRIGATORIOS_DE_NUVEM:
+            monkeypatch.setenv(nome, "valor-de-teste")
+
+        destino = vitrine.destino_configurado()
+
+        assert destino == {"tipo": "nuvem", "caminho": ""}
 
     def test_o_tipo_local_reprova_no_veredito_de_protecao(self) -> None:
         """

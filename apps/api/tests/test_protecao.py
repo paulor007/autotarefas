@@ -277,3 +277,67 @@ class TestNaoDivergirDoAgendador:
         from apps.agente.agente.agendador import TOLERANCIA_ATRASO
 
         assert TOLERANCIA == TOLERANCIA_ATRASO
+
+
+class TestAJanelaDaNuvem:
+    """
+    "Protegido" precisa significar que a copia CHEGOU la.
+
+    `protege_de_verdade` e uma afirmacao sobre a CONFIGURACAO: diz que o
+    destino escolhido tira a copia de perto do original. Nao diz que a copia
+    chegou. Para disco externo e pasta de rede as duas coisas andam juntas — a
+    entrega acontece dentro da execucao, e execucao concluida significa copia
+    entregue e conferida.
+
+    Para a nuvem, nao. O agendamento roda offline de proposito, e o envio
+    espera haver canal. Existe uma janela — pacote feito, ainda nao subiu — em
+    que dizer "Protegido" seria falso. E era exatamente o que a tela dizia:
+    desde o instante em que a politica era salva.
+    """
+
+    def na_nuvem(self, **mudancas: Any) -> dict[str, Any]:
+        return politica(
+            configuracao={"destino": {"tipo": "nuvem", "caminho": ""}},
+            **mudancas,
+        )
+
+    def test_pacote_ainda_nao_enviado_e_protecao_parcial(self) -> None:
+        veredito = julgar([self.na_nuvem(nuvem_pendente=True)], [execucao()])
+
+        assert veredito["nivel"] == Nivel.PARCIAL.value
+        assert any("ainda não subiu" in m for m in veredito["backups"][0]["motivos"])
+
+    def test_o_motivo_explica_que_o_pacote_existe(self) -> None:
+        """
+        Nao e falha, e nao pode parecer falha.
+
+        O backup aconteceu, o pacote esta feito e conferido. O que falta e a
+        viagem. Um recado que soasse como erro mandaria a pessoa procurar
+        defeito onde nao ha.
+        """
+        veredito = julgar([self.na_nuvem(nuvem_pendente=True)], [execucao()])
+
+        motivo = " ".join(veredito["backups"][0]["motivos"])
+        assert "feito e" in motivo
+        assert "conexão" in motivo
+
+    def test_depois_do_envio_confirmado_e_protegido(self) -> None:
+        veredito = julgar([self.na_nuvem(nuvem_pendente=False)], [execucao()])
+
+        assert veredito["nivel"] == Nivel.PROTEGIDO.value
+
+    def test_sem_a_informacao_nao_inventa_pendencia(self) -> None:
+        # Politica sem a chave — o caso de quem chama `avaliar` direto. A
+        # ausencia de informacao nao pode virar acusacao.
+        veredito = julgar([self.na_nuvem()], [execucao()])
+
+        assert veredito["nivel"] == Nivel.PROTEGIDO.value
+
+    def test_pendencia_de_nuvem_nao_esconde_uma_falha(self) -> None:
+        """O pior ganha: falha continua sendo mais grave que espera."""
+        veredito = julgar(
+            [self.na_nuvem(nuvem_pendente=True)],
+            [execucao(resultado="falha", ressalva="disco cheio")],
+        )
+
+        assert veredito["nivel"] == Nivel.EM_RISCO.value

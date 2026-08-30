@@ -38,6 +38,7 @@ from datetime import datetime
 from typing import Any
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from loguru import logger
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -404,6 +405,30 @@ async def _receber_execucoes(conexao: Conexao, mensagem: dict[str, Any]) -> None
         dispositivo.ultimo_contato = agora()
 
     await conexao.socket.send_json({"tipo": "execucoes_recebidas", "ids": aceitos})
+
+    # A maquina acabou de contar o que fez offline. Se alguma dessas execucoes
+    # produziu pacote de uma politica com destino na nuvem, ele esta feito e
+    # ainda nao subiu — e este e o primeiro instante em que da para subir: ha
+    # canal aberto agora. Ver `nuvem.py`.
+    await _subir_o_que_ficou_pendente(conexao.dispositivo_id)
+
+
+async def _subir_o_que_ficou_pendente(dispositivo_id: str) -> None:
+    """
+    Tenta a entrega na nuvem do que estiver pendente, sem derrubar o canal.
+
+    Nada aqui pode virar excecao: este caminho roda dentro do laco que atende
+    a maquina, e uma falha de envio — balde errado, credencial vencida, rede
+    que caiu no meio — nao pode fechar a conexao que o backup usa para
+    reportar. O erro fica gravado no artefato, e o pacote segue pendente.
+    """
+    from . import nuvem
+
+    try:
+        with banco().sessao() as sessao:
+            await nuvem.entregar_pendentes(sessao, dispositivo_id)
+    except Exception:  # noqa: BLE001 — entrega em segundo plano nao derruba o canal
+        logger.exception("falha ao entregar pacotes pendentes na nuvem")
 
 
 async def pedir_ao_dispositivo(

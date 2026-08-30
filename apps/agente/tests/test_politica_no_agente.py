@@ -66,27 +66,53 @@ class TestTraducao:
         with pytest.raises(backup_agente.BackupRecusado, match="administrador"):
             asyncio.run(backup_agente.executar_politica(politica, configuracao))
 
-    def test_destino_nuvem_para_em_vez_de_fingir(
+    def test_destino_nuvem_faz_o_pacote_e_declara_a_entrega_pendente(
         self, autorizada: tuple[Configuracao, Path]
     ) -> None:
         """
-        A falha mais cara que este produto sabe cometer, e ela era silenciosa.
+        A falha mais cara que este produto sabe cometer era silenciosa.
 
         `nuvem` nao tinha ramo aqui: a politica caia fora do `if`, o backup
         rodava, o pacote ficava no proprio computador e a ficha voltava com
         `ok: True`. Do lado do painel isso virava **Protegido** — porque nuvem
         conta como destino de verdade — para uma copia que nunca saiu do lugar.
 
-        A credencial de nuvem mora no cofre da organizacao, no servidor, e o
-        agendamento roda offline de proposito. Enquanto ela nao chegar aqui, a
-        execucao para com o motivo escrito. Backup nenhum e melhor do que
-        backup que mente sobre onde esta: com nenhum, ainda da para reagir.
+        A correcao nao e recusar: e separar backup de envio. O agendamento
+        roda offline de proposito, e o Agente nao grava chave de nuvem em
+        disco — mas o que precisa de rede e o ENVIO, e nao o backup. Entao o
+        pacote e feito aqui, e a ficha declara a entrega pendente. O servidor
+        pede o envio assim que houver canal, com a credencial chegando na hora.
+
+        A janela entre uma coisa e outra e verdade, e o painel a mostra como
+        tal: "ainda nao subiu", e nao "Protegido".
         """
         configuracao, pasta = autorizada
         politica = Politica(origens=[str(pasta)], destino=Destino(tipo=TipoDeDestino.NUVEM))
 
-        with pytest.raises(ValueError, match="nuvem"):
-            asyncio.run(backup_agente.executar_politica(politica, configuracao))
+        ficha = asyncio.run(backup_agente.executar_politica(politica, configuracao))
+
+        assert ficha["ok"] is True
+        assert ficha["nuvem_pendente"] is True
+        # A entrega LOCAL nao aconteceu, e nao deve ter acontecido: destino
+        # nuvem nao tem caminho em disco nenhum.
+        assert ficha["entregas"] == []
+
+    def test_destino_em_disco_nao_nasce_pendente_de_nuvem(
+        self, autorizada: tuple[Configuracao, Path]
+    ) -> None:
+        """
+        Guarda contra o marcador virar "sempre pendente".
+
+        Disco externo e pasta de rede entregam DENTRO da execucao, e conferem
+        a copia ali mesmo. Marcar pendencia de nuvem neles deixaria o painel
+        em "parcial" para sempre, sem nada a resolver.
+        """
+        configuracao, pasta = autorizada
+        politica = Politica(origens=[str(pasta)], destino=Destino(tipo=TipoDeDestino.NENHUM))
+
+        ficha = asyncio.run(backup_agente.executar_politica(politica, configuracao))
+
+        assert ficha["nuvem_pendente"] is False
 
 
 class TestRetencaoNaPolitica:

@@ -202,6 +202,22 @@ def _avaliar_politica(
             "protege contra o disco morrer nem contra ransomware.",
         )
 
+    # `protege_de_verdade` é uma afirmação sobre a CONFIGURAÇÃO: diz que o
+    # destino escolhido tira a cópia de perto do original. Não diz que a cópia
+    # chegou lá.
+    #
+    # Para disco externo e pasta de rede as duas coisas andam juntas: a entrega
+    # acontece dentro da execução, e execução concluída significa cópia
+    # entregue e conferida. Para a nuvem, não: o agendamento roda offline, e o
+    # envio espera haver canal. Existe uma janela — pacote feito, ainda não
+    # subiu — em que "Protegido" seria falso.
+    if politica.get("nuvem_pendente"):
+        veredito.rebaixar(
+            Nivel.PARCIAL,
+            "O último pacote ainda não subiu para a nuvem: ele está feito e "
+            "conferido, mas continua só na máquina até haver conexão.",
+        )
+
     if configuracao.agendamento.tipo == "desligado":
         veredito.rebaixar(
             Nivel.PARCIAL,
@@ -278,8 +294,17 @@ def estado_da_protecao(
     contexto: ContextoAtual,
 ) -> dict[str, Any]:
     """O veredito desta organização, com os fatos que o sustentam."""
+    from . import nuvem
+
+    # A pendência de nuvem entra aqui, e não dentro de `avaliar`: `avaliar` é
+    # função pura de propósito — é a decisão de produto mais delicada da tela,
+    # e precisa ser exercitável com dezenas de combinações sem banco.
+    lista = politicas.listar(sessao, contexto)
+    for item in lista:
+        item["nuvem_pendente"] = nuvem.ha_pendencia(sessao, item["id"])
+
     return avaliar(
-        politicas.listar(sessao, contexto),
+        lista,
         dispositivos.listar(sessao, contexto),
         historico.listar(sessao, contexto),
         agora_do_banco(),

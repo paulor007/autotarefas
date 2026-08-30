@@ -413,11 +413,11 @@ describe("assistente de configuração", () => {
     expect((ativar as HTMLButtonElement).disabled).toBe(true);
   });
 
-  it("com a nuvem escolhida, ativar fica indisponível — o servidor recusaria", async () => {
-    // E a frase do passo 6 continua descrevendo a escolha. Antes, um unico
-    // `pronto` fazia a tela responder "escolha ao menos uma pasta" para quem
-    // tinha escolhido as pastas e mexido no destino — resposta certa para
-    // outra pergunta.
+  it("com a nuvem escolhida, ativar continua disponível", async () => {
+    // Houve uma fase em que o servidor recusava destino na nuvem, porque o
+    // agendamento nao tinha como entregar. Agora tem: o pacote nasce offline e
+    // sobe quando ha canal. Deixar o botao travado aqui seria manter na tela a
+    // marca de um limite que nao existe mais.
     mockRotas(BASE);
 
     render(<Politicas papel="dono" />);
@@ -428,9 +428,8 @@ describe("assistente de configuração", () => {
     );
 
     const ativar = screen.getByRole("button", { name: /ativar backup/i });
-    expect((ativar as HTMLButtonElement).disabled).toBe(true);
+    expect((ativar as HTMLButtonElement).disabled).toBe(false);
     expect(screen.getByRole("status").textContent).toContain("a nuvem");
-    expect(screen.queryByText(/Escolha ao menos uma pasta/i)).toBeNull();
   });
 });
 
@@ -534,12 +533,11 @@ describe("Backups na demonstração pública", () => {
     expect(screen.getByRole("status").textContent).toContain("a nuvem");
   });
 
-  it("a nuvem se apresenta com o que ainda não faz", async () => {
-    // A opcao fica na lista porque o Agente sabe subir para S3 e conferir o
-    // objeto depois. O que ele nao sabe e fazer isso no HORARIO: a credencial
-    // esta no cofre do servidor, e o agendamento roda offline de proposito.
-    // Oferecer calada gravaria uma politica cujo pacote nunca sai da maquina,
-    // com o painel dizendo "Protegido".
+  it("a nuvem explica que o pacote sobe depois", async () => {
+    // O agendamento roda offline de proposito e o Agente nao grava chave de
+    // nuvem em disco. O que destrava as duas coisas e o envio ser diferido —
+    // e quem escolhe o destino precisa saber disso ANTES, ou vera "aguardando
+    // envio" no painel de madrugada e pensara em defeito.
     mockRotas(COM_POLITICA);
 
     render(<Politicas papel="leitor" somenteLeitura />);
@@ -551,7 +549,8 @@ describe("Backups na demonstração pública", () => {
       "nuvem",
     );
 
-    expect(screen.getByText(/ainda não leva a credencial/i)).toBeTruthy();
+    expect(screen.getByText(/sobe assim que houver conexão/i)).toBeTruthy();
+    expect(screen.getByText(/nunca é gravada na máquina/i)).toBeTruthy();
   });
 
   it("o passo das pastas não abre em erro", async () => {

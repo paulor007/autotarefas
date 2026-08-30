@@ -262,7 +262,11 @@ def registrar(  # noqa: PLR0913 — cada campo e uma coluna da trilha; juntar
     quando = agora()
     linha = Auditoria(
         organizacao_id=contexto.organizacao_id,
-        usuario_id=contexto.usuario_id,
+        # `or None`: a coluna e chave estrangeira, e string vazia nao e nulo —
+        # nao existe usuario de id "". Um contexto de servico montado a mao com
+        # `usuario_id=""` derrubava a insercao INTEIRA, com um erro de
+        # integridade que nao falava de usuario nenhum. Ja custou duas vezes.
+        usuario_id=contexto.usuario_id or None,
         dispositivo_id=dispositivo_id,
         acao=acao,
         alvo=alvo,

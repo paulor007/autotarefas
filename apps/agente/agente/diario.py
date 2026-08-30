@@ -58,6 +58,13 @@ class Execucao:
     #: Ficha do pacote produzido, quando houve um. Nunca o conteúdo: o ZIP
     #: fica na máquina do cliente.
     artefato: dict[str, Any] | None = None
+    #: A política pede destino na nuvem e este pacote ainda não subiu.
+    #:
+    #: O agendamento roda offline; o envio precisa de rede. A janela entre uma
+    #: coisa e outra é verdade, e o servidor precisa sabê-la para pedir o envio
+    #: assim que houver canal — em vez de o painel dizer "Protegido" para uma
+    #: cópia que ainda está só aqui.
+    nuvem_pendente: bool = False
 
     def como_dicionario(self) -> dict[str, Any]:
         return {
@@ -71,6 +78,7 @@ class Execucao:
             "ressalva": self.ressalva,
             "origem": self.origem,
             "artefato": self.artefato,
+            "nuvem_pendente": self.nuvem_pendente,
         }
 
 

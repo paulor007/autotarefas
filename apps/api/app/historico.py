@@ -135,6 +135,10 @@ def registrar_do_agente(
                     # O ZIP fica na maquina do cliente. O servidor guarda a
                     # ficha, nunca o conteudo nem o caminho local.
                     localizacao=str(ficha.get("localizacao", "dispositivo"))[:200],
+                    # A politica pede nuvem e o pacote ainda esta so na
+                    # maquina. Quem sobe e o servidor, pedindo ao Agente assim
+                    # que houver canal — ver `nuvem.py`.
+                    nuvem_pendente=bool(item.get("nuvem_pendente", False)),
                 )
             )
         sessao.flush()

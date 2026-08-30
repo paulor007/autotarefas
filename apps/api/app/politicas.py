@@ -51,36 +51,23 @@ class PedidoDePolitica(BaseModel):
     configuracao: dict[str, Any] = Field(default_factory=dict)
 
 
-#: O que o Agente sabe fazer sozinho, no horario, sem falar com o servidor.
+#: Recado quando alguem pede destino na nuvem sem balde configurado.
 #:
-#: `nuvem` fica de fora, e a ausencia e deliberada. O envio para S3 existe e
-#: funciona — o Agente verifica o objeto depois de subir — mas a credencial
-#: mora no cofre da organizacao, no servidor, e o agendamento roda **offline**
-#: por decisao de projeto: se dependesse do canal, o backup pararia sempre que
-#: a internet caisse, que e justamente a madrugada em que ninguem esta olhando.
-#:
-#: Enquanto a credencial nao for entregue a maquina, uma politica com destino
-#: `nuvem` produziria um pacote que nunca sai do computador — e o painel a
-#: contaria como "Protegido", porque `protege_de_verdade` considera nuvem um
-#: destino de verdade. Backup que se declara protegido e nao saiu do lugar e a
-#: falha mais cara que este produto pode ter.
-DESTINOS_QUE_O_AGENDAMENTO_ENTREGA = frozenset(
-    {
-        TipoDeDestino.NENHUM,
-        TipoDeDestino.LOCAL,
-        TipoDeDestino.EXTERNO,
-        TipoDeDestino.REDE,
-    }
-)
-
-RECUSA_DA_NUVEM = (
-    "destino 'nuvem': o backup agendado ainda nao leva a credencial de nuvem "
-    "ate a maquina, entao o pacote ficaria no proprio computador enquanto o "
-    "painel diria 'Protegido'. Use disco externo ou pasta de rede."
+#: A politica seria gravavel e nunca entregaria: o Agente faria o pacote, o
+#: servidor tentaria subir e nao teria para onde. Como `protege_de_verdade`
+#: conta nuvem como destino de verdade, o painel diria "Protegido" para uma
+#: copia parada no computador do cliente — a mentira mais cara que este
+#: produto sabe contar.
+RECUSA_SEM_BALDE = (
+    "destino 'nuvem': esta organizacao ainda nao tem balde configurado, entao "
+    "o pacote ficaria no proprio computador. Guarde s3.balde, s3.chave e "
+    "s3.segredo no cofre da organizacao antes de usar este destino."
 )
 
 
-def _validar(bruta: dict[str, Any]) -> ConfiguracaoDePolitica:
+def _validar(
+    bruta: dict[str, Any], sessao: Session | None = None, contexto: repo.Contexto | None = None
+) -> ConfiguracaoDePolitica:
     try:
         configuracao = ConfiguracaoDePolitica.model_validate(bruta)
     except ValidationError as erro:
@@ -89,9 +76,30 @@ def _validar(bruta: dict[str, Any]) -> ConfiguracaoDePolitica:
         msg = f"{campo or 'configuracao'}: {primeira.get('msg', 'valor invalido')}"
         raise PoliticaRecusada(msg) from erro
 
-    if configuracao.destino.tipo not in DESTINOS_QUE_O_AGENDAMENTO_ENTREGA:
-        raise PoliticaRecusada(RECUSA_DA_NUVEM)
+    if configuracao.destino.tipo is TipoDeDestino.NUVEM and sessao is not None:
+        _exigir_balde(sessao, contexto)
     return configuracao
+
+
+def _exigir_balde(sessao: Session, contexto: repo.Contexto | None) -> None:
+    """
+    Recusa destino na nuvem quando nao ha para onde enviar.
+
+    Confere a existencia do segredo, e nao o valor: revelar a chave so para
+    validar a colocaria em memoria sem necessidade, e um balde errado se
+    descobre na primeira entrega — com erro gravado no artefato, que e onde
+    esse erro pertence.
+    """
+    from . import cofre
+    from .dispositivos import OBRIGATORIOS_DE_NUVEM
+
+    if contexto is None:
+        return
+    faltando = [
+        nome for nome in OBRIGATORIOS_DE_NUVEM if not cofre.existe(sessao, contexto, nome=nome)
+    ]
+    if faltando:
+        raise PoliticaRecusada(RECUSA_SEM_BALDE)
 
 
 def _dispositivo_da_organizacao(
@@ -139,7 +147,7 @@ def listar(sessao: Session, contexto: repo.Contexto) -> list[dict[str, Any]]:
 
 def criar(sessao: Session, contexto: repo.Contexto, pedido: PedidoDePolitica) -> Politica:
     contexto.exigir_administracao()
-    configuracao = _validar(pedido.configuracao)
+    configuracao = _validar(pedido.configuracao, sessao, contexto)
     _dispositivo_da_organizacao(sessao, contexto, pedido.dispositivo_id)
 
     registro = Politica(
@@ -166,7 +174,7 @@ def alterar(
     sessao: Session, contexto: repo.Contexto, politica_id: str, pedido: PedidoDePolitica
 ) -> Politica:
     contexto.exigir_administracao()
-    configuracao = _validar(pedido.configuracao)
+    configuracao = _validar(pedido.configuracao, sessao, contexto)
     _dispositivo_da_organizacao(sessao, contexto, pedido.dispositivo_id)
 
     registro = sessao.execute(

@@ -52,6 +52,17 @@ CONFIG_DO_AGENTE = CASA / "agente"
 DADOS = CASA / "dados"
 DESTINO = CASA / "destino"
 
+#: Variaveis de ambiente que carregam o balde da vitrine para o cofre.
+#:
+#: Ficam no ambiente de quem publica, e nunca no repositorio: sao a chave de
+#: uma conta de verdade. Daqui elas vao para o cofre da organizacao, cifradas,
+#: e saem so para viajar pelo canal autenticado ate a maquina no momento do
+#: envio. Nao passam pelo navegador e nao sao gravadas no disco do Agente.
+OBRIGATORIOS_DE_NUVEM = ("VITRINE_S3_BALDE", "VITRINE_S3_CHAVE", "VITRINE_S3_SEGREDO")
+
+#: Os opcionais. Endpoint vazio = Amazon S3; prefixo vazio = raiz do balde.
+OPCIONAIS_DE_NUVEM = ("VITRINE_S3_ENDPOINT", "VITRINE_S3_REGIAO", "VITRINE_S3_PREFIXO")
+
 ORGANIZACAO = "AutoTarefas Demonstracao"
 EMAIL_DO_DONO = "operacao@demonstracao.autotarefas"
 MAQUINA = "SERVIDOR-DEMONSTRACAO"
@@ -128,16 +139,19 @@ def destino_configurado() -> dict[str, str]:
 
     tipo = os.environ.get("VITRINE_DESTINO_TIPO", "local").strip() or "local"
     if tipo == "nuvem":
-        # Recusa aqui, com a razao, em vez de deixar o provisionamento morrer
-        # com um 400 do servidor no meio de quatro politicas. O agendamento
-        # nao leva a credencial de nuvem ate a maquina — e o painel contaria
-        # essa politica como "Protegido" para um pacote que nunca saiu.
-        msg = (
-            "VITRINE_DESTINO_TIPO=nuvem: o backup agendado ainda nao entrega "
-            "na nuvem. Para a vitrine ficar 'Protegido' de verdade, use "
-            "VITRINE_DESTINO_TIPO=rede com um caminho em OUTRA maquina."
-        )
-        raise SystemExit(msg)
+        # `nuvem` nao usa caminho em disco: o balde vem do cofre da
+        # organizacao. Recusar aqui, com a razao, evita o provisionamento
+        # morrer com um 400 no meio das quatro politicas.
+        faltando = [nome for nome in OBRIGATORIOS_DE_NUVEM if not os.environ.get(nome)]
+        if faltando:
+            msg = (
+                "VITRINE_DESTINO_TIPO=nuvem exige as credenciais do balde no "
+                f"ambiente. Falta: {', '.join(faltando)}. Sem elas o pacote "
+                "seria feito e nao teria para onde ir — e o painel contaria a "
+                "politica como protecao."
+            )
+            raise SystemExit(msg)
+        return {"tipo": "nuvem", "caminho": ""}
     caminho = os.environ.get("VITRINE_DESTINO_CAMINHO", "").strip()
     return {"tipo": tipo, "caminho": caminho or str(DESTINO)}
 
@@ -318,7 +332,35 @@ def _garantir_organizacao(sessao: object) -> tuple[object, object]:
         click.echo("Dono da vitrine criado.")
 
     contexto = repo.abrir_contexto(sessao, usuario_id=dono.id, organizacao_id=organizacao.id)
+    _guardar_balde(sessao, contexto)
     return organizacao, contexto
+
+
+def _guardar_balde(sessao: object, contexto: object) -> None:
+    """
+    Leva o balde do ambiente para o cofre da organizacao, cifrado.
+
+    Roda sempre que o provisionamento roda, e nao so na primeira vez: girar a
+    chave da conta de nuvem passa a ser trocar a variavel e reprovisionar.
+
+    Nada e ecoado. Um `click.echo` com o valor colocaria a chave da conta no
+    terminal de quem publica e no historico do shell — que e onde segredo mais
+    vaza sem ninguem querer.
+    """
+    import os
+
+    from apps.api.app import cofre
+
+    if not all(os.environ.get(nome) for nome in OBRIGATORIOS_DE_NUVEM):
+        return
+
+    for variavel in (*OBRIGATORIOS_DE_NUVEM, *OPCIONAIS_DE_NUVEM):
+        valor = os.environ.get(variavel, "").strip()
+        if not valor:
+            continue
+        nome = "s3." + variavel.removeprefix("VITRINE_S3_").lower()
+        cofre.guardar(sessao, contexto, nome=nome, valor=valor)  # type: ignore[arg-type]
+    click.echo("Credencial de nuvem guardada no cofre da organizacao.", flush=True)
 
 
 def _garantir_maquina(sessao: object, contexto: object, servidor: str) -> object:

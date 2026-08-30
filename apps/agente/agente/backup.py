@@ -381,23 +381,21 @@ async def executar_politica(
     }:
         parametros["destino_externo"] = politica.destino.caminho
         parametros["tipo_do_destino"] = politica.destino.tipo.value
-    elif politica.destino.tipo is TipoDeDestinoDaPolitica.NUVEM:
-        # Recusa em vez de seguir. Este ramo era a ausencia de um ramo: a
-        # politica com destino `nuvem` caia fora do `if`, o backup rodava, o
-        # pacote ficava no proprio computador e a execucao terminava com
-        # sucesso. Do lado de fora, o painel dizia "Protegido" — porque nuvem
-        # conta como destino de verdade — para uma copia que nunca saiu do
-        # lugar. Um backup que mente sobre onde esta e pior do que backup
-        # nenhum: com nenhum, a pessoa ainda sabe que precisa resolver.
-        #
-        # O servidor tambem recusa essa politica na gravacao. Recusar aqui de
-        # novo e de proposito: se um dia a politica chegar por outro caminho,
-        # a maquina para em vez de fingir.
-        msg = (
-            "destino 'nuvem' nao e executavel pelo agendamento: a credencial "
-            "de nuvem nao esta nesta maquina, e o pacote ficaria aqui"
-        )
-        raise ValueError(msg)
+    # `nuvem` nao entra no `if` acima, e a ausencia agora e explicita em vez de
+    # acidental. Antes, a politica com destino na nuvem caia fora sem que
+    # ninguem notasse: o backup rodava, o pacote ficava no proprio computador,
+    # a execucao terminava com sucesso — e o painel dizia "Protegido" para uma
+    # copia que nunca saiu do lugar.
+    #
+    # O que resolve nao e recusar, e separar as duas coisas. O que precisa de
+    # rede e o ENVIO; o backup, nao. Entao o agendamento faz o pacote aqui,
+    # sozinho, com a internet caida — e o envio acontece quando houver canal,
+    # pelo comando `enviar_para_nuvem`, com a credencial chegando na hora e
+    # sumindo com a resposta. A credencial continua sem tocar este disco.
+    #
+    # A ficha diz que ha uma entrega pendente. Essa janela — pacote feito,
+    # ainda nao subiu — e verdade, e o painel a mostra como tal.
+    na_nuvem = politica.destino.tipo is TipoDeDestinoDaPolitica.NUVEM
 
     async def sem_relato(_dados: dict[str, Any]) -> None:
         return None
@@ -448,6 +446,10 @@ async def executar_politica(
         ressalvas.append(
             f"{len(limpeza['nao_removidos'])} pacote(s) antigo(s) nao puderam ser apagados"
         )
+    # Nao e ressalva: nada deu errado. E um estado do pacote, e o servidor usa
+    # isto para saber a quem pedir o envio assim que houver canal.
+    ficha["nuvem_pendente"] = na_nuvem
+
     ficha["ok"] = True
     ficha["com_ressalva"] = bool(ressalvas)
     ficha["ressalva"] = "; ".join(ressalvas)

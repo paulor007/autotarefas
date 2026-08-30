@@ -324,7 +324,7 @@ class TestHonestidade:
             assert politicas.listar(sessao, contexto)[0]["protege_de_verdade"] is True
 
 
-class TestONuvemNaoEAceitaNoAgendamento:
+class TestONuvemPrecisaDeBaldeAntes:
     """
     A pior combinação possível do produto, e ela era gravável.
 
@@ -334,11 +334,11 @@ class TestONuvemNaoEAceitaNoAgendamento:
     computador e a execução terminava com sucesso. Cópia que nunca saiu do
     lugar, anunciada como proteção.
 
-    A causa é de arquitetura, não de descuido: a credencial mora no cofre da
-    organização, no servidor, e o agendamento roda offline de propósito — se
-    dependesse do canal, o backup pararia toda vez que a internet caísse.
-    Enquanto a credencial não chegar à máquina, o destino é recusado na
-    gravação, com a razão escrita.
+    O destino passou a funcionar de verdade (o envio é diferido, ver
+    `nuvem.py`), e sobrou uma condição sem a qual ele volta a ser uma promessa
+    vazia: **é preciso haver balde**. Sem credencial no cofre da organização,
+    o pacote é feito e não tem para onde ir — e a política que o painel conta
+    como proteção nunca entregaria nada.
     """
 
     def test_nuvem_e_recusada_na_criacao(self, banco: Banco) -> None:
@@ -363,8 +363,10 @@ class TestONuvemNaoEAceitaNoAgendamento:
             except politicas.PoliticaRecusada as erro:
                 recado = str(erro)
 
-        assert "disco externo" in recado
-        assert "pasta de rede" in recado
+        # Diz o que fazer, e com os nomes exatos dos segredos: "configure a
+        # nuvem" mandaria a pessoa procurar onde.
+        assert "s3.balde" in recado
+        assert "cofre" in recado
 
     def test_alterar_para_nuvem_tambem_e_recusado(self, banco: Banco) -> None:
         """A porta dos fundos: criar no externo e depois trocar o destino."""

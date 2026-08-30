@@ -354,3 +354,157 @@ class TestBackupComDestinoS3:
 
         assert "AKIANAOPODEAPARECER" not in repr(pedido)  # pragma: allowlist secret
         assert "segredo-nao-pode-aparecer" not in repr(pedido)
+
+
+class TestEnvioDiferidoPeloComando:
+    """
+    O envio que acontece DEPOIS do backup, quando ha canal.
+
+    E o que destrava backup agendado com destino na nuvem sem quebrar nenhuma
+    das duas decisoes que pareciam impedi-lo: o agendamento continua rodando
+    offline, e o Agente continua sem gravar chave de nuvem em disco.
+
+    A credencial chega no pedido, e usada, e some com a resposta.
+    """
+
+    @pytest.fixture
+    def maquina(self, tmp_path: Path):
+        from apps.agente.agente import raizes
+        from apps.agente.agente.config import Local
+
+        dados = tmp_path / "cliente" / "dados"
+        dados.mkdir(parents=True)
+        (dados / "contrato.txt").write_text("contrato", encoding="utf-8")
+        return raizes.autorizar(Local(pasta=tmp_path / "cfg"), dados)
+
+    def _contexto(self, configuracao):
+        from apps.agente.agente.comandos import Contexto
+
+        async def relatar(_dados):
+            return None
+
+        return Contexto(configuracao=configuracao, relatar=relatar)
+
+    def _pacote_da_politica(self, configuracao) -> str:
+        """Roda uma politica com destino na nuvem e devolve o nome do pacote."""
+        import asyncio
+
+        from apps.agente.agente import backup as backup_agente
+        from autotarefas.tasks.politica import Destino, Politica, TipoDeDestino
+
+        ficha = asyncio.run(
+            backup_agente.executar_politica(
+                Politica(
+                    origens=list(configuracao.raizes),
+                    destino=Destino(tipo=TipoDeDestino.NUVEM),
+                ),
+                configuracao,
+                politica_id="p1",
+                politica_nome="Nuvem diaria",
+            )
+        )
+        assert ficha["nuvem_pendente"] is True
+        return str(ficha["pacote"])
+
+    def _pedir_envio(self, configuracao, nome: str, credencial: s3.Credencial):
+        import asyncio
+
+        from apps.agente.agente.comandos import executar_enviar_para_nuvem
+
+        return asyncio.run(
+            executar_enviar_para_nuvem(
+                {
+                    "pacote": nome,
+                    "s3": {
+                        "endpoint": credencial.endpoint,
+                        "regiao": credencial.regiao,
+                        "balde": credencial.balde,
+                        "chave": credencial.chave,
+                        "segredo": credencial.segredo,
+                        "prefixo": credencial.prefixo,
+                    },
+                },
+                self._contexto(configuracao),
+            )
+        )
+
+    def test_o_pacote_do_agendamento_sobe_depois(self, maquina, credencial: s3.Credencial) -> None:
+        nome = self._pacote_da_politica(maquina)
+
+        resposta = self._pedir_envio(maquina, nome, credencial)
+
+        assert resposta["ok"] is True
+        assert resposta["pacote"] == nome
+        assert resposta["conferido_no_destino"] is True
+
+    def test_o_objeto_esta_mesmo_la(self, maquina, credencial: s3.Credencial) -> None:
+        """
+        Conferido lendo de volta, e nao pela resposta da API do balde.
+
+        "Enviado" segundo quem enviou nao prova nada sobre o que chegou.
+        """
+        nome = self._pacote_da_politica(maquina)
+
+        resposta = self._pedir_envio(maquina, nome, credencial)
+        cliente = s3._cliente(credencial)
+        objeto = cliente.get_object(Bucket=credencial.balde, Key=resposta["objeto"])
+
+        assert objeto["ContentLength"] > 0
+
+    def test_reenviar_sobrescreve_em_vez_de_multiplicar(
+        self, maquina, credencial: s3.Credencial
+    ) -> None:
+        """
+        Uma queda de rede no meio de um envio nao pode deixar lixo permanente.
+
+        A chave e derivada do nome do pacote, entao a segunda tentativa cai no
+        mesmo objeto. Se dependesse de um sufixo por tentativa, uma semana de
+        reconexoes multiplicaria a conta do cliente.
+        """
+        nome = self._pacote_da_politica(maquina)
+
+        primeira = self._pedir_envio(maquina, nome, credencial)
+        segunda = self._pedir_envio(maquina, nome, credencial)
+        cliente = s3._cliente(credencial)
+        listagem = cliente.list_objects_v2(Bucket=credencial.balde, Prefix=credencial.prefixo)
+        # Contadas as chaves DESTE pacote, e nao as do balde: o servidor S3 do
+        # modulo e compartilhado entre os testes, e um contador global mediria
+        # o que os vizinhos subiram.
+        deste = [item for item in listagem.get("Contents", []) if item["Key"].endswith(nome)]
+
+        assert primeira["objeto"] == segunda["objeto"]
+        assert len(deste) == 1, "um sufixo por tentativa multiplicaria a conta do cliente"
+
+    def test_pacote_desconhecido_e_recusado(self, maquina, credencial: s3.Credencial) -> None:
+        """
+        O nome e resolvido NESTA maquina.
+
+        Sem isso, o servidor escolheria qual arquivo do disco do cliente sobe
+        para um balde que ele mesmo aponta.
+        """
+        from apps.agente.agente import artefatos
+
+        with pytest.raises(artefatos.PacoteDesconhecido):
+            self._pedir_envio(maquina, "../../Windows/System32/config.zip", credencial)
+
+    def test_sem_credencial_recusa_em_vez_de_inventar_balde(self, maquina) -> None:
+        import asyncio
+
+        from apps.agente.agente.comandos import executar_enviar_para_nuvem
+
+        with pytest.raises(ValueError, match="credencial"):
+            asyncio.run(executar_enviar_para_nuvem({"pacote": "x.zip"}, self._contexto(maquina)))
+
+    def test_balde_errado_volta_como_recusa_e_nao_como_sucesso(
+        self, maquina, credencial: s3.Credencial
+    ) -> None:
+        """Falha de envio nao pode virar 'ok': o painel diria que a copia saiu."""
+        import dataclasses
+
+        nome = self._pacote_da_politica(maquina)
+        errada = dataclasses.replace(credencial, balde="balde-que-nao-existe")
+
+        resposta = self._pedir_envio(maquina, nome, errada)
+
+        assert resposta["ok"] is False
+        assert resposta["erro"]

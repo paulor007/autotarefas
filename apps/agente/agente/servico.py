@@ -100,6 +100,7 @@ class Servico:
                 bytes_copiados=int(ficha.get("tamanho_bytes", 0) or 0),
                 ressalva=_ressalva(ficha, item.tentativa),
                 artefato=artefato,
+                nuvem_pendente=bool(ficha.get("nuvem_pendente", False)) and artefato is not None,
             )
         )
 

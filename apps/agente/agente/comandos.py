@@ -260,6 +260,56 @@ async def executar_pacotes(_parametros: dict[str, Any], contexto: Contexto) -> d
     }
 
 
+async def executar_enviar_para_nuvem(
+    parametros: dict[str, Any], contexto: Contexto
+) -> dict[str, Any]:
+    """
+    Sobe para a nuvem um pacote que ja existe nesta maquina.
+
+    Este comando existe por causa de uma tensao real entre duas decisoes que
+    valem a pena manter as duas:
+
+    - **o agendamento roda offline.** Se dependesse do canal, o backup pararia
+      toda vez que a internet caisse — que e justamente a madrugada em que
+      ninguem esta olhando;
+    - **o Agente nao grava chave de nuvem em disco.** A credencial mora no
+      cofre da organizacao, no servidor.
+
+    Juntas, elas pareciam impedir backup agendado com destino na nuvem. Nao
+    impedem: o que precisa de rede e o **envio**, e nao o backup. Entao o
+    agendamento faz o pacote sozinho, e o envio acontece depois, quando ha
+    canal — com a credencial chegando na hora, sendo usada, e sumindo com a
+    resposta.
+
+    Na pratica isso significa que uma politica com destino na nuvem tem uma
+    janela em que o pacote existe e ainda nao saiu da maquina. Essa janela e
+    verdade, e o painel a mostra como tal em vez de dizer "Protegido" na hora
+    em que a politica foi salva.
+    """
+    import asyncio as _asyncio
+
+    from . import artefatos
+    from . import s3 as mod_s3
+    from .backup import _credencial_s3
+
+    credencial = _credencial_s3(parametros.get("s3"))
+    if credencial is None:
+        msg = "sem credencial de nuvem no pedido"
+        raise ValueError(msg)
+
+    # Pelo NOME, e resolvido aqui: o servidor nao escolhe qual arquivo do disco
+    # do cliente sobe para um balde que ele mesmo aponta.
+    pacote = artefatos.achar(contexto.configuracao, str(parametros.get("pacote", "")))
+
+    await contexto.relatar({"etapa": "enviando", "destino": credencial.descricao})
+    try:
+        ficha = await _asyncio.to_thread(mod_s3.enviar, pacote, credencial)
+    except mod_s3.EnvioRecusado as erro:
+        return {"ok": False, "pacote": pacote.name, "erro": str(erro)}
+
+    return {"ok": True, "pacote": pacote.name, **ficha}
+
+
 async def executar_listar_pacote(parametros: dict[str, Any], contexto: Contexto) -> dict[str, Any]:
     """
     Lista o que ha dentro de um pacote, para a tela mostrar antes de restaurar.
@@ -367,6 +417,7 @@ def registro_padrao() -> Registro:
     registro.registrar("pacotes", executar_pacotes)
     registro.registrar("listar_pacote", executar_listar_pacote)
     registro.registrar("restaurar", executar_restaurar)
+    registro.registrar("enviar_para_nuvem", executar_enviar_para_nuvem)
     return registro
 
 
@@ -376,6 +427,7 @@ __all__ = [
     "Executor",
     "Registro",
     "atender",
+    "executar_enviar_para_nuvem",
     "executar_estado",
     "executar_listar_pacote",
     "executar_pacotes",

@@ -322,6 +322,26 @@ class Artefato(Base):
     localizacao: Mapped[str] = mapped_column(Text, nullable=False, default="")
     criado_em: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=agora)
 
+    #: A politica pede destino na nuvem e este pacote ainda nao subiu.
+    #:
+    #: O agendamento roda offline de proposito; o envio para a nuvem precisa de
+    #: rede. Entao existe uma janela em que o pacote esta feito e ainda mora so
+    #: na maquina. Registrar a janela e o que permite ao painel dizer a verdade
+    #: nela — "aguardando envio" —, em vez de "Protegido" desde o instante em
+    #: que a politica foi salva.
+    nuvem_pendente: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    #: Quando o envio foi confirmado. `None` = nunca subiu.
+    #:
+    #: Confirmado significa conferido: o Agente le o objeto de volta e
+    #: recalcula o SHA-256 antes de responder. Um "enviado" que so repete o
+    #: que a API do balde respondeu nao provaria nada sobre o conteudo.
+    nuvem_em: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    #: Chave do objeto no balde. Evidencia de onde a copia esta.
+    nuvem_chave: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    #: Por que o ultimo envio nao deu certo. Vazio quando nao houve tentativa
+    #: ou quando a ultima deu certo.
+    nuvem_erro: Mapped[str] = mapped_column(Text, nullable=False, default="")
+
     execucao: Mapped[Execucao] = relationship(back_populates="artefatos")
 
 
