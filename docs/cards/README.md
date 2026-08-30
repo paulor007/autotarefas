@@ -31,10 +31,16 @@ Três regras valem para todos:
 | | |
 | --- | --- |
 | **Status** | **IMPLEMENTADO, AGUARDANDO HOMOLOGAÇÃO FINAL** |
-| **Homologação** | roteiro em [02-homologacao-manual.md](02-homologacao-manual.md); os 20 passos passam automatizados, com navegador real |
+| **Homologação** | roteiro em [02-homologacao-manual.md](02-homologacao-manual.md); os 20 passos passam automatizados, com navegador real. A jornada de quem só chega e olha tem homologação própria: [02-vitrine-publica.md](02-vitrine-publica.md), 15 passos |
 | **Problema** | A rotina manual que não é executada, o backup que nunca foi testado e a cópia mantida no mesmo disco |
 | **Limitações** | Pendem de hardware, privilégio ou credencial do proprietário: disco externo físico, VSS com elevação, envio de e-mail (SMTP no cofre) e nuvem S3 com endpoint externo. O pacote do Agente exige Python 3.13 instalado — não há executável único nesta versão |
-| **Próxima etapa** | homologação final pelo proprietário |
+| **Próxima etapa** | credencial de um balde S3 real, para o ambiente público sair de "Proteção parcial"; depois, homologação final pelo proprietário |
+
+### [02 — A vitrine pública](02-vitrine-publica.md)
+
+O AutoTarefas publicado num portfólio: como a porta do visitante se abre, o que
+o ambiente controlado tem dentro, o escopo da retenção por política, a entrega
+diferida na nuvem, e a lista honesta do que ainda falta.
 
 ---
 

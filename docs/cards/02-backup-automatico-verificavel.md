@@ -148,17 +148,36 @@ e confundi-las produziria promessa falsa ao cliente.
 
 | Destino | Núcleo/CLI | Live por upload | Pelo agente | Homologado pela interface |
 | --- | --- | --- | --- | --- |
-| Pasta local | funciona | sessão temporária | previsto | **não** |
-| Outro volume do mesmo computador | funciona | não aplicável | previsto | **não** |
-| Disco externo | funciona | não aplicável | previsto | **não** |
-| Unidade de rede (UNC) | funciona | não aplicável | previsto | **não** |
-| Pasta sincronizada por aplicativo de terceiros | funciona como pasta local | não aplicável | previsto | **não** |
-| S3-compatível | não existe | não aplicável | 02.F | **não** |
+| Pasta local | funciona | sessão temporária | funciona | **sim** (E2E card 02) |
+| Outro volume do mesmo computador | funciona | não aplicável | funciona | **sim** (E2E card 02) |
+| Disco externo | funciona | não aplicável | funciona | **não** — falta hardware removível real |
+| Unidade de rede (UNC) | funciona | não aplicável | funciona | **não** — falta uma segunda máquina |
+| Pasta sincronizada por aplicativo de terceiros | funciona como pasta local | não aplicável | funciona | como pasta local |
+| S3-compatível | não existe | não aplicável | funciona, inclusive no agendamento | **protocolo sim**, nuvem real **não** |
 
-**Nenhum destino está disponível para o cliente pelo Live hoje.** Outro volume,
-disco externo e caminho de rede foram verificados por linha de comando em
-20/08/2026 — isso comprova o núcleo, e nada mais. Só aparecem na interface
-depois do agente (G.3–G.6) e da sua homologação.
+O que mudou desde a versão anterior desta tabela: os destinos deixaram de ser
+"previstos" — o agente executa, a tela configura, e a homologação de ponta a
+ponta clica no fluxo inteiro. O que **não** mudou é a coluna da direita para
+disco externo e rede: ela depende de hardware e de uma segunda máquina, e
+nenhum dos dois se resolve escrevendo código.
+
+O S3 merece a distinção: o **protocolo** é homologado contra um servidor
+S3-compatível de verdade no ar (`moto` em modo servidor — HTTP, assinatura v4,
+multipart), e o envio agendado funciona por entrega diferida. Isso prova o
+protocolo, e não a nuvem de ninguém: até alguém apontar para um balde real, o
+card não pode dizer "nuvem homologada".
+
+### 8.3 Nuvem no backup agendado
+
+O agendamento roda offline de propósito e o Agente não grava chave de nuvem em
+disco. As duas coisas pareciam impedir destino na nuvem no horário; o que
+destrava é que **o que precisa de rede é o envio, e não o backup**. O pacote
+nasce offline e sobe quando há canal, com a credencial chegando na hora pelo
+canal autenticado.
+
+A janela entre uma coisa e outra é real, e o painel a mostra como tal —
+"aguardando envio", e não "Protegido". Detalhes em
+[a vitrine pública](02-vitrine-publica.md).
 
 ### 8.1 Pasta sincronizada não é conector de nuvem
 
@@ -383,6 +402,25 @@ chave AES (confidencialidade).
 
 Enquanto essa decisão estiver pendente, o destino em nuvem **não** será
 apresentado como proteção empresarial concluída.
+
+## 20.1 Escopo da retenção — corrigido
+
+Havia um defeito destrutivo, silencioso, e que só aparecia com duas políticas na
+mesma máquina — que é o caso normal de um cliente. Todas gravavam no mesmo
+monte, e a retenção varre a pasta: a política "diário / 7 dias", ao rodar,
+olhava também os pacotes do "mensal / 12 meses" e apagava os que tinham mais de
+sete dias. Regra cumprida à risca, sobre arquivos que não eram dela.
+
+Do lado do cliente: configurou doze meses de histórico, recebeu sete dias. Sem
+erro, sem aviso, e descoberto no dia da restauração.
+
+Cada política passa a ter a própria pasta, dos dois lados — local e destino
+externo —, com um marcador que diz de quem ela é. O vínculo é a **pasta**, e não
+um registro em banco: o pacote precisa dizer de quem é depois de copiado para
+outro disco, sem servidor nenhum por perto. A retenção também passou a valer no
+destino, que antes acumulava para sempre.
+
+Detalhes e o formato em [a vitrine pública](02-vitrine-publica.md), seção 7.
 
 ---
 
