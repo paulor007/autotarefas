@@ -33,7 +33,7 @@ from sqlalchemy import DateTime, ForeignKey, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.orm import Session as Sessao
 
-from .db.models import Base, agora, novo_id
+from .db.models import Base, agora, momento, novo_id
 from .db.repositorio import Contexto, escopo
 
 #: Variavel de ambiente que carrega a chave mestra, em base64 urlsafe.
@@ -263,8 +263,8 @@ def listar(sessao: Sessao, contexto: Contexto) -> list[dict[str, str]]:
         {
             "nome": registro.nome,
             "impressao": registro.impressao,
-            "criado_em": registro.criado_em.isoformat(),
-            "atualizado_em": registro.atualizado_em.isoformat(),
+            "criado_em": momento(registro.criado_em),
+            "atualizado_em": momento(registro.atualizado_em),
         }
         for registro in registros
     ]

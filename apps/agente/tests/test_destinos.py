@@ -273,3 +273,39 @@ class TestBackupComDestino:
             )
 
         assert not alvo.exists()
+
+
+class TestOCaminhoLocalNaoSobe:
+    """
+    O desenho inteiro toma o cuidado de nao mandar caminho local ao servidor —
+    o pacote sobe como NOME, nunca como caminho, e ate a mensagem de erro do
+    `artefatos` evita dizer onde procurou.
+
+    A ficha da entrega furava isso em silencio: ela ia para o historico com
+    o caminho completo dentro, e a tela do Live exibia. Um mapa da
+    estrutura de pastas da empresa, entregue de graca a quem olhasse a tela.
+    """
+
+    def test_a_ficha_da_entrega_nao_carrega_o_caminho(self, pacote: Path, tmp_path: Path) -> None:
+        alvo = tmp_path / "clientes-contratos-2019"
+        destino = destinos.preparar(alvo)
+
+        ficha = destinos.entregar(pacote, destino)
+
+        assert "clientes-contratos-2019" not in str(ficha)
+        assert str(alvo) not in str(ficha)
+        # Continua dizendo QUE TIPO de lugar e: essa parte e informacao util e
+        # nao entrega nada.
+        assert ficha["destino"] == "pasta local"
+
+    def test_a_descricao_longa_continua_existindo_para_a_maquina(self, tmp_path: Path) -> None:
+        """
+        Quem le o log do Agente esta NO computador em que a pasta existe.
+
+        Tirar o caminho de la tambem seria pior: a pessoa perderia a unica
+        forma de saber para onde a copia foi.
+        """
+        destino = destinos.preparar(tmp_path / "backups")
+
+        assert str(tmp_path) in destino.descricao
+        assert destino.rotulo in destino.descricao

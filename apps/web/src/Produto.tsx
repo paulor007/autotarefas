@@ -9,6 +9,7 @@
  * cinco secoes a um clique uma da outra, e cada uma tem endereco proprio.
  */
 
+import { useEffect } from "react";
 import { CheckSquare } from "lucide-react";
 
 import Dispositivos from "./components/Dispositivos";
@@ -67,6 +68,36 @@ function Cabecalho({ estado }: { estado: EstadoDeSessao | null }) {
   );
 }
 
+/**
+ * A entrada do visitante, que acontece sozinha.
+ *
+ * Quem chega pelo portfólio clicou em "Acessar projeto" e espera estar dentro.
+ * Uma tela de login no caminho — mesmo com um botão só — é um obstáculo entre a
+ * pessoa e a coisa que ela veio ver, e ela não tem conta nenhuma para usar.
+ *
+ * Por que uma navegação de página inteira, e não um `fetch`: a rota devolve um
+ * redirecionamento com o cookie da sessão, e é o navegador quem precisa
+ * recebê-lo. Um `fetch` guardaria o cookie e deixaria a tela sem saber que
+ * agora há sessão.
+ *
+ * A tela existe entre o clique e o redirecionamento, e por isso é uma frase e
+ * não um formulário: se algo der errado no meio, o servidor responde 404 e o
+ * navegador mostra o motivo — em vez de esta tela ficar girando para sempre.
+ */
+function EntrandoComoVisitante() {
+  useEffect(() => {
+    window.location.href = "/api/auth/visitante";
+  }, []);
+
+  return (
+    <section className="mx-auto max-w-3xl rounded-2xl border border-white/10 bg-surface p-6">
+      <p className="text-sm text-muted" role="status">
+        Abrindo a demonstração pública do AutoTarefas…
+      </p>
+    </section>
+  );
+}
+
 function Secao({
   secao,
   estado,
@@ -104,7 +135,11 @@ export default function Produto() {
       <div className="min-h-screen">
         <Cabecalho estado={estado} />
         <main id="produto" className="container-page py-10">
-          <PortaDeEntrada estado={estado} erro={erro} aoEntrar={recarregar} />
+          {estado?.demonstracao_publica === true ? (
+            <EntrandoComoVisitante />
+          ) : (
+            <PortaDeEntrada estado={estado} erro={erro} aoEntrar={recarregar} />
+          )}
         </main>
       </div>
     );

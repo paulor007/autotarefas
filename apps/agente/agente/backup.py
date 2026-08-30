@@ -295,7 +295,8 @@ async def executar_backup(parametros: dict[str, Any], contexto: Contexto) -> dic
     entregas: list[dict[str, Any]] = []
 
     if destino is not None:
-        await contexto.relatar({"etapa": "entregando", "destino": destino.descricao})
+        # O progresso tambem sobe pelo canal, entao vale a mesma regra.
+        await contexto.relatar({"etapa": "entregando", "destino": destino.descricao_curta})
         entregas.append(await asyncio.to_thread(mod_destinos.entregar, caminho_local, destino))
 
     if pedido.destino_s3 is not None:

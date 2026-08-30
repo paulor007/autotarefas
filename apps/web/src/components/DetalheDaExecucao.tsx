@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Check, X } from "lucide-react";
 
 import { obterDetalheDaExecucao, type DetalheDeExecucao } from "../lib/plataforma";
-import { quando } from "../lib/datas";
+import { quando, tamanho } from "../lib/datas";
 
 interface Props {
   execucaoId: string;
@@ -68,7 +68,7 @@ export default function DetalheDaExecucao({ execucaoId, aoFechar }: Props) {
           dados.artefatos.map((artefato) => (
             <div key={artefato.id} className="flex flex-col gap-1">
               <p className="font-mono text-fg">{artefato.nome}</p>
-              <p className="text-muted">{emMB(artefato.tamanho_bytes)}</p>
+              <p className="text-muted">{tamanho(artefato.tamanho_bytes)}</p>
               {/* A soma inteira, e nao os oito primeiros caracteres: e ela que
                   alguem usa para conferir por fora. Cortar transformaria a
                   evidencia num enfeite com cara de evidencia. */}
@@ -217,8 +217,4 @@ function Onde({
       </span>
     </li>
   );
-}
-
-function emMB(bytes: number): string {
-  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }

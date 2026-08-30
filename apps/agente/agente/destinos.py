@@ -116,13 +116,38 @@ class Destino:
 
     @property
     def descricao(self) -> str:
-        """Frase curta para a tela e para o historico."""
+        """
+        Frase para quem esta NA MAQUINA: log do Agente, saida da linha de
+        comando.
+
+        Traz o caminho porque aqui ele ajuda: quem le esta no computador em
+        que a pasta existe. Nao use isto no que sobe para o servidor — para
+        isso ha `descricao_curta`.
+        """
+        return f"{self.rotulo} ({self.caminho})"
+
+    @property
+    def rotulo(self) -> str:
+        """Que tipo de lugar e, sem dizer onde."""
         rotulos = {
             TipoDeDestino.LOCAL: "pasta local",
             TipoDeDestino.EXTERNO: "disco externo",
             TipoDeDestino.REDE: "pasta de rede",
         }
-        return f"{rotulos[self.tipo]} ({self.caminho})"
+        return rotulos[self.tipo]
+
+    @property
+    def descricao_curta(self) -> str:
+        """
+        A mesma frase, **sem o caminho**. E esta que pode sair da maquina.
+
+        O caminho local revela a estrutura de pastas da empresa, e o desenho
+        inteiro toma o cuidado de nao manda-lo ao servidor — o pacote sobe como
+        nome, nunca como caminho. A ficha da entrega furava isso em silencio:
+        ela ia para o historico com `D:\\...\\clientes\\contratos` dentro, e a
+        tela do Live exibia. Um mapa que ninguem pediu, entregue de graca.
+        """
+        return self.rotulo
 
 
 def espaco_livre(caminho: Path) -> int:
@@ -196,7 +221,7 @@ def entregar(pacote: Path, destino: Destino) -> dict[str, object]:
     livre = espaco_livre(destino.caminho)
     if livre and livre < tamanho + FOLGA_BYTES:
         msg = (
-            f"espaco insuficiente em {destino.caminho}: o pacote tem "
+            f"espaco insuficiente no {destino.rotulo}: o pacote tem "
             f"{tamanho / 1024 / 1024:.1f} MB e ha "
             f"{livre / 1024 / 1024:.1f} MB livres."
         )
@@ -212,13 +237,13 @@ def entregar(pacote: Path, destino: Destino) -> dict[str, object]:
         os.replace(parcial, final)
     except OSError as erro:
         parcial.unlink(missing_ok=True)
-        msg = f"falha ao copiar para {destino.caminho}: {erro}"
+        msg = f"falha ao copiar para o {destino.rotulo}: {erro}"
         raise DestinoRecusado(msg) from erro
 
     relatorio = verify_backup(final)
     if not relatorio.ok:
         msg = (
-            f"o pacote chegou a {destino.caminho}, mas nao confere la: "
+            f"o pacote chegou ao {destino.rotulo}, mas nao confere la: "
             f"{relatorio.problem or 'conteudo diferente do manifesto'}. "
             "A copia foi descartada."
         )
@@ -226,7 +251,8 @@ def entregar(pacote: Path, destino: Destino) -> dict[str, object]:
         raise DestinoRecusado(msg)
 
     return {
-        "destino": destino.descricao,
+        # Sem o caminho: esta ficha vai para o servidor. Ver `descricao_curta`.
+        "destino": destino.descricao_curta,
         "tipo": destino.tipo.value,
         "arquivo": final.name,
         "tamanho_bytes": tamanho,

@@ -25,7 +25,7 @@ from autotarefas.tasks.politica import Politica as ConfiguracaoDePolitica
 from autotarefas.tasks.politica import TipoDeDestino
 
 from .db import repositorio as repo
-from .db.models import Dispositivo, EstadoDispositivo, Politica, agora
+from .db.models import Dispositivo, EstadoDispositivo, Politica, agora, momento
 from .identidade.dependencias import (
     ContextoAdministrador,
     ContextoAtual,
@@ -133,8 +133,8 @@ def como_dicionario(registro: Politica) -> dict[str, Any]:
         # disco morrer nem contra ransomware. "Configurado" sem isto seria
         # uma palavra que não significa nada.
         "protege_de_verdade": configuracao.protege_de_verdade,
-        "criada_em": registro.criada_em.isoformat(),
-        "atualizada_em": registro.atualizada_em.isoformat(),
+        "criada_em": momento(registro.criada_em),
+        "atualizada_em": momento(registro.atualizada_em),
     }
 
 

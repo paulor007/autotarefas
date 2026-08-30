@@ -420,3 +420,65 @@ describe("faixa da demonstracao publica", () => {
     ).toBeNull();
   });
 });
+
+/**
+ * A entrada do visitante, que acontece sozinha.
+ *
+ * Quem chega pelo portfolio clicou em "Acessar projeto" e espera estar dentro.
+ * Uma tela de login no caminho — mesmo com um botao so — e um obstaculo entre
+ * a pessoa e a coisa que ela veio ver, e ela nao tem conta nenhuma para usar.
+ */
+describe("entrada automatica na demonstracao", () => {
+  const SEM_SESSAO_COM_DEMONSTRACAO = {
+    ...SEM_ORGANIZACAO,
+    precisa_bootstrap: false,
+    demonstracao_publica: true,
+  };
+
+  it("sem sessao e com demonstracao ligada, entra sozinho", async () => {
+    mockRotas({ "/api/auth/estado": { corpo: SEM_SESSAO_COM_DEMONSTRACAO } });
+    const ida: string[] = [];
+    Object.defineProperty(window, "location", {
+      configurable: true,
+      value: {
+        get href() {
+          return "/app";
+        },
+        set href(destino: string) {
+          ida.push(destino);
+        },
+      },
+    });
+
+    render(<Produto />);
+
+    await waitFor(() => {
+      expect(ida).toContain("/api/auth/visitante");
+    });
+  });
+
+  it("a tela do meio do caminho e uma frase, e nao um formulario", async () => {
+    // Se algo der errado, o servidor responde 404 e o navegador mostra o
+    // motivo — em vez de esta tela ficar girando para sempre.
+    mockRotas({ "/api/auth/estado": { corpo: SEM_SESSAO_COM_DEMONSTRACAO } });
+
+    render(<Produto />);
+
+    expect(await screen.findByRole("status")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /entrar/i })).toBeNull();
+  });
+
+  it("sem demonstracao, a porta de entrada continua a de sempre", async () => {
+    // A entrada automatica e da instalacao publica. Numa instalacao de cliente
+    // ela seria uma porta sem senha que ninguem pediu.
+    mockRotas({
+      "/api/auth/estado": {
+        corpo: { ...SEM_ORGANIZACAO, precisa_bootstrap: false },
+      },
+    });
+
+    render(<Produto />);
+
+    expect(await screen.findByText(/Entrar/)).toBeTruthy();
+  });
+});

@@ -61,6 +61,26 @@ def em_utc(valor: datetime) -> datetime:
     return valor.astimezone(UTC)
 
 
+def momento(valor: datetime | None) -> str:
+    """
+    Instante pronto para sair numa resposta, **com o fuso junto**.
+
+    Existe porque `valor.isoformat()` direto do banco produzia um texto sem
+    fuso — o SQLite não guarda o offset, e `2026-08-30T17:30:00+00:00` volta
+    como `2026-08-30T17:30:00` pelado. O navegador lê texto sem fuso como hora
+    LOCAL: uma execução das 14:30 em Brasília aparecia como 17:30, três horas
+    no futuro, na tela de quem acabara de vê-la acontecer.
+
+    Nada disso aparecia nos testes de servidor, porque lá os dois lados falam
+    UTC. Só a tela mostra.
+
+    `None` vira texto vazio, e não a hora de agora: "nunca terminou" é uma
+    informação, e substituí-la por um instante inventado apagaria a diferença
+    entre uma execução em andamento e uma que acabou neste segundo.
+    """
+    return em_utc(valor).isoformat() if valor is not None else ""
+
+
 class Base(DeclarativeBase):
     """Base declarativa de todo o esquema."""
 

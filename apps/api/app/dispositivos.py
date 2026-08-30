@@ -46,6 +46,7 @@ from .db.models import (
     ResultadoExecucao,
     agora,
     em_utc,
+    momento,
     novo_id,
 )
 from .identidade.dependencias import (
@@ -262,8 +263,8 @@ def listar(sessao: Session, contexto: repo.Contexto) -> list[dict[str, Any]]:
             "versao_agente": item.versao_agente,
             "estado": item.estado.value,
             "impressao": impressao_de(item.chave_publica),
-            "pareado_em": item.pareado_em.isoformat() if item.pareado_em else "",
-            "ultimo_contato": item.ultimo_contato.isoformat() if item.ultimo_contato else "",
+            "pareado_em": momento(item.pareado_em),
+            "ultimo_contato": momento(item.ultimo_contato),
         }
         for item in registros
     ]
@@ -316,7 +317,7 @@ def emitir_codigo(contexto: ContextoAdministrador, sessao: SessaoBanco) -> dict[
     registro = emitir(sessao, contexto)
     return {
         "codigo": registro.codigo,
-        "expira_em": registro.expira_em.isoformat(),
+        "expira_em": momento(registro.expira_em),
         "validade_minutos": VALIDADE_MINUTOS,
     }
 

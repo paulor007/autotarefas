@@ -37,6 +37,7 @@ from .db.models import (
     ResultadoExecucao,
     agora,
     em_utc,
+    momento,
 )
 from .identidade.dependencias import ContextoAtual, SessaoBanco
 
@@ -256,8 +257,8 @@ def _como_dicionario(execucao: Execucao, artefatos: list[Artefato]) -> dict[str,
         "politica_id": execucao.politica_id or "",
         "origem": execucao.origem,
         "resultado": execucao.resultado.value,
-        "iniciada_em": execucao.iniciada_em.isoformat() if execucao.iniciada_em else "",
-        "terminada_em": execucao.terminada_em.isoformat() if execucao.terminada_em else "",
+        "iniciada_em": momento(execucao.iniciada_em),
+        "terminada_em": momento(execucao.terminada_em),
         "arquivos": execucao.arquivos_incluidos,
         "bytes_copiados": execucao.bytes_copiados,
         "ressalva": execucao.ressalva,
@@ -289,7 +290,7 @@ def _artefato_como_dicionario(artefato: Artefato) -> dict[str, Any]:
         # Para onde a cópia foi, e se foi conferida lá.
         "entregas": entregas,
         "nuvem_pendente": artefato.nuvem_pendente,
-        "nuvem_em": artefato.nuvem_em.isoformat() if artefato.nuvem_em else "",
+        "nuvem_em": momento(artefato.nuvem_em),
         "nuvem_chave": artefato.nuvem_chave,
         "nuvem_erro": artefato.nuvem_erro,
     }
@@ -435,7 +436,7 @@ def _trilha_da_execucao(
             "acao": linha.acao,
             "alvo": linha.alvo,
             "detalhe": linha.detalhe,
-            "quando": linha.quando.isoformat(),
+            "quando": momento(linha.quando),
             "hash_atual": linha.hash_atual,
         }
         for linha in linhas
@@ -489,7 +490,7 @@ def trilha_da_organizacao(
                 "acao": linha.acao,
                 "alvo": linha.alvo,
                 "detalhe": linha.detalhe,
-                "quando": linha.quando.isoformat(),
+                "quando": momento(linha.quando),
                 "dispositivo_id": linha.dispositivo_id or "",
             }
             for linha in linhas

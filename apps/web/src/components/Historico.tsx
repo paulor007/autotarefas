@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 
 import DetalheDaExecucao from "./DetalheDaExecucao";
 import { listarHistorico, type Execucao } from "../lib/plataforma";
-import { quando } from "../lib/datas";
+import { quando, tamanho } from "../lib/datas";
 
 interface Props {
   /** Vazio = toda a organização. Preenchido = só aquela máquina. */
@@ -87,7 +87,7 @@ export default function Historico({ dispositivoId = "" }: Props) {
                 {quando(item.iniciada_em)}
               </p>
               <p className="text-[0.8rem] text-muted">
-                {item.arquivos} arquivo(s) · pacote de {emMB(item.bytes_copiados)}
+                {item.arquivos} arquivo(s) · pacote de {tamanho(item.bytes_copiados)}
               </p>
             </div>
             <div className="flex items-center gap-2">
@@ -115,7 +115,7 @@ export default function Historico({ dispositivoId = "" }: Props) {
               {item.artefatos.map((artefato) => (
                 <li key={artefato.id} className="text-[0.8rem] text-muted">
                   <span className="font-mono text-fg">{artefato.nome}</span>{" "}
-                  · {emMB(artefato.tamanho_bytes)} · guardado na própria máquina
+                  · {tamanho(artefato.tamanho_bytes)} · guardado na própria máquina
                 </li>
               ))}
             </ul>
@@ -164,11 +164,4 @@ function rotuloDoResultado(resultado: Execucao["resultado"]): string {
     cancelada: "Cancelada",
   };
   return nomes[resultado] ?? resultado;
-}
-
-
-function emMB(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }

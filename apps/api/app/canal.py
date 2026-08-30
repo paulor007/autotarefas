@@ -45,7 +45,7 @@ from sqlalchemy.orm import Session
 from apps.agente.agente.identidade import conferir_assinatura
 
 from .db.atual import banco
-from .db.models import Dispositivo, EstadoDispositivo, agora
+from .db.models import Dispositivo, EstadoDispositivo, agora, momento
 from .db.repositorio import Contexto, escopo
 from .identidade.dependencias import ContextoAtual, SessaoBanco
 
@@ -525,7 +525,7 @@ def conectados(contexto: ContextoAtual, sessao: SessaoBanco) -> dict[str, Any]:
                 "dispositivo_id": item.id,
                 "nome": item.nome,
                 "conectado": item.id in abertos,
-                "desde": abertos[item.id].conectado_em.isoformat() if item.id in abertos else "",
+                "desde": momento(abertos[item.id].conectado_em) if item.id in abertos else "",
             }
             for item in registros
         ],

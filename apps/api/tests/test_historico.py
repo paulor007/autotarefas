@@ -475,3 +475,57 @@ class TestODetalheDaExecucao:
 
         with banco.sessao() as sessao, pytest.raises(LookupError):
             historico.detalhar(sessao, contexto, "nao-existe")
+
+
+class TestOFusoQueSoATelaVia:
+    """
+    O defeito que nenhum teste de servidor pegava, porque so a tela mostra.
+
+    O SQLite nao guarda fuso: grava-se `2026-08-30T17:30:00+00:00` e le-se
+    `2026-08-30T17:30:00` pelado. O `isoformat()` direto do banco produzia esse
+    texto sem fuso — e o NAVEGADOR le texto sem fuso como hora LOCAL.
+
+    Efeito: uma execucao das 14:30 em Brasilia aparecia como 17:30, tres horas
+    no futuro, na tela de quem acabara de ve-la acontecer. Dentro do servidor
+    nada estava errado; os dois lados falam UTC.
+    """
+
+    def test_as_datas_saem_com_fuso(self, banco: Banco) -> None:
+        contexto = _organizacao(banco)
+        dispositivo_id = _dispositivo(banco, contexto)
+        _gravar(banco, dispositivo_id, [_item("e1")])
+
+        with banco.sessao() as sessao:
+            linha = historico.listar(sessao, contexto)[0]
+
+        assert linha["iniciada_em"].endswith("+00:00"), (
+            "sem fuso, o navegador le como hora local e mostra a execucao no futuro"
+        )
+        assert linha["terminada_em"].endswith("+00:00")
+
+    def test_data_ausente_continua_vazia_e_nao_vira_agora(self, banco: Banco) -> None:
+        """
+        "Nunca terminou" e uma informacao.
+
+        Trocar por um instante inventado apagaria a diferenca entre uma
+        execucao em andamento e uma que acabou neste segundo.
+        """
+        contexto = _organizacao(banco)
+        dispositivo_id = _dispositivo(banco, contexto)
+        _gravar(banco, dispositivo_id, [_item("e2", terminada_em="")])
+
+        with banco.sessao() as sessao:
+            linha = historico.listar(sessao, contexto)[0]
+
+        assert linha["terminada_em"] == ""
+
+    def test_a_trilha_tambem_sai_com_fuso(self, banco: Banco) -> None:
+        contexto = _organizacao(banco)
+        dispositivo_id = _dispositivo(banco, contexto)
+        _gravar(banco, dispositivo_id, [_item("e3")])
+
+        with banco.sessao() as sessao:
+            detalhe = historico.detalhar(sessao, contexto, "e3")
+
+        assert detalhe["trilha"]
+        assert all(linha["quando"].endswith("+00:00") for linha in detalhe["trilha"])
