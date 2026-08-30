@@ -86,7 +86,15 @@ function Cabecalho({ estado }: { estado: EstadoDeSessao | null }) {
  */
 function EntrandoComoVisitante() {
   useEffect(() => {
-    window.location.href = "/api/auth/visitante";
+    // Leva junto para onde a pessoa estava indo. Um link de portfolio nem
+    // sempre aponta para a porta da frente: alguem compartilha
+    // `/app/atividade`, ou o visitante recarrega estando numa secao. Sem isto,
+    // toda entrada caia em `/app` e o lugar se perdia.
+    //
+    // Quem valida o destino e o SERVIDOR — ele chega pela URL, e um destino
+    // fora de `/app` seria um redirecionamento aberto.
+    const daqui = window.location.pathname + window.location.search;
+    window.location.href = `/api/auth/visitante?destino=${encodeURIComponent(daqui)}`;
   }, []);
 
   return (

@@ -280,8 +280,37 @@ def reentrar(request: Request, chave: str = "") -> Response:
     return resposta
 
 
+def destino_do_visitante(pedido: str) -> str:
+    """
+    Para onde devolver o visitante depois de entrar.
+
+    Existe porque um link de portfolio nem sempre aponta para a porta da
+    frente: alguem compartilha `/app/atividade`, ou o visitante recarrega a
+    pagina estando numa secao. Sem isto, toda entrada caia em `/app` e a pessoa
+    perdia o lugar para onde estava indo.
+
+    A validacao e do SERVIDOR, e nao da tela, porque o valor chega pela URL —
+    ou seja, de fora. Um destino que nao comece por `/app` seria um
+    redirecionamento aberto: bastaria mandar `/api/auth/visitante?destino=...`
+    apontando para outro site, com o endereco do AutoTarefas na frente, para
+    ter um link de aparencia legitima levando a qualquer lugar.
+
+    `//outro.site` tambem e recusado: o navegador o le como endereco absoluto
+    com o mesmo esquema, e ele passaria por um teste que so olhasse a primeira
+    barra.
+    """
+    if not pedido.startswith(DEPOIS_DE_ENTRAR) or pedido.startswith("//"):
+        return DEPOIS_DE_ENTRAR
+    # `/appliance` nao e uma secao de `/app`. Ou e o proprio `/app`, ou tem a
+    # barra depois dele.
+    resto = pedido[len(DEPOIS_DE_ENTRAR) :]
+    if resto and not resto.startswith(("/", "?")):
+        return DEPOIS_DE_ENTRAR
+    return pedido
+
+
 @roteador.get("/visitante")
-def entrar_como_visitante(sessao: SessaoBanco) -> Response:
+def entrar_como_visitante(sessao: SessaoBanco, destino: str = "") -> Response:
     """
     Entra na demonstracao publica, sem conta e sem digitar nada.
 
@@ -299,7 +328,9 @@ def entrar_como_visitante(sessao: SessaoBanco) -> Response:
     except demonstracao.DemonstracaoIndisponivel as erro:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(erro)) from erro
 
-    resposta = RedirectResponse(url=DEPOIS_DE_ENTRAR, status_code=status.HTTP_303_SEE_OTHER)
+    resposta = RedirectResponse(
+        url=destino_do_visitante(destino), status_code=status.HTTP_303_SEE_OTHER
+    )
     _gravar_sessao(
         resposta,
         SessaoWeb(

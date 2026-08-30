@@ -20,6 +20,7 @@ from apps.api.app.db.atual import definir_banco
 from apps.api.app.db.models import Organizacao, Papel, Usuario
 from apps.api.app.db.sessao import Banco
 from apps.api.app.identidade import demonstracao
+from apps.api.app.identidade import rotas as demonstracao_rotas
 from apps.api.app.identidade.sessao_web import COOKIE_SESSAO, ler_sessao
 from apps.api.app.main import app
 
@@ -207,3 +208,55 @@ class TestOEstadoConta:
         assert corpo["autenticado"] is True
         assert corpo["somente_leitura"] is True
         assert corpo["organizacao"]["nome"] == VITRINE
+
+
+class TestOVisitanteChegaOndeIa:
+    """
+    Um link de portfolio nem sempre aponta para a porta da frente.
+
+    Alguem compartilha `/app/atividade`, ou o visitante recarrega a pagina
+    estando numa secao. Sem levar o destino junto, toda entrada caia em `/app`
+    e a pessoa perdia o lugar para onde estava indo.
+
+    E, porque o destino chega pela URL — ou seja, de fora —, quem valida e o
+    servidor. Um destino fora de `/app` seria um redirecionamento aberto:
+    bastaria um link com o endereco do AutoTarefas na frente para levar a
+    qualquer lugar com aparencia legitima.
+    """
+
+    def test_segue_para_a_secao_pedida(self, ligada: None) -> None:
+        del ligada
+        resposta = TestClient(app).get(
+            "/api/auth/visitante?destino=/app/atividade", follow_redirects=False
+        )
+
+        assert resposta.status_code == HTTP_VIU_OUTRO
+        assert resposta.headers["location"] == "/app/atividade"
+
+    def test_sem_destino_cai_na_porta_da_frente(self, ligada: None) -> None:
+        del ligada
+        resposta = TestClient(app).get("/api/auth/visitante", follow_redirects=False)
+
+        assert resposta.headers["location"] == "/app"
+
+    @pytest.mark.parametrize(
+        "pedido",
+        [
+            "https://outro.site/phishing",
+            "//outro.site/phishing",
+            "/api/agente/instalador",
+            "/appliance-que-nao-e-nosso",
+            "javascript:alert(1)",
+            "",
+        ],
+    )
+    def test_destino_fora_do_produto_e_ignorado(self, ligada: None, pedido: str) -> None:
+        del ligada
+        assert demonstracao_rotas.destino_do_visitante(pedido) == "/app"
+
+    @pytest.mark.parametrize(
+        "pedido",
+        ["/app", "/app/backups", "/app/dispositivos?voltar=%2Fapp%2Fbackups"],
+    )
+    def test_destino_dentro_do_produto_e_respeitado(self, pedido: str) -> None:
+        assert demonstracao_rotas.destino_do_visitante(pedido) == pedido

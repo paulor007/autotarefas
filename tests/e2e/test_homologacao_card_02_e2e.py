@@ -680,6 +680,32 @@ def test_06_destino_externo_de_mentira_e_recusado_pela_tela(
     )
 
 
+def _pacotes(raiz: Path) -> list[Path]:
+    """
+    Todos os pacotes sob esta raiz, inclusive dentro das pastas de politica.
+
+    Os pacotes deixaram de morar num monte so: cada politica tem a propria
+    pasta, e e isso que impede a retencao de uma apagar o pacote de outra. A
+    busca aqui e recursiva porque o teste quer saber se O PACOTE EXISTE, e nao
+    em que nivel de pasta ele caiu.
+    """
+    return sorted(raiz.rglob("backup_*.zip"))
+
+
+def _pacote(raiz: Path, nome: str) -> Path:
+    """
+    O caminho de um pacote pelo nome, procurando tambem nas pastas de politica.
+
+    Quando nao acha, devolve o caminho na raiz: assim o `is_file()` de quem
+    chamou falha dizendo o que faltava, em vez de estourar aqui com um erro
+    que nao fala de backup nenhum.
+    """
+    for achado in raiz.rglob(nome):
+        if achado.is_file():
+            return achado
+    return raiz / nome
+
+
 def test_07_executar_com_o_navegador_aberto(cenario: Cenario, janela: Janela) -> None:
     """7. Execucao imediata, com as escolhas da propria politica."""
     pagina = janela.pagina
@@ -695,10 +721,17 @@ def test_07_executar_com_o_navegador_aberto(cenario: Cenario, janela: Janela) ->
     recado = painel.get_by_text(re.compile("Backup (concluído|não concluído)")).first.inner_text()
     assert "Backup concluído" in recado, recado
 
-    pacotes = sorted(cenario.maquina.pacotes.glob("backup_*.zip"))
+    pacotes = _pacotes(cenario.maquina.pacotes)
     assert pacotes, "nenhum pacote foi criado na maquina"
-    copias = sorted(cenario.maquina.destino.glob("backup_*.zip"))
+    copias = _pacotes(cenario.maquina.destino)
     assert copias, "o destino externo nao recebeu o pacote"
+
+    # O pacote de uma politica mora na pasta DELA, dos dois lados. E o que
+    # impede a retencao de uma politica de apagar o pacote de outra — o defeito
+    # que so aparecia com duas politicas na mesma maquina, e que apagava
+    # backup do cliente em silencio.
+    assert pacotes[0].parent.name.startswith("politica-"), pacotes[0]
+    assert copias[0].parent.name.startswith("politica-"), copias[0]
     _capturar(pagina, "04-politica-e-execucao")
 
 
@@ -729,7 +762,7 @@ def test_08_marcar_o_horario_e_fechar_o_navegador(cenario: Cenario, janela: Jane
     quando = (datetime.now() + timedelta(minutes=2)).strftime("%H:%M")
     _nova_politica(painel, cenario, hora=quando, nome="Backup da loja")
 
-    cenario.pacotes_antes = {caminho.name for caminho in cenario.maquina.pacotes.glob("*.zip")}
+    cenario.pacotes_antes = {caminho.name for caminho in _pacotes(cenario.maquina.pacotes)}
     janela.fechar()
 
     assert not janela.aberta
@@ -746,7 +779,7 @@ def test_09_executar_pelo_agendamento(cenario: Cenario) -> None:
     """
 
     def apareceu() -> bool:
-        agora = {caminho.name for caminho in cenario.maquina.pacotes.glob("*.zip")}
+        agora = {caminho.name for caminho in _pacotes(cenario.maquina.pacotes)}
         return bool(agora - cenario.pacotes_antes)
 
     _ate(
@@ -758,7 +791,7 @@ def test_09_executar_pelo_agendamento(cenario: Cenario) -> None:
         ),
     )
 
-    novos = {caminho.name for caminho in cenario.maquina.pacotes.glob("*.zip")}
+    novos = {caminho.name for caminho in _pacotes(cenario.maquina.pacotes)}
     assert novos - cenario.pacotes_antes, "nenhum pacote novo"
 
 
@@ -824,13 +857,13 @@ def test_11_conferir_historico_e_saude(cenario: Cenario, janela: Janela) -> None
         lambda: (
             f"o historico chegou ao servidor (pacote {cenario.pacote_do_agendamento}) "
             "mas nao apareceu na tela. "
-            f"Pacotes na maquina: {sorted(p.name for p in cenario.maquina.pacotes.glob('*.zip'))} "
+            f"Pacotes na maquina: {sorted(p.name for p in _pacotes(cenario.maquina.pacotes))} "
             f"Erros do navegador: {' | '.join(janela.erros[-5:])} "
             f"|| Painel: {painel.inner_text()}"
         ),
     )
 
-    assert (cenario.maquina.pacotes / cenario.pacote_do_agendamento).is_file(), (
+    assert _pacote(cenario.maquina.pacotes, cenario.pacote_do_agendamento).is_file(), (
         "o Live mostrou um pacote que nao existe na maquina"
     )
     # A captura sai AQUI, com o historico na tela — e nao depois de trocar de
@@ -853,7 +886,7 @@ def test_12_conferir_pacote_e_manifesto(cenario: Cenario) -> None:
     """12. O pacote confere consigo mesmo, arquivo por arquivo."""
     from autotarefas.tasks.backup import verify_backup
 
-    alvo = cenario.maquina.pacotes / cenario.pacote_do_agendamento
+    alvo = _pacote(cenario.maquina.pacotes, cenario.pacote_do_agendamento)
     relatorio = verify_backup(alvo)
 
     assert relatorio.ok, relatorio.problem
@@ -873,8 +906,8 @@ def test_13_confirmar_presenca_no_destino(cenario: Cenario) -> None:
     """
     import hashlib
 
-    origem = cenario.maquina.pacotes / cenario.pacote_do_agendamento
-    copia = cenario.maquina.destino / cenario.pacote_do_agendamento
+    origem = _pacote(cenario.maquina.pacotes, cenario.pacote_do_agendamento)
+    copia = _pacote(cenario.maquina.destino, cenario.pacote_do_agendamento)
 
     assert copia.is_file(), "o destino nao recebeu o pacote do agendamento"
     assert copia.stat().st_size == origem.stat().st_size
@@ -909,7 +942,7 @@ def test_14_restaurar_uma_amostra_pela_tela(cenario: Cenario, janela: Janela) ->
         lambda: "a restauracao nao respondeu. Painel: " + painel.inner_text()[-600:],
     )
     inteiro = painel.inner_text()
-    pacotes = sorted(p.name for p in cenario.maquina.pacotes.glob("*.zip"))
+    pacotes = sorted(p.name for p in _pacotes(cenario.maquina.pacotes))
     corte = inteiro.find("Restaurar arquivos ·")
     assert "Restauração concluída" in inteiro, f"{inteiro[corte:][:900]} || pacotes={pacotes}"
 
@@ -958,7 +991,7 @@ def test_17_comprovar_comportamento_incremental(cenario: Cenario) -> None:
     """
     from autotarefas.tasks.backup import verify_backup
 
-    alvo = cenario.maquina.pacotes / cenario.pacote_incremental
+    alvo = _pacote(cenario.maquina.pacotes, cenario.pacote_incremental)
     relatorio = verify_backup(alvo)
 
     assert relatorio.ok, relatorio.problem
@@ -998,7 +1031,7 @@ def test_18_arquivo_maior_que_dez_megabytes(cenario: Cenario, janela: Janela) ->
 
     achado = re.search(r"backup_\d{4}-\d{2}-\d{2}_\d{4}\.zip", recado)
     assert achado, recado
-    pacote = cenario.maquina.pacotes / achado.group(0)
+    pacote = _pacote(cenario.maquina.pacotes, achado.group(0))
 
     assert pacote.stat().st_size > TAMANHO_GRANDE, (
         "o pacote ficou menor que o arquivo: ele nao entrou inteiro"

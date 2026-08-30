@@ -34,6 +34,7 @@ from __future__ import annotations
 import json
 
 # `subprocess` para rodar o Agente — o mesmo modulo que um cliente roda.
+import os
 import subprocess  # nosec B404
 import sys
 from dataclasses import dataclass
@@ -45,7 +46,12 @@ import click
 RAIZ = Path(__file__).resolve().parents[1]
 
 #: Onde a vitrine mora. Pasta de runtime, coberta pelo `.gitignore`.
-CASA = RAIZ / ".autotarefas" / "vitrine"
+#:
+#: `VITRINE_CASA` existe por duas razoes praticas: publicar num servidor em que
+#: o dado nao deve morar dentro do repositorio, e permitir que a homologacao de
+#: ponta a ponta monte uma vitrine descartavel numa pasta temporaria — usando
+#: esta mesma ferramenta, e nao uma copia dela que poderia divergir.
+CASA = Path(os.environ.get("VITRINE_CASA") or (RAIZ / ".autotarefas" / "vitrine"))
 
 BANCO = CASA / "vitrine.db"
 CONFIG_DO_AGENTE = CASA / "agente"
