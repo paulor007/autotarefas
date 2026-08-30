@@ -413,3 +413,130 @@ describe("assistente de configuração", () => {
     expect((ativar as HTMLButtonElement).disabled).toBe(true);
   });
 });
+
+/**
+ * A mesma tela na demonstração pública.
+ *
+ * Quem chega pelo portfólio não veio operar backup nenhum: veio descobrir o
+ * que o produto faz. Antes disto a tela resolvia o assunto escondendo tudo —
+ * um `leitor` não via o assistente, e portanto não via que existe disco
+ * externo, pasta de rede ou nuvem. Escondia também um botão que respondia 403.
+ *
+ * O que estes testes fixam é o meio-termo: mostrar as escolhas, e não fingir
+ * que elas seriam gravadas.
+ */
+describe("Backups na demonstração pública", () => {
+  const POLITICA = {
+    id: "p1",
+    nome: "Backup diario 03:00",
+    dispositivo_id: "d1",
+    ativa: true,
+    configuracao: {
+      origens: ["/dados"],
+      destino: { tipo: "local", caminho: "/destino" },
+      agendamento: {
+        tipo: "diario",
+        hora: "03:00",
+        dia_da_semana: 0,
+        dia_do_mes: 1,
+      },
+      retencao: { diarias: 7, semanais: 4, mensais: 12 },
+      retry: { tentativas: 3, espera_inicial_min: 5 },
+      notificacao: { quando: "problema", emails: [] },
+      usar_vss: false,
+      cifrar: false,
+      assinar: true,
+      incremental: false,
+    },
+    protege_de_verdade: false,
+    criada_em: "2026-08-30T11:36:00",
+    atualizada_em: "2026-08-30T11:36:00",
+  };
+
+  const COM_POLITICA = {
+    ...BASE,
+    "/api/politicas": { politicas: [POLITICA] },
+  };
+
+  it("não oferece botão que o servidor recusaria", async () => {
+    // "Executar agora" e "Remover" respondem 403 nesta sessao. Um botao que
+    // so sabe recusar e um botao sem funcao — e o 403 chegaria como erro
+    // vermelho, que e a forma mais cara de explicar uma regra de produto.
+    mockRotas(COM_POLITICA);
+
+    render(<Politicas papel="leitor" somenteLeitura />);
+    await screen.findByText("Backup diario 03:00");
+
+    expect(screen.queryByRole("button", { name: /executar agora/i })).toBeNull();
+    expect(screen.queryByRole("button", { name: /remover/i })).toBeNull();
+  });
+
+  it("diz que os backups rodam sozinhos, em vez de deixar a lista muda", async () => {
+    mockRotas(COM_POLITICA);
+
+    render(<Politicas papel="leitor" somenteLeitura />);
+
+    expect(await screen.findByText(/rodam sozinhos/i)).toBeTruthy();
+  });
+
+  it("deixa ver as opções de destino, que era o que estava escondido", async () => {
+    mockRotas(COM_POLITICA);
+
+    render(<Politicas papel="leitor" somenteLeitura />);
+    await userEvent.click(
+      await screen.findByRole("button", { name: /ver como se configura/i }),
+    );
+
+    const destino = await screen.findByLabelText("Tipo de destino");
+    const opcoes = Array.from(
+      destino.querySelectorAll("option"),
+      (item) => item.textContent ?? "",
+    );
+    expect(opcoes).toContain("Disco externo");
+    expect(opcoes).toContain("Pasta de rede");
+    expect(opcoes.some((item) => /nuvem/i.test(item))).toBe(true);
+  });
+
+  it("a frase do resumo acompanha o destino escolhido", async () => {
+    // O valor do assistente aberto e este: a pessoa muda o destino e ve o
+    // produto responder. Sem isso seriam campos bonitos e inertes.
+    mockRotas(COM_POLITICA);
+
+    render(<Politicas papel="leitor" somenteLeitura />);
+    await userEvent.click(
+      await screen.findByRole("button", { name: /ver como se configura/i }),
+    );
+    await userEvent.selectOptions(
+      await screen.findByLabelText("Tipo de destino"),
+      "nuvem",
+    );
+
+    expect(screen.getByRole("status").textContent).toContain("a nuvem");
+  });
+
+  it("não oferece ativar, e diz por quê", async () => {
+    mockRotas(COM_POLITICA);
+
+    render(<Politicas papel="leitor" somenteLeitura />);
+    await userEvent.click(
+      await screen.findByRole("button", { name: /ver como se configura/i }),
+    );
+
+    expect(screen.queryByRole("button", { name: /ativar backup/i })).toBeNull();
+    expect(screen.getByText(/não grava/i)).toBeTruthy();
+  });
+
+  it("fora da demonstração nada disto muda", async () => {
+    // A trava e da sessao publica, e nao do papel: um `dono` de empresa de
+    // verdade continua vendo a tela que sempre viu.
+    mockRotas(COM_POLITICA);
+
+    render(<Politicas papel="dono" />);
+    await screen.findByText("Backup diario 03:00");
+
+    expect(
+      screen.getByRole("button", { name: /executar agora/i }),
+    ).toBeTruthy();
+    expect(screen.getByRole("button", { name: /^configurar backup$/i })).toBeTruthy();
+  });
+});

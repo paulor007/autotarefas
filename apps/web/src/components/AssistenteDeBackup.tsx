@@ -50,6 +50,16 @@ interface Props {
   ) => Promise<void>;
   aoFalhar: (mensagem: string) => void;
   mensagemDe: (erro: unknown) => string;
+  /**
+   * Assistente desarmado: mexe em tudo, não grava nada.
+   *
+   * É o modo da demonstração pública. Os campos são os mesmos e a frase do
+   * passo 6 é calculada pelo mesmo código — o que muda é que não há o que
+   * ativar. Uma tela de leitura com os campos travados esconderia justamente
+   * a resposta que a pessoa veio buscar: o que o produto faz quando você
+   * escolhe disco externo em vez de nuvem.
+   */
+  somenteLeitura?: boolean;
 }
 
 /**
@@ -80,6 +90,7 @@ export default function AssistenteDeBackup({
   aoSalvar,
   aoFalhar,
   mensagemDe,
+  somenteLeitura = false,
 }: Props) {
   const [nome, setNome] = useState("Backup diário");
   const [dispositivoId, setDispositivoId] = useState(dispositivos[0]?.id ?? "");
@@ -432,7 +443,7 @@ export default function AssistenteDeBackup({
           </div>
         </details>
 
-        <Passo numero={6} titulo="Ativar">
+        <Passo numero={6} titulo={somenteLeitura ? "O que seria criado" : "Ativar"}>
           {/* A frase existe para ser lida antes do clique. Uma tela que só
               mostra campos deixa a pessoa ativar sem nunca ter visto, junto,
               o que combinou. */}
@@ -464,14 +475,28 @@ export default function AssistenteDeBackup({
               </span>
             )}
           </p>
-          <button
-            type="button"
-            onClick={() => void salvar()}
-            disabled={salvando || !pronto}
-            className="self-start rounded-lg border border-signal/40 bg-signal/10 px-4 py-2 text-sm font-semibold text-signal hover:border-signal/70 disabled:opacity-40"
-          >
-            {salvando ? "Ativando…" : "Ativar backup"}
-          </button>
+          {somenteLeitura ? (
+            /* Nenhum botao aqui, e de proposito. "Ativar backup" desabilitado
+               convidaria ao clique que nao acontece; um habilitado levaria ao
+               403 do servidor no fim de seis passos preenchidos. A frase acima
+               ja e a entrega deste passo — o resto e uma afirmacao do que este
+               ambiente e. */
+            <p className="text-[0.8rem] text-muted">
+              Esta é a tela real de configuração, com os mesmos campos e as
+              mesmas regras. Nesta demonstração pública ela não grava: as
+              políticas que você vê na lista foram criadas por aqui e estão
+              rodando na máquina do ambiente.
+            </p>
+          ) : (
+            <button
+              type="button"
+              onClick={() => void salvar()}
+              disabled={salvando || !pronto}
+              className="self-start rounded-lg border border-signal/40 bg-signal/10 px-4 py-2 text-sm font-semibold text-signal hover:border-signal/70 disabled:opacity-40"
+            >
+              {salvando ? "Ativando…" : "Ativar backup"}
+            </button>
+          )}
         </Passo>
       </div>
     </div>

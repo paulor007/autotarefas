@@ -371,3 +371,52 @@ describe("estado da proteção", () => {
     expect(within(selo).queryByText("Backup da loja")).toBeNull();
   });
 });
+
+/**
+ * A faixa da demonstracao publica.
+ *
+ * Quem chega pelo portfolio tem duas perguntas que a tela sozinha nao
+ * responde: se aquilo e real, e o que acontece se mexer. Sem a faixa, a
+ * primeira e respondida por suposicao (a mais comum e "e uma maquete") e a
+ * segunda por um 403 no meio de um formulario preenchido.
+ */
+describe("faixa da demonstracao publica", () => {
+  const VISITANTE = {
+    ...LOGADO,
+    usuario: {
+      id: "v1",
+      nome: "Visitante",
+      email: "visitante@demonstracao.autotarefas",
+    },
+    organizacao: {
+      id: "o1",
+      nome: "AutoTarefas Demonstracao",
+      papel: "leitor",
+    },
+    demonstracao_publica: true,
+    somente_leitura: true,
+  };
+
+  it("afirma que o ambiente e real e que a sessao nao altera nada", async () => {
+    mockRotas({ ...VAZIO, "/api/auth/estado": { corpo: VISITANTE } });
+    render(<Produto />);
+
+    const faixa = await screen.findByRole("note", {
+      name: /demonstração pública/i,
+    });
+    expect(within(faixa).getByText(/aconteceu de verdade/i)).toBeTruthy();
+    expect(within(faixa).getByText(/somente leitura/i)).toBeTruthy();
+  });
+
+  it("nao aparece para quem entrou com conta", async () => {
+    // A faixa e da sessao publica. Numa instalacao de cliente ela seria um
+    // aviso falso sobre o proprio dado da empresa.
+    mockRotas(VAZIO);
+    render(<Produto />);
+
+    await screen.findByRole("navigation");
+    expect(
+      screen.queryByRole("note", { name: /demonstração pública/i }),
+    ).toBeNull();
+  });
+});

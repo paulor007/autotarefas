@@ -18,6 +18,15 @@ import {
 interface Props {
   /** Papel de quem está olhando: só quem administra cria e remove política. */
   papel: string;
+  /**
+   * Sessão da demonstração pública: o servidor recusa qualquer escrita.
+   *
+   * Não é a mesma coisa que "papel de leitor", e por isso é um campo próprio.
+   * O leitor de uma empresa de verdade continua vendo a tela como sempre viu;
+   * aqui a tela muda de assunto, porque quem chegou não veio operar — veio
+   * entender o que o produto faz.
+   */
+  somenteLeitura?: boolean;
 }
 
 const ADMINISTRAM = new Set(["dono", "administrador"]);
@@ -47,7 +56,7 @@ const PARA_PAREAR = comVolta(enderecoDa("dispositivos"), enderecoDa("backups"));
  *    alguém manda" é uma escolha válida — desde que ninguém a confunda com
  *    backup automático.
  */
-export default function Politicas({ papel }: Props) {
+export default function Politicas({ papel, somenteLeitura = false }: Props) {
   const [politicas, setPoliticas] = useState<Politica[] | null>(null);
   const [dispositivos, setDispositivos] = useState<Dispositivo[]>([]);
   const [erro, setErro] = useState("");
@@ -58,7 +67,12 @@ export default function Politicas({ papel }: Props) {
   const [carregado, setCarregado] = useState(false);
   const jaDecidiu = useRef(false);
 
-  const administra = ADMINISTRAM.has(papel);
+  const administra = ADMINISTRAM.has(papel) && !somenteLeitura;
+  // A sessao publica NAO administra, mas abre o assistente assim mesmo — com
+  // ele desarmado. Escondê-lo esconderia justamente o que a pessoa veio ver:
+  // que dá para mandar a cópia para um disco externo, uma pasta de rede ou a
+  // nuvem, e o que o produto responde a cada escolha.
+  const explora = somenteLeitura;
 
   const carregar = useCallback(async () => {
     try {
@@ -152,13 +166,17 @@ export default function Politicas({ papel }: Props) {
             Cada backup é uma política: o que copiar, para onde e quando.
           </p>
         </div>
-        {administra && dispositivos.length > 0 && (
+        {(administra || explora) && dispositivos.length > 0 && (
           <button
             type="button"
             onClick={() => setAbrindo((atual) => !atual)}
             className="rounded-lg border border-white/12 px-3 py-1.5 text-sm font-semibold text-fg hover:border-white/25"
           >
-            {abrindo ? "Cancelar" : "Configurar backup"}
+            {abrindo
+              ? "Fechar"
+              : explora
+                ? "Ver como se configura"
+                : "Configurar backup"}
           </button>
         )}
       </div>
@@ -185,8 +203,9 @@ export default function Politicas({ papel }: Props) {
         </div>
       )}
 
-      {abrindo && administra && (
+      {abrindo && (administra || explora) && (
         <AssistenteDeBackup
+          somenteLeitura={explora}
           mensagemDe={mensagemDe}
           dispositivos={dispositivos}
           aoSalvar={async (resultado) => {
@@ -212,6 +231,14 @@ export default function Politicas({ papel }: Props) {
         </p>
       )}
 
+      {somenteLeitura && (politicas ?? []).length > 0 && (
+        <p className="mt-3 text-[0.8rem] text-muted">
+          Estes backups rodam sozinhos, no horário de cada um, na máquina do
+          ambiente de demonstração. Ninguém precisa clicar em nada — o que
+          aconteceu em cada execução está em Atividade.
+        </p>
+      )}
+
       <ul className="mt-3 flex flex-col gap-2">
         {(politicas ?? []).map((item) => (
           <li
@@ -227,13 +254,20 @@ export default function Politicas({ papel }: Props) {
                 </p>
               </div>
               <div className="flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  onClick={() => void executarAgora(item)}
-                  className="rounded-lg border border-white/12 px-3 py-1 text-[0.75rem] text-fg hover:border-white/25"
-                >
-                  Executar agora
-                </button>
+                {/* Na demonstracao publica nao ha "Executar agora", e nao por
+                    timidez: o servidor recusaria, e um botao que sempre
+                    responde 403 e um botao sem funcao. O que a pessoa precisa
+                    ver aqui e que o backup roda sozinho no horario — o que o
+                    historico logo abaixo mostra, com hora, tamanho e hash. */}
+                {!somenteLeitura && (
+                  <button
+                    type="button"
+                    onClick={() => void executarAgora(item)}
+                    className="rounded-lg border border-white/12 px-3 py-1 text-[0.75rem] text-fg hover:border-white/25"
+                  >
+                    Executar agora
+                  </button>
+                )}
                 {administra && (
                   <button
                     type="button"

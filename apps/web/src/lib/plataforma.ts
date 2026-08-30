@@ -22,6 +22,16 @@ export interface EstadoDeSessao {
   usuario: { id: string; nome: string; email: string } | null;
   organizacao: { id: string; nome: string; papel: string } | null;
   organizacoes: { id: string; nome: string }[];
+  /** Este servidor publica uma demonstração aberta a quem chegar. */
+  demonstracao_publica?: boolean;
+  /**
+   * Esta sessão não altera nada, e o servidor recusa antes de qualquer rota.
+   *
+   * A tela precisa saber para **dizer**. Sem isto ela mostra os mesmos botões
+   * de sempre, e quem clica descobre a regra por um 403 — que é a forma mais
+   * cara possível de explicar uma decisão de produto.
+   */
+  somente_leitura?: boolean;
 }
 
 /** Um dispositivo cadastrado nesta organização. */

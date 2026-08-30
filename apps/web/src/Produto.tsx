@@ -12,6 +12,7 @@
 import { CheckSquare } from "lucide-react";
 
 import Dispositivos from "./components/Dispositivos";
+import FaixaDeDemonstracao from "./components/FaixaDeDemonstracao";
 import NavegacaoDoProduto from "./components/NavegacaoDoProduto";
 import Politicas from "./components/Politicas";
 import PortaDeEntrada from "./components/PortaDeEntrada";
@@ -76,9 +77,13 @@ function Secao({
   aoSair: () => void;
 }) {
   const papel = estado.organizacao?.papel ?? "leitor";
+  // Vem do servidor, e nao do papel. Sao duas travas independentes de
+  // proposito: um `leitor` de uma empresa de verdade continua vendo a tela do
+  // jeito de sempre, e so a sessao publica muda de comportamento.
+  const somenteLeitura = estado.somente_leitura === true;
   switch (secao) {
     case "backups":
-      return <Politicas papel={papel} />;
+      return <Politicas papel={papel} somenteLeitura={somenteLeitura} />;
     case "dispositivos":
       return <Dispositivos papel={papel} />;
     case "atividade":
@@ -110,6 +115,7 @@ export default function Produto() {
   return (
     <div className="min-h-screen">
       <Cabecalho estado={estado} />
+      {estado.somente_leitura === true && <FaixaDeDemonstracao />}
       <NavegacaoDoProduto atual={secao} />
       {/* `id` fixo: e por ele que a homologacao de ponta a ponta limita o
           escopo do que procura. Sem isso, um "Executar agora" da demonstracao
