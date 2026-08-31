@@ -4,17 +4,24 @@ import { ArrowLeft } from "lucide-react";
 import InstalarAgente from "./InstalarAgente";
 import Restauracao from "./Restauracao";
 
+import { desdeQuando, quando as formatarData } from "../lib/datas";
 import {
   consultarDispositivo,
   emitirCodigo,
   ErroDaPlataforma,
   executarBackup,
   listarDispositivos,
+  listarHistorico,
+  listarPoliticas,
   listarPresenca,
+  obterAoVivo,
   revogarDispositivo,
   type CodigoDePareamento,
   type Dispositivo,
   type EstadoDoDispositivo,
+  type Execucao,
+  type Politica,
+  type ProximaExecucao,
 } from "../lib/plataforma";
 import {
   cliqueDeNavegacao,
@@ -26,7 +33,7 @@ interface Props {
   /** Papel de quem está olhando: só quem administra parea e revoga. */
   papel: string;
   /**
-   * Sessão da demonstração pública: o servidor recusa qualquer escrita.
+   * Sessão do ambiente público: o servidor recusa qualquer escrita.
    *
    * "Ver pastas autorizadas" parece leitura e não é: a rota é `POST`, porque
    * manda um comando pelo canal até o computador. Nesta sessão ela responde
@@ -72,6 +79,12 @@ export default function Dispositivos({ papel, somenteLeitura = false }: Props) {
   const [erro, setErro] = useState<string | null>(null);
   const [ocupado, setOcupado] = useState(false);
   const [restaurando, setRestaurando] = useState("");
+  // O que cada maquina esta fazendo, para o cartao dizer mais do que
+  // "conectado". Vem de rotas que a tela ja consome noutros lugares — nao ha
+  // pergunta nova para a maquina do cliente.
+  const [politicas, setPoliticas] = useState<Politica[]>([]);
+  const [execucoes, setExecucoes] = useState<Execucao[]>([]);
+  const [proximas, setProximas] = useState<ProximaExecucao[]>([]);
 
   // De onde a pessoa veio, quando veio de algum lugar. Parear e um desvio:
   // comeca numa configuracao, passa por outro computador e precisa terminar
@@ -100,6 +113,34 @@ export default function Dispositivos({ papel, somenteLeitura = false }: Props) {
       setCarregado(true);
     }
   }, []);
+
+  /**
+   * O que cada maquina esta fazendo — melhor esforco, de proposito.
+   *
+   * A afirmacao principal deste cartao e "existe uma maquina, e o Agente dela
+   * esta conectado". Ela vem de `carregar`, e uma falha ali e erro de
+   * verdade. O resto — quantos backups, qual foi o ultimo, quando e o
+   * proximo — enriquece o cartao, e nao pode derruba-lo: uma rota acessoria
+   * fora do ar apagaria da tela a maquina que esta ali, funcionando.
+   */
+  const enriquecer = useCallback(async () => {
+    try {
+      const [comPoliticas, historico, aoVivo] = await Promise.all([
+        listarPoliticas(),
+        listarHistorico(),
+        obterAoVivo(),
+      ]);
+      setPoliticas(comPoliticas.politicas ?? []);
+      setExecucoes(historico.execucoes ?? []);
+      setProximas(aoVivo.proximas ?? []);
+    } catch {
+      // Sem ruido: o cartao continua dizendo o que sabe.
+    }
+  }, []);
+
+  useEffect(() => {
+    void enriquecer();
+  }, [enriquecer]);
 
   useEffect(() => {
     void carregar();
@@ -219,10 +260,10 @@ export default function Dispositivos({ papel, somenteLeitura = false }: Props) {
 
       {somenteLeitura && dispositivos.length > 0 && (
         <p className="mt-4 text-[0.8rem] text-muted">
-          Esta máquina pertence ao ambiente do projeto e roda os backups desta
-          demonstração no horário. Ela foi pareada pelo mesmo código temporário
-          que qualquer cliente usaria, e autorizou as pastas no próprio
-          computador — nenhuma tela concede acesso a disco.
+          Esta máquina pertence ao ambiente do projeto e roda os backups no
+          horário. Ela foi pareada pelo mesmo código temporário que qualquer
+          cliente usaria, e autorizou as pastas no próprio computador — nenhuma
+          tela concede acesso a disco.
         </p>
       )}
 
@@ -230,6 +271,20 @@ export default function Dispositivos({ papel, somenteLeitura = false }: Props) {
         {dispositivos.map((item) => {
           const online = conectados[item.id] === true;
           const estado = estados[item.id];
+          const daMaquina = politicas.filter(
+            (politica) => politica.dispositivo_id === item.id && politica.ativa,
+          );
+          const ultima = execucoes.find(
+            (execucao) => execucao.dispositivo_id === item.id,
+          );
+          const proxima = proximas.find(
+            (agendada) =>
+              agendada.maquina === item.nome &&
+              agendada.proxima_no_relogio_da_maquina,
+          );
+          const proximaDaMaquina = proxima
+            ? `${formatarData(proxima.proxima_no_relogio_da_maquina)} · ${proxima.nome}`
+            : "sem horário marcado";
           // Máquina revogada não recebe comando — o servidor recusa. Deixar
           // os botões na tela seria oferecer uma ação que só pode falhar.
           const emServico = item.estado !== "revogado";
@@ -239,13 +294,7 @@ export default function Dispositivos({ papel, somenteLeitura = false }: Props) {
               className="rounded-lg border border-white/10 bg-surface px-4 py-3"
             >
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <div>
-                  <p className="text-sm font-semibold text-fg">{item.nome}</p>
-                  <p className="text-[0.8rem] text-muted">
-                    {item.sistema || "sistema não informado"} · Agente{" "}
-                    {item.versao_agente || "?"} · impressão {item.impressao}
-                  </p>
-                </div>
+                <p className="text-sm font-semibold text-fg">{item.nome}</p>
                 <span
                   className={`rounded-full px-2 py-0.5 text-[0.7rem] font-semibold ${corDoEstado(
                     item.estado,
@@ -255,6 +304,39 @@ export default function Dispositivos({ papel, somenteLeitura = false }: Props) {
                   {rotuloDeEstado(item.estado, online)}
                 </span>
               </div>
+
+              {/* Antes o cartao dizia "Windows 11 · Agente 0.1.0 · impressao
+                  AAAA-..." numa linha so, e parava ai. Quem chega precisa
+                  entender quatro coisas em sequencia: existe uma maquina,
+                  existe um Agente, ele esta conectado, e as automacoes estao
+                  acontecendo. As tres ultimas nao estavam na tela.
+
+                  Nada aqui e pergunta nova a maquina do cliente: sao as
+                  mesmas rotas que Backups e Atividade ja consomem. */}
+              <dl className="mt-3 grid gap-x-6 gap-y-2 text-[0.8rem] sm:grid-cols-3">
+                <Dado rotulo="Sistema" valor={item.sistema || "não informado"} />
+                <Dado
+                  rotulo="Agente"
+                  valor={item.versao_agente ? `v${item.versao_agente}` : "?"}
+                />
+                {/* Relativo, e nao absoluto: a pergunta ali e "isto esta
+                    vivo agora?", e uma data obriga quem le a fazer a conta com
+                    o relogio para responde-la. */}
+                <Dado
+                  rotulo="Último contato"
+                  valor={desdeQuando(item.ultimo_contato)}
+                />
+                <Dado rotulo="Backups ativos" valor={String(daMaquina.length)} />
+                <Dado
+                  rotulo="Último backup"
+                  valor={
+                    ultima
+                      ? `${formatarData(ultima.terminada_em || ultima.iniciada_em)} · ${rotuloDoResultado(ultima.resultado)}`
+                      : "nenhum ainda"
+                  }
+                />
+                <Dado rotulo="Próxima execução" valor={proximaDaMaquina} />
+              </dl>
 
               {estado?.ok && (
                 <div className="mt-2 text-[0.85rem] text-muted">
@@ -387,4 +469,35 @@ function mensagemDe(erro: unknown): string {
     return erro.message;
   }
   return erro instanceof Error ? erro.message : "não foi possível";
+}
+
+
+/** Um par rótulo/valor do cartão da máquina. */
+function Dado({ rotulo, valor }: { rotulo: string; valor: string }) {
+  return (
+    <div>
+      <dt className="text-[0.7rem] uppercase tracking-wide text-muted">
+        {rotulo}
+      </dt>
+      <dd className="mt-0.5 text-fg">{valor}</dd>
+    </div>
+  );
+}
+
+const RESULTADOS: Record<string, string> = {
+  sucesso: "Concluído",
+  com_ressalva: "Concluído com ressalva",
+  falha: "Falhou",
+  em_andamento: "Em andamento",
+  cancelada: "Cancelada",
+};
+
+/**
+ * "Com ressalva" não vira "Concluído".
+ *
+ * Um backup que copiou quase tudo tem ausências, e quem um dia for restaurar
+ * precisa saber disso antes — e não no dia.
+ */
+function rotuloDoResultado(resultado: string): string {
+  return RESULTADOS[resultado] ?? resultado;
 }

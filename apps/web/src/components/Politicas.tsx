@@ -1,16 +1,20 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import AssistenteDeBackup from "./AssistenteDeBackup";
+import ConfiguracaoDaPolitica from "./ConfiguracaoDaPolitica";
 import { cliqueDeNavegacao, comVolta, enderecoDa } from "../lib/rotas";
+import { ressalvaCurta } from "../lib/rotulos";
 
 import {
   ErroDaPlataforma,
   executarBackup,
   listarDispositivos,
   listarPoliticas,
+  obterProtecao,
   removerPolitica,
   type ConfiguracaoDePolitica,
   type Dispositivo,
+  type EstadoDeProtecao,
   type Politica,
   type Sincronizacao,
 } from "../lib/plataforma";
@@ -65,29 +69,37 @@ export default function Politicas({ papel, somenteLeitura = false }: Props) {
   // Como em Dispositivos: lista vazia e "ainda nao perguntei" sao coisas
   // diferentes, e so uma delas merece a tela de "nenhuma maquina".
   const [carregado, setCarregado] = useState(false);
+  // Qual configuracao esta aberta. Uma so: abrir varias transformaria a lista
+  // numa parede de campos, e o valor dela e ser uma lista.
+  const [aberta, setAberta] = useState("");
+  // O veredito vem do SERVIDOR, e nao e recalculado aqui. Duas contas para a
+  // mesma pergunta acabariam discordando, e a tela mostraria "parcial" ao lado
+  // de "protegido" para o mesmo backup.
+  const [protecao, setProtecao] = useState<EstadoDeProtecao | null>(null);
   const jaDecidiu = useRef(false);
 
   const administra = ADMINISTRAM.has(papel) && !somenteLeitura;
-  // A sessao publica NAO administra, mas abre o assistente assim mesmo — com
-  // ele desarmado. Escondê-lo esconderia justamente o que a pessoa veio ver:
-  // que dá para mandar a cópia para um disco externo, uma pasta de rede ou a
-  // nuvem, e o que o produto responde a cada escolha.
-  const explora = somenteLeitura;
+
+  // O veredito de cada politica, do jeito que o servidor decidiu.
+  const vereditoDe = (politica_id: string) =>
+    protecao?.backups.find((item) => item.politica_id === politica_id);
 
   const carregar = useCallback(async () => {
     try {
       // As duas listas juntas: uma política sem máquina não existe, e mostrar
       // a lista de políticas antes de saber quais máquinas há faria o nome do
       // dispositivo piscar como "máquina removida".
-      const [comPoliticas, comDispositivos] = await Promise.all([
+      const [comPoliticas, comDispositivos, veredito] = await Promise.all([
         listarPoliticas(),
         listarDispositivos(),
+        obterProtecao(),
       ]);
       const maquinas = comDispositivos.dispositivos.filter(
         (item) => item.estado !== "revogado",
       );
       setPoliticas(comPoliticas.politicas);
       setDispositivos(maquinas);
+      setProtecao(veredito);
       // Quem chega aqui com maquina e sem nenhuma politica veio configurar —
       // e obriga-lo a clicar em "Configurar backup" para ver o assistente
       // seria cobrar um clique por uma tela vazia. So na PRIMEIRA carga:
@@ -166,17 +178,13 @@ export default function Politicas({ papel, somenteLeitura = false }: Props) {
             Cada backup é uma política: o que copiar, para onde e quando.
           </p>
         </div>
-        {(administra || explora) && dispositivos.length > 0 && (
+        {administra && dispositivos.length > 0 && (
           <button
             type="button"
             onClick={() => setAbrindo((atual) => !atual)}
             className="rounded-lg border border-white/12 px-3 py-1.5 text-sm font-semibold text-fg hover:border-white/25"
           >
-            {abrindo
-              ? "Fechar"
-              : explora
-                ? "Ver como se configura"
-                : "Configurar backup"}
+            {abrindo ? "Fechar" : "Configurar backup"}
           </button>
         )}
       </div>
@@ -203,12 +211,8 @@ export default function Politicas({ papel, somenteLeitura = false }: Props) {
         </div>
       )}
 
-      {abrindo && (administra || explora) && (
+      {abrindo && administra && (
         <AssistenteDeBackup
-          somenteLeitura={explora}
-          origensConhecidas={[
-            ...new Set((politicas ?? []).flatMap((item) => item.configuracao.origens)),
-          ]}
           mensagemDe={mensagemDe}
           dispositivos={dispositivos}
           aoSalvar={async (resultado) => {
@@ -236,9 +240,8 @@ export default function Politicas({ papel, somenteLeitura = false }: Props) {
 
       {somenteLeitura && (politicas ?? []).length > 0 && (
         <p className="mt-3 text-[0.8rem] text-muted">
-          Estes backups rodam sozinhos, no horário de cada um, na máquina do
-          ambiente de demonstração. Ninguém precisa clicar em nada — o que
-          aconteceu em cada execução está em Atividade.
+          Estes backups rodam sozinhos, no horário de cada um. Ninguém precisa
+          clicar em nada — o que aconteceu em cada execução está em Atividade.
         </p>
       )}
 
@@ -257,7 +260,16 @@ export default function Politicas({ papel, somenteLeitura = false }: Props) {
                 </p>
               </div>
               <div className="flex flex-wrap gap-2">
-                {/* Na demonstracao publica nao ha "Executar agora", e nao por
+                <button
+                  type="button"
+                  onClick={() =>
+                    setAberta((atual) => (atual === item.id ? "" : item.id))
+                  }
+                  className="rounded-lg border border-white/12 px-3 py-1 text-[0.75rem] text-fg hover:border-white/25"
+                >
+                  {aberta === item.id ? "Fechar" : "Ver configuração"}
+                </button>
+                {/* No ambiente publico nao ha "Executar agora", e nao por
                     timidez: o servidor recusaria, e um botao que sempre
                     responde 403 e um botao sem funcao. O que a pessoa precisa
                     ver aqui e que o backup roda sozinho no horario — o que o
@@ -283,20 +295,29 @@ export default function Politicas({ papel, somenteLeitura = false }: Props) {
               </div>
             </div>
 
-            {/* Sem "ou a nuvem" na frase abaixo. Ela mandava para um destino
-                que o servidor recusa no agendamento — conselho que vira erro
-                quando seguido e a pior forma de ajudar. */}
-            {!item.protege_de_verdade && (
-              <p className="mt-2 text-[0.8rem] text-signal">
-                O pacote fica só nesta máquina. Isso não protege contra o disco
-                morrer nem contra ransomware — escolha um disco externo ou uma
-                pasta de rede para ter backup de verdade.
-              </p>
-            )}
-            {item.configuracao.agendamento.tipo === "desligado" && (
-              <p className="mt-2 text-[0.8rem] text-signal">
-                Sem horário: só executa quando alguém manda.
-              </p>
+            {/* Etiqueta, e nao paragrafo.
+
+                Com quatro politicas, o texto por extenso aparecia quatro vezes
+                identico — e texto repetido e texto que ninguem le na segunda
+                ocorrencia. O motivo completo continua em dois lugares onde ele
+                cabe: o painel de Inicio, que agrupa o veredito da organizacao,
+                e "Ver configuracao" logo abaixo, que fala daquela politica.
+
+                O titulo vem do SERVIDOR: recalcular aqui produziria, mais cedo
+                ou mais tarde, uma etiqueta que discorda do painel. */}
+            <Etiqueta
+              titulo={vereditoDe(item.id)?.titulo ?? ""}
+              nivel={vereditoDe(item.id)?.nivel ?? ""}
+              motivo={ressalvaCurta(item.configuracao)}
+            />
+
+            {aberta === item.id && (
+              <ConfiguracaoDaPolitica
+                politica={item}
+                maquina={nomeDoDispositivo(dispositivos, item.dispositivo_id)}
+                motivos={vereditoDe(item.id)?.motivos ?? []}
+                somenteLeitura={somenteLeitura}
+              />
             )}
           </li>
         ))}
@@ -344,4 +365,32 @@ function mensagemDe(erro: unknown): string {
     return erro.message;
   }
   return erro instanceof Error ? erro.message : "não foi possível";
+}
+
+
+/**
+ * O estado de um backup em uma linha.
+ *
+ * "Protegido" nao vira etiqueta: uma marca que aparece em tudo nao distingue
+ * nada, e a lista limpa ja diz que esta tudo bem. A etiqueta existe para o que
+ * precisa de atencao.
+ */
+function Etiqueta({
+  titulo,
+  nivel,
+  motivo,
+}: {
+  titulo: string;
+  nivel: string;
+  motivo: string;
+}) {
+  if (!titulo || nivel === "protegido") return null;
+  const cor = nivel === "em_risco" ? "text-danger" : "text-signal";
+  return (
+    <p className={`mt-2 text-[0.8rem] ${cor}`}>
+      <span aria-hidden>⚠ </span>
+      {titulo}
+      {motivo && <span className="text-muted"> · {motivo}</span>}
+    </p>
+  );
 }

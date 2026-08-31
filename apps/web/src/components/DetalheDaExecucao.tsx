@@ -3,10 +3,19 @@ import { Check, X } from "lucide-react";
 
 import { obterDetalheDaExecucao, type DetalheDeExecucao } from "../lib/plataforma";
 import { quando, tamanho } from "../lib/datas";
+import { destinoEmPalavras, origensEmPalavras } from "../lib/rotulos";
 
 interface Props {
   execucaoId: string;
   aoFechar: () => void;
+  /**
+   * Sessão pública: a política aparece em palavras, sem caminho.
+   *
+   * Quem administra a própria máquina continua vendo o caminho — para essa
+   * pessoa ele é o dado. Para quem só olha, ele é a estrutura de pastas de uma
+   * empresa que não é a dele.
+   */
+  somenteLeitura?: boolean;
 }
 
 /**
@@ -27,7 +36,11 @@ interface Props {
  * - as linhas da **trilha encadeada por hash**, em que alterar uma no meio
  *   quebra a corrente.
  */
-export default function DetalheDaExecucao({ execucaoId, aoFechar }: Props) {
+export default function DetalheDaExecucao({
+  execucaoId,
+  aoFechar,
+  somenteLeitura = false,
+}: Props) {
   const [dados, setDados] = useState<DetalheDeExecucao | null>(null);
   const [erro, setErro] = useState("");
 
@@ -122,15 +135,16 @@ export default function DetalheDaExecucao({ execucaoId, aoFechar }: Props) {
           <ul className="mt-1 flex flex-col gap-0.5 text-muted">
             <li>
               Pastas:{" "}
-              <span className="font-mono text-fg">
-                {dados.politica.origens.length > 0
-                  ? dados.politica.origens.join(", ")
-                  : "todas as autorizadas na máquina"}
+              <span className={somenteLeitura ? "text-fg" : "font-mono text-fg"}>
+                {somenteLeitura
+                  ? origensEmPalavras(dados.politica.origens)
+                  : dados.politica.origens.join(", ") ||
+                    "todas as autorizadas na máquina"}
               </span>
             </li>
             <li>
-              Destino: {dados.politica.destino.tipo}
-              {dados.politica.destino.caminho
+              Destino: {destinoEmPalavras(dados.politica.destino.tipo)}
+              {!somenteLeitura && dados.politica.destino.caminho
                 ? ` · ${dados.politica.destino.caminho}`
                 : ""}
             </li>

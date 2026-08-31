@@ -65,13 +65,23 @@ export default function SeloDeProtecao({
   }
 
   const { icone: Icone, cor, borda, fundo } = APARENCIA[estado.nivel];
-  const motivos = estado.backups.flatMap((item) =>
-    item.motivos.map((motivo) => ({
-      chave: `${item.politica_id}:${motivo}`,
-      backup: item.nome,
-      motivo,
-    })),
-  );
+
+  // Agrupado POR MOTIVO, e nao por backup.
+  //
+  // Quatro politicas num servidor unico produzem quatro ressalvas identicas —
+  // e quatro paragrafos iguais empilhados nao informam quatro vezes: informam
+  // uma vez e cansam tres. Agrupar mostra o que e sistemico ("os quatro
+  // backups estao no mesmo disco") em vez de repetir o que ja foi lido.
+  const porMotivo = new Map<string, string[]>();
+  for (const item of estado.backups) {
+    for (const motivo of item.motivos) {
+      porMotivo.set(motivo, [...(porMotivo.get(motivo) ?? []), item.nome]);
+    }
+  }
+  const motivos = [...porMotivo.entries()].map(([motivo, backups]) => ({
+    motivo,
+    backups,
+  }));
 
   return (
     <section
@@ -88,9 +98,14 @@ export default function SeloDeProtecao({
 
       {motivos.length > 0 && (
         <ul className="mt-4 flex flex-col gap-2 border-t border-white/[0.06] pt-4">
-          {motivos.map(({ chave, backup, motivo }) => (
-            <li key={chave} className="text-[0.85rem] text-muted">
-              <span className="font-semibold text-fg">{backup}</span> — {motivo}
+          {motivos.map(({ motivo, backups }) => (
+            <li key={motivo} className="text-[0.85rem] text-muted">
+              <span className="font-semibold text-fg">
+                {backups.length === 1
+                  ? backups[0]
+                  : `${backups.length} backups`}
+              </span>{" "}
+              — {motivo}
             </li>
           ))}
         </ul>

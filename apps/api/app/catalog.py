@@ -88,7 +88,7 @@ AUTOMATIONS: tuple[Automation, ...] = (
         "backup",
         "arquivos",
         "Compactar arquivos com comprovante",
-        "Experimente sem instalar nada",
+        "Ferramenta avulsa — o Backup automático é outro",
         "Junta os arquivos num .zip e escreve, junto, um comprovante: a "
         "impressão digital de cada arquivo, o que não pôde ser lido e a soma do "
         "pacote inteiro. Meses depois dá para conferir se nada mudou, sem "

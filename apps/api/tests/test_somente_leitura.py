@@ -1,5 +1,5 @@
 """
-A tranca da demonstração pública.
+A tranca do ambiente público.
 
 O que se protege aqui não é uma rota: é a promessa de que **qualquer** rota,
 inclusive a que ainda não foi escrita, nasce fechada para uma sessão pública.
@@ -98,7 +98,7 @@ class TestNadaMuda:
         resposta = cliente.post("/api/politicas", json={}, cookies=_cookie(somente_leitura=True))
 
         assert resposta.status_code == HTTP_PROIBIDO
-        assert "demonstração pública" in resposta.json()["detail"]
+        assert "ambiente público" in resposta.json()["detail"]
 
 
 class TestOQuePassa:
@@ -145,7 +145,7 @@ class TestSessaoDeDentro:
         # 401/403 por papel ou 422 por corpo invalido sao respostas da ROTA.
         # O que nao pode e o recado da tranca.
         corpo: Any = resposta.json()
-        assert "demonstração pública" not in str(corpo)
+        assert "ambiente público" not in str(corpo)
 
 
 class TestOCookieAntigo:

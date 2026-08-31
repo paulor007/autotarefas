@@ -13,7 +13,7 @@ import { useEffect } from "react";
 import { CheckSquare } from "lucide-react";
 
 import Dispositivos from "./components/Dispositivos";
-import FaixaDeDemonstracao from "./components/FaixaDeDemonstracao";
+import FaixaDoAmbientePublico from "./components/FaixaDoAmbientePublico";
 import NavegacaoDoProduto from "./components/NavegacaoDoProduto";
 import Politicas from "./components/Politicas";
 import PortaDeEntrada from "./components/PortaDeEntrada";
@@ -53,7 +53,15 @@ function Cabecalho({ estado }: { estado: EstadoDeSessao | null }) {
             AutoTarefas
           </span>
         </a>
-        {estado?.autenticado && (
+        {/* O bloco da direita identifica QUEM esta operando e por qual
+            empresa, e por isso vale numa sessao de cliente: quem administra
+            mais de uma conta precisa ver em nome de quem esta agindo.
+
+            No ambiente publico nao ha conta nenhuma. O `visitante@...` era um
+            endereco tecnico, que nao identifica ninguem e ainda parecia um
+            cadastro; e o nome da organizacao repetia a logo ao lado. Quem diz
+            onde a pessoa esta e a faixa logo abaixo. */}
+        {estado?.autenticado && estado.somente_leitura !== true && (
           <div className="min-w-0 text-right">
             <p className="truncate text-sm font-semibold text-fg">
               {estado.organizacao?.nome}
@@ -71,7 +79,7 @@ function Cabecalho({ estado }: { estado: EstadoDeSessao | null }) {
 /**
  * A entrada do visitante, que acontece sozinha.
  *
- * Quem chega pelo portfólio clicou em "Acessar projeto" e espera estar dentro.
+ * Quem chega clicou em "Acessar" e espera estar dentro.
  * Uma tela de login no caminho — mesmo com um botão só — é um obstáculo entre a
  * pessoa e a coisa que ela veio ver, e ela não tem conta nenhuma para usar.
  *
@@ -100,7 +108,7 @@ function EntrandoComoVisitante() {
   return (
     <section className="mx-auto max-w-3xl rounded-2xl border border-white/10 bg-surface p-6">
       <p className="text-sm text-muted" role="status">
-        Abrindo a demonstração pública do AutoTarefas…
+        Abrindo o ambiente público do AutoTarefas…
       </p>
     </section>
   );
@@ -126,7 +134,7 @@ function Secao({
     case "dispositivos":
       return <Dispositivos papel={papel} somenteLeitura={somenteLeitura} />;
     case "atividade":
-      return <Atividade />;
+      return <Atividade somenteLeitura={somenteLeitura} />;
     case "configuracoes":
       return <Configuracoes estado={estado} aoSair={aoSair} />;
     default:
@@ -158,7 +166,7 @@ export default function Produto() {
   return (
     <div className="min-h-screen">
       <Cabecalho estado={estado} />
-      {estado.somente_leitura === true && <FaixaDeDemonstracao />}
+      {estado.somente_leitura === true && <FaixaDoAmbientePublico />}
       <NavegacaoDoProduto atual={secao} />
       {/* `id` fixo: e por ele que a homologacao de ponta a ponta limita o
           escopo do que procura. Sem isso, um "Executar agora" da demonstracao

@@ -373,14 +373,17 @@ describe("estado da proteção", () => {
 });
 
 /**
- * A faixa da demonstracao publica.
+ * A faixa do ambiente publico.
  *
- * Quem chega pelo portfolio tem duas perguntas que a tela sozinha nao
- * responde: se aquilo e real, e o que acontece se mexer. Sem a faixa, a
- * primeira e respondida por suposicao (a mais comum e "e uma maquete") e a
- * segunda por um 403 no meio de um formulario preenchido.
+ * Quem chega tem duas perguntas que a tela sozinha nao responde: se aquilo e
+ * real, e o que acontece se mexer. Sem a faixa, a primeira e respondida por
+ * suposicao (a mais comum e "e uma maquete") e a segunda por um 403 no meio de
+ * um formulario preenchido.
+ *
+ * O nome importa: "demonstracao" sugere maquete, e o que esta do outro lado e
+ * o AutoTarefas funcionando.
  */
-describe("faixa da demonstracao publica", () => {
+describe("faixa do ambiente publico", () => {
   const VISITANTE = {
     ...LOGADO,
     usuario: {
@@ -402,10 +405,12 @@ describe("faixa da demonstracao publica", () => {
     render(<Produto />);
 
     const faixa = await screen.findByRole("note", {
-      name: /demonstração pública/i,
+      name: /ambiente público/i,
     });
-    expect(within(faixa).getByText(/aconteceu de verdade/i)).toBeTruthy();
-    expect(within(faixa).getByText(/somente leitura/i)).toBeTruthy();
+    expect(faixa.textContent).toContain("ambiente real do AutoTarefas");
+    expect(faixa.textContent).toContain("sem alterar a configuração");
+    // A palavra que o rotulo nao pode ter: ela sugere maquete.
+    expect(faixa.textContent).not.toContain("emonstração");
   });
 
   it("nao aparece para quem entrou com conta", async () => {
@@ -416,7 +421,7 @@ describe("faixa da demonstracao publica", () => {
 
     await screen.findByRole("navigation");
     expect(
-      screen.queryByRole("note", { name: /demonstração pública/i }),
+      screen.queryByRole("note", { name: /ambiente público/i }),
     ).toBeNull();
   });
 });
@@ -428,7 +433,7 @@ describe("faixa da demonstracao publica", () => {
  * Uma tela de login no caminho — mesmo com um botao so — e um obstaculo entre
  * a pessoa e a coisa que ela veio ver, e ela nao tem conta nenhuma para usar.
  */
-describe("entrada automatica na demonstracao", () => {
+describe("entrada automatica no ambiente publico", () => {
   const SEM_SESSAO_COM_DEMONSTRACAO = {
     ...SEM_ORGANIZACAO,
     precisa_bootstrap: false,
@@ -438,11 +443,19 @@ describe("entrada automatica na demonstracao", () => {
   it("sem sessao e com demonstracao ligada, entra sozinho", async () => {
     mockRotas({ "/api/auth/estado": { corpo: SEM_SESSAO_COM_DEMONSTRACAO } });
     const ida: string[] = [];
+    // Guardado para devolver no fim: `window.location` e global, e um dublê
+    // deixado para tras quebra QUALQUER teste seguinte que dependa da URL —
+    // com um erro que nao fala de location nenhuma.
+    const original = Object.getOwnPropertyDescriptor(window, "location");
     Object.defineProperty(window, "location", {
       configurable: true,
       value: {
+        // `pathname` e `search` sao lidos para montar o destino. Um dublê sem
+        // eles produzia `destino=NaN` — e o teste passaria a medir o dublê.
+        pathname: "/app/atividade",
+        search: "",
         get href() {
-          return "/app";
+          return "/app/atividade";
         },
         set href(destino: string) {
           ida.push(destino);
@@ -453,8 +466,13 @@ describe("entrada automatica na demonstracao", () => {
     render(<Produto />);
 
     await waitFor(() => {
-      expect(ida).toContain("/api/auth/visitante");
+      expect(ida).toHaveLength(1);
     });
+    // Leva junto para onde a pessoa estava indo: um link compartilhado aponta
+    // para uma secao, e nao para a porta da frente.
+    expect(ida[0]).toBe("/api/auth/visitante?destino=%2Fapp%2Fatividade");
+
+    if (original) Object.defineProperty(window, "location", original);
   });
 
   it("a tela do meio do caminho e uma frase, e nao um formulario", async () => {
@@ -480,5 +498,74 @@ describe("entrada automatica na demonstracao", () => {
     render(<Produto />);
 
     expect(await screen.findByText(/Entrar/)).toBeTruthy();
+  });
+});
+
+/**
+ * Ressalva repetida e ressalva que ninguem le.
+ *
+ * Quatro politicas num servidor unico produzem quatro motivos identicos.
+ * Empilhados, eles nao informam quatro vezes: informam uma vez e cansam tres.
+ */
+describe("o selo agrupa o que se repete", () => {
+  function comProtecao(corpo: unknown) {
+    return { ...VAZIO, "/api/protecao": { corpo } };
+  }
+
+  it("um motivo comum a varios backups vira uma linha só", async () => {
+    mockRotas(
+      comProtecao({
+        nivel: "parcial",
+        titulo: "Proteção parcial",
+        resumo: "4 backups ativos. 4 precisam de atenção.",
+        backups: ["03:00", "09:00", "15:00", "21:00"].map((hora) => ({
+          politica_id: `p-${hora}`,
+          nome: `Backup diario ${hora}`,
+          maquina: "SERVIDOR",
+          nivel: "parcial",
+          titulo: "Proteção parcial",
+          motivos: ["A cópia fica no mesmo computador dos arquivos originais."],
+        })),
+      }),
+    );
+    render(<Produto />);
+
+    const selo = await screen.findByRole("region", { name: /proteção/i });
+    expect(within(selo).getByText("4 backups")).toBeTruthy();
+    // Uma linha, e nao quatro: o nome de cada politica nao aparece aqui.
+    expect(within(selo).queryByText("Backup diario 09:00")).toBeNull();
+  });
+
+  it("motivos diferentes continuam separados", async () => {
+    mockRotas(
+      comProtecao({
+        nivel: "em_risco",
+        titulo: "Proteção em risco",
+        resumo: "",
+        backups: [
+          {
+            politica_id: "p1",
+            nome: "Backup da loja",
+            maquina: "PC",
+            nivel: "parcial",
+            titulo: "Proteção parcial",
+            motivos: ["A cópia fica no mesmo computador."],
+          },
+          {
+            politica_id: "p2",
+            nome: "Backup do escritório",
+            maquina: "PC",
+            nivel: "em_risco",
+            titulo: "Proteção em risco",
+            motivos: ["Este backup nunca concluiu uma execução."],
+          },
+        ],
+      }),
+    );
+    render(<Produto />);
+
+    const selo = await screen.findByRole("region", { name: /proteção/i });
+    expect(within(selo).getByText("Backup da loja")).toBeTruthy();
+    expect(within(selo).getByText("Backup do escritório")).toBeTruthy();
   });
 });

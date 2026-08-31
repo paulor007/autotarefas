@@ -55,7 +55,10 @@ CASA = Path(os.environ.get("VITRINE_CASA") or (RAIZ / ".autotarefas" / "vitrine"
 
 BANCO = CASA / "vitrine.db"
 CONFIG_DO_AGENTE = CASA / "agente"
-DADOS = CASA / "dados"
+#: A pasta protegida. O nome e escolhido para ser LIDO: a tela publica mostra
+#: o ultimo trecho do caminho, e "Dados administrativos" diz o que esta sendo
+#: protegido enquanto "dados" nao diz nada.
+DADOS = CASA / "Dados administrativos"
 DESTINO = CASA / "destino"
 
 #: Variaveis de ambiente que carregam o balde da vitrine para o cofre.

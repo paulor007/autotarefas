@@ -46,8 +46,9 @@ LIBERADOS = frozenset({"/api/auth/sair"})
 RECUSADOS_MESMO_LENDO = ("/api/agente/instalador",)
 
 RECADO = (
-    "Esta é a demonstração pública do AutoTarefas: tudo o que você vê é real, "
-    "e nada aqui pode ser alterado."
+    "Este é o ambiente público do AutoTarefas: os dados exibidos são "
+    "produzidos pelo ambiente real, e esta sessão não altera a configuração "
+    "dele."
 )
 
 

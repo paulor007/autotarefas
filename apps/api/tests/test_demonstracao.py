@@ -1,5 +1,5 @@
 """
-A porta da demonstração pública.
+A porta do ambiente público.
 
 Ela existe para um recrutador entrar no AutoTarefas pelo portfólio, sem conta e
 sem instalar nada. O risco correspondente é óbvio: uma porta sem senha numa

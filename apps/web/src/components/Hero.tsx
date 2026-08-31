@@ -47,10 +47,13 @@ export default function Hero({ health }: { health: Health | null }) {
           via API. Execução de verdade em ambiente isolado, com stdout no
           terminal e artefatos para baixar.
         </p>
+        {/* A frase apontava para um botao "Entrar" que nao existe mais: ele
+            levava ao mesmo lugar que o "Acessar" logo abaixo, e o nome
+            prometia um login que esta porta nao pede. */}
         <p className="mx-auto mb-8 max-w-xl text-sm leading-relaxed text-muted/80 sm:text-base">
-          O <strong className="text-fg">backup automático</strong> — pastas do
-          computador, no horário, com o navegador fechado — é o produto, e fica
-          em <span className="text-signal">Entrar</span>.
+          O <strong className="text-fg">Backup automático</strong> — pastas do
+          computador, no horário, com o navegador fechado — é o produto, e está
+          logo abaixo.
         </p>
 
         <div className="mb-12 flex flex-col justify-center gap-3 sm:flex-row">

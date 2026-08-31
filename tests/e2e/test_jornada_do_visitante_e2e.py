@@ -286,12 +286,15 @@ class TestAJornada:
         Duas perguntas que a tela sozinha nao responde: se aquilo e real, e o
         que acontece se a pessoa mexer.
         """
-        faixa = visitante.get_by_role("note", name="Demonstração pública")
+        faixa = visitante.get_by_role("note", name="Ambiente público")
 
         assert faixa.is_visible()
         texto = faixa.inner_text()
-        assert "aconteceu de verdade" in texto
-        assert "somente leitura" in texto
+        assert "ambiente real do AutoTarefas" in texto
+        assert "sem alterar a configuração" in texto
+        # A palavra que o rotulo nao pode ter: "demonstracao" sugere maquete,
+        # e o que esta do outro lado e o AutoTarefas funcionando.
+        assert "emonstração" not in texto
 
     def test_03_encontra_maquina_real_conectada(self, visitante: Page, vitrine: Vitrine) -> None:
         """
@@ -418,21 +421,26 @@ class TestAJornada:
         assert visitante.get_by_role("button", name="Executar agora").count() == 0
         assert visitante.get_by_role("button", name="Remover").count() == 0
 
-    def test_13_ve_como_se_configura_sem_poder_gravar(self, visitante: Page) -> None:
+    def test_13_ve_a_configuracao_real_de_um_backup(self, visitante: Page) -> None:
         """
-        Esconder o assistente escondia o produto.
+        "Ver configuração" mostra a automação que ESTÁ rodando.
 
-        O visitante e `leitor`, e um leitor nao via a tela de configuracao —
-        ou seja, a demonstracao do produto de backup escondia que existe disco
-        externo, pasta de rede e nuvem.
+        Antes abria o assistente de criar política, vazio e com valores padrão,
+        ao lado da política de verdade — quem olhava via a tela de configurar
+        uma coisa nova em vez da configuração da que estava logo acima.
+
+        E não mostra caminho: a árvore de pastas diz onde o desenvolvedor
+        guardou uma coisa, e não o que está sendo protegido.
         """
-        visitante.get_by_role("button", name="Ver como se configura").click()
-        visitante.wait_for_selector("text=O que seria criado")
+        visitante.get_by_role("button", name="Ver configuração").first.click()
+        visitante.wait_for_selector("text=AGENDAMENTO")
 
-        assistente = visitante.locator("#produto").inner_text()
-        assert "Disco externo" in assistente
-        assert "não grava" in assistente
-        assert visitante.get_by_role("button", name="Ativar backup").count() == 0
+        configuracao = visitante.locator("#produto").inner_text()
+        assert "Todos os dias às" in configuracao
+        assert "Dados administrativos" in configuracao
+        # Fato, e nao opcao: todo pacote e conferido no destino, sempre.
+        assert "Ativa, sempre" in configuracao
+        assert ":\\" not in configuracao, "caminho interno voltou para a tela publica"
 
     def test_14_o_servidor_recusa_a_escrita_por_baixo_da_tela(
         self, visitante: Page, vitrine: Vitrine
@@ -445,7 +453,7 @@ class TestAJornada:
         resposta = visitante.request.post(f"{vitrine.url}/api/politicas", data={})
 
         assert resposta.status == 403
-        assert "demonstração pública" in resposta.text()
+        assert "ambiente público" in resposta.text()
 
     def test_15_o_visitante_nao_baixa_o_instalador(self, visitante: Page, vitrine: Vitrine) -> None:
         """

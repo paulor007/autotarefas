@@ -54,9 +54,22 @@ function mockRotas(respostas: Record<string, unknown>) {
   return espiao;
 }
 
+/** Veredito vazio: a tela pede `/api/protecao` para etiquetar cada backup. */
+const SEM_VEREDITO = {
+  nivel: "sem_configuracao",
+  titulo: "Nenhum backup configurado",
+  resumo: "",
+  backups: [],
+};
+
+function veredito(...backups: unknown[]) {
+  return { nivel: "parcial", titulo: "Proteção parcial", resumo: "", backups };
+}
+
 const BASE = {
   "/api/politicas": { politicas: [] },
   "/api/dispositivos": { dispositivos: [DISPOSITIVO] },
+  "/api/protecao": SEM_VEREDITO,
   "/consultar": ESTADO,
 };
 
@@ -218,8 +231,19 @@ describe("Políticas de backup", () => {
   it("política que fica só na máquina é marcada como não protegida", async () => {
     // Pacote no mesmo computador não protege contra o disco morrer nem contra
     // ransomware. Dizer "configurado" sem isso seria uma palavra sem sentido.
+    //
+    // O TITULO vem do servidor, e o motivo curto sai da propria configuracao.
+    // Antes era um paragrafo por politica, repetido identico quatro vezes.
     mockRotas({
       ...BASE,
+      "/api/protecao": veredito({
+        politica_id: "p1",
+        nome: "Só local",
+        maquina: "PC da loja",
+        nivel: "parcial",
+        titulo: "Proteção parcial",
+        motivos: ["A cópia fica no mesmo computador dos arquivos originais."],
+      }),
       "/api/politicas": {
         politicas: [
           {
@@ -250,12 +274,21 @@ describe("Políticas de backup", () => {
 
     render(<Politicas papel="dono" />);
 
-    expect(await screen.findByText(/não protege contra o disco morrer/i)).toBeTruthy();
+    const etiqueta = await screen.findByText(/Proteção parcial/);
+    expect(etiqueta.textContent).toContain("destino local");
   });
 
   it("política sem horário é marcada como sem horário", async () => {
     mockRotas({
       ...BASE,
+      "/api/protecao": veredito({
+        politica_id: "p2",
+        nome: "Manual",
+        maquina: "PC da loja",
+        nivel: "parcial",
+        titulo: "Proteção parcial",
+        motivos: ["Sem horário marcado."],
+      }),
       "/api/politicas": {
         politicas: [
           {
@@ -286,7 +319,10 @@ describe("Políticas de backup", () => {
 
     render(<Politicas papel="dono" />);
 
-    expect(await screen.findByText(/só executa quando alguém manda/i)).toBeTruthy();
+    // Na etiqueta, e nao solto na tela: "sem horario" tambem aparece no
+    // resumo da linha, e conferir sem escopo mediria a coincidencia.
+    const etiqueta = await screen.findByText(/Proteção parcial/);
+    expect(etiqueta.textContent).toContain("sem horário");
   });
 
   it("executar agora usa as MESMAS escolhas da política", async () => {
@@ -444,15 +480,15 @@ describe("assistente de configuração", () => {
  * O que estes testes fixam é o meio-termo: mostrar as escolhas, e não fingir
  * que elas seriam gravadas.
  */
-describe("Backups na demonstração pública", () => {
+describe("Backups no ambiente público", () => {
   const POLITICA = {
     id: "p1",
     nome: "Backup diario 03:00",
     dispositivo_id: "d1",
     ativa: true,
     configuracao: {
-      origens: ["/dados"],
-      destino: { tipo: "local", caminho: "/destino" },
+      origens: ["D:\\Projetos\\autotarefas\\.autotarefas\\vitrine\\dados"],
+      destino: { tipo: "local", caminho: "D:\\Projetos\\autotarefas\\destino" },
       agendamento: {
         tipo: "diario",
         hora: "03:00",
@@ -465,7 +501,7 @@ describe("Backups na demonstração pública", () => {
       usar_vss: false,
       cifrar: false,
       assinar: true,
-      incremental: false,
+      incremental: true,
     },
     protege_de_verdade: false,
     criada_em: "2026-08-30T11:36:00",
@@ -475,7 +511,21 @@ describe("Backups na demonstração pública", () => {
   const COM_POLITICA = {
     ...BASE,
     "/api/politicas": { politicas: [POLITICA] },
+    "/api/protecao": veredito({
+      politica_id: "p1",
+      nome: "Backup diario 03:00",
+      maquina: "PC da loja",
+      nivel: "parcial",
+      titulo: "Proteção parcial",
+      motivos: ["A cópia fica no mesmo computador dos arquivos originais."],
+    }),
   };
+
+  async function abrirConfiguracao() {
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Ver configuração" }),
+    );
+  }
 
   it("não oferece botão que o servidor recusaria", async () => {
     // "Executar agora" e "Remover" respondem 403 nesta sessao. Um botao que
@@ -498,93 +548,88 @@ describe("Backups na demonstração pública", () => {
     expect(await screen.findByText(/rodam sozinhos/i)).toBeTruthy();
   });
 
-  it("deixa ver as opções de destino, que era o que estava escondido", async () => {
+  it("o estado de cada backup é uma etiqueta, e não um parágrafo", async () => {
+    // Com quatro politicas, o texto por extenso aparecia quatro vezes
+    // identico — e texto repetido e texto que ninguem le na segunda vez.
     mockRotas(COM_POLITICA);
 
     render(<Politicas papel="leitor" somenteLeitura />);
-    await userEvent.click(
-      await screen.findByRole("button", { name: /ver como se configura/i }),
-    );
+    await screen.findByText("Backup diario 03:00");
 
-    const destino = await screen.findByLabelText("Tipo de destino");
-    const opcoes = Array.from(
-      destino.querySelectorAll("option"),
-      (item) => item.textContent ?? "",
-    );
-    expect(opcoes).toContain("Disco externo");
-    expect(opcoes).toContain("Pasta de rede");
-    expect(opcoes.some((item) => /nuvem/i.test(item))).toBe(true);
+    const etiqueta = screen.getByText(/Proteção parcial/);
+    expect(etiqueta.textContent).toContain("destino local");
+    expect(screen.queryByText(/não protege contra o disco morrer/i)).toBeNull();
   });
 
-  it("a frase do resumo acompanha o destino escolhido", async () => {
-    // O valor do assistente aberto e este: a pessoa muda o destino e ve o
-    // produto responder. Sem isso seriam campos bonitos e inertes.
+  it("Ver configuração mostra a configuração REAL daquela política", async () => {
+    // O assistente abria vazio, com valores PADRAO, ao lado da politica de
+    // verdade — quem olhava via a tela de criar uma politica nova, e nao a
+    // configuracao da que estava logo acima.
     mockRotas(COM_POLITICA);
 
     render(<Politicas papel="leitor" somenteLeitura />);
-    await userEvent.click(
-      await screen.findByRole("button", { name: /ver como se configura/i }),
-    );
-    await userEvent.selectOptions(
-      await screen.findByLabelText("Tipo de destino"),
-      "nuvem",
-    );
+    await screen.findByText("Backup diario 03:00");
+    await abrirConfiguracao();
 
-    expect(screen.getByRole("status").textContent).toContain("a nuvem");
+    expect(screen.getByText("Todos os dias às 03:00")).toBeTruthy();
+    expect(screen.getByText("Outra pasta desta máquina")).toBeTruthy();
+    expect(screen.getByText("7 diários")).toBeTruthy();
+    expect(screen.getByText("PC da loja")).toBeTruthy();
   });
 
-  it("a nuvem explica que o pacote sobe depois", async () => {
-    // O agendamento roda offline de proposito e o Agente nao grava chave de
-    // nuvem em disco. O que destrava as duas coisas e o envio ser diferido —
-    // e quem escolhe o destino precisa saber disso ANTES, ou vera "aguardando
-    // envio" no painel de madrugada e pensara em defeito.
+  it("a configuração não mostra caminho interno nenhum", async () => {
+    // `D:\Projetos\...` diz onde o desenvolvedor guardou uma pasta, e nao o
+    // que esta sendo protegido. Numa instalacao de cliente, revelaria a
+    // estrutura de pastas da empresa a quem so deveria estar olhando.
     mockRotas(COM_POLITICA);
 
     render(<Politicas papel="leitor" somenteLeitura />);
-    await userEvent.click(
-      await screen.findByRole("button", { name: /ver como se configura/i }),
-    );
-    await userEvent.selectOptions(
-      await screen.findByLabelText("Tipo de destino"),
-      "nuvem",
-    );
+    await screen.findByText("Backup diario 03:00");
+    await abrirConfiguracao();
 
-    expect(screen.getByText(/sobe assim que houver conexão/i)).toBeTruthy();
-    expect(screen.getByText(/nunca é gravada na máquina/i)).toBeTruthy();
+    const tela = document.body.textContent ?? "";
+    expect(tela).not.toContain("D:\\");
+    expect(tela).not.toContain("Projetos");
+    // O nome da pasta continua la: e ele que a pessoa reconhece.
+    expect(screen.getByText("Dados")).toBeTruthy();
   });
 
-  it("o passo das pastas não abre em erro", async () => {
-    // Perguntar as pastas ao Agente e um POST — a rota manda um comando pelo
-    // canal ate o computador — e o middleware da sessao publica recusa. O
-    // assistente abria com o passo 2 em vermelho e o passo 6 pedindo "escolha
-    // ao menos uma pasta" a quem nao tinha como escolher nenhuma. As pastas
-    // vem das politicas em vigor, que as declaram.
+  it("a verificação de integridade aparece como fato, e não como opção", async () => {
+    // Todo pacote e conferido no destino, sempre. Ja houve uma caixa marcavel
+    // aqui que nao ligava em nada.
     mockRotas(COM_POLITICA);
 
     render(<Politicas papel="leitor" somenteLeitura />);
-    await userEvent.click(
-      await screen.findByRole("button", { name: /ver como se configura/i }),
-    );
+    await screen.findByText("Backup diario 03:00");
+    await abrirConfiguracao();
 
-    expect(await screen.findByText("/dados")).toBeTruthy();
-    expect(screen.queryByText(/não tem pasta autorizada/i)).toBeNull();
-    expect(screen.getByRole("status").textContent).toContain("1 pasta");
-    expect(screen.getByRole("status").textContent).toContain("PC da loja");
+    expect(screen.getByText("Ativa, sempre")).toBeTruthy();
   });
 
-  it("não oferece ativar, e diz por quê", async () => {
+  it("o motivo por extenso vive dentro da configuração", async () => {
     mockRotas(COM_POLITICA);
 
     render(<Politicas papel="leitor" somenteLeitura />);
-    await userEvent.click(
-      await screen.findByRole("button", { name: /ver como se configura/i }),
-    );
+    await screen.findByText("Backup diario 03:00");
+    await abrirConfiguracao();
+
+    expect(
+      screen.getByText(/mesmo computador dos arquivos originais/i),
+    ).toBeTruthy();
+  });
+
+  it("não abre um formulário que o visitante teria de preencher", async () => {
+    mockRotas(COM_POLITICA);
+
+    render(<Politicas papel="leitor" somenteLeitura />);
+    await screen.findByText("Backup diario 03:00");
+    await abrirConfiguracao();
 
     expect(screen.queryByRole("button", { name: /ativar backup/i })).toBeNull();
-    expect(screen.getByText(/não grava/i)).toBeTruthy();
+    expect(screen.queryByLabelText("Tipo de destino")).toBeNull();
   });
 
-  it("fora da demonstração nada disto muda", async () => {
+  it("fora do ambiente público nada disto muda", async () => {
     // A trava e da sessao publica, e nao do papel: um `dono` de empresa de
     // verdade continua vendo a tela que sempre viu.
     mockRotas(COM_POLITICA);
@@ -596,5 +641,15 @@ describe("Backups na demonstração pública", () => {
       screen.getByRole("button", { name: /executar agora/i }),
     ).toBeTruthy();
     expect(screen.getByRole("button", { name: /^configurar backup$/i })).toBeTruthy();
+  });
+
+  it("quem administra vê o caminho, porque para essa pessoa ele é o dado", async () => {
+    mockRotas(COM_POLITICA);
+
+    render(<Politicas papel="dono" />);
+    await screen.findByText("Backup diario 03:00");
+    await abrirConfiguracao();
+
+    expect(document.body.textContent).toContain("D:\\Projetos");
   });
 });

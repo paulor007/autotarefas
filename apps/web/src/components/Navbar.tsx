@@ -1,12 +1,19 @@
 import { CheckSquare } from "lucide-react";
 
-import { cliqueDeNavegacao, PRODUTO } from "../lib/rotas";
-
+/**
+ * O que a barra oferece como caminho.
+ *
+ * "Terminal" e "Artefatos" saíram. Eles continuam na página — quem rola chega
+ * neles, e para quem sabe o que são eles mostram bem o que o motor faz. O que
+ * não podiam continuar sendo é **caminho oferecido**: ninguém precisa de um
+ * terminal para entender um backup automático, e uma barra que sugere isso
+ * transforma um produto em ferramenta de linha de comando na cabeça de quem
+ * está decidindo se olha ou fecha.
+ */
 const LINKS: [string, string][] = [
+  ["Backup automático", "#produto"],
   ["Catálogo", "#catalogo"],
   ["Execução", "#execucao"],
-  ["Terminal", "#terminal"],
-  ["Artefatos", "#artefatos"],
 ];
 
 export default function Navbar({ online }: { online: boolean }) {
@@ -45,15 +52,15 @@ export default function Navbar({ online }: { online: boolean }) {
               {online ? "Sistema operacional" : "Conectando…"}
             </span>
           </div>
-          {/* A porta do produto. Era um `#empresa` no meio dos outros links,
-              apontando para o fim desta mesma pagina. */}
-          <a
-            href={PRODUTO}
-            onClick={cliqueDeNavegacao(PRODUTO)}
-            className="rounded-lg border border-signal/40 bg-signal/10 px-3 py-1.5 text-sm font-semibold text-signal transition-colors hover:border-signal/70"
-          >
-            Entrar
-          </a>
+          {/* Havia um "Entrar" aqui, e ele levava ao MESMO lugar que o
+              "Acessar" do Backup automatico logo abaixo — dois caminhos para a
+              mesma coisa, e um deles com nome de login numa porta que nao pede
+              credencial nenhuma.
+
+              "Entrar" volta a fazer sentido quando existir autenticacao de
+              cliente: ai sao duas coisas diferentes, "acessar o ambiente
+              publico" e "entrar na minha organizacao". Ate la, o botao
+              prometia uma porta que nao existe. */}
         </div>
       </div>
     </nav>

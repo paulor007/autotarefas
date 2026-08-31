@@ -8,7 +8,12 @@ import Historico from "../components/Historico";
  * pergunta em dois niveis: o que rodou, e o registro encadeado que ninguem
  * reescreveu depois.
  */
-export default function Atividade() {
+export default function Atividade({
+  somenteLeitura = false,
+}: {
+  /** Sessão pública: o detalhe da execução não mostra caminho interno. */
+  somenteLeitura?: boolean;
+}) {
   return (
     <div className="flex flex-col gap-8">
       <section>
@@ -17,7 +22,7 @@ export default function Atividade() {
           Inclui o que rodou pelo horário agendado, com o navegador fechado.
         </p>
         <div className="mt-3">
-          <Historico />
+          <Historico somenteLeitura={somenteLeitura} />
         </div>
       </section>
 

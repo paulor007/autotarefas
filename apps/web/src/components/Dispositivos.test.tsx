@@ -425,3 +425,135 @@ describe("Dispositivos na demonstracao publica", () => {
     ).toBeTruthy();
   });
 });
+
+/**
+ * O cartao da maquina.
+ *
+ * Ele dizia "Windows 11 · Agente 0.1.0 · impressao AAAA-..." numa linha so, e
+ * parava ai. Quem chega precisa entender quatro coisas em sequencia: existe
+ * uma maquina, existe um Agente, ele esta conectado, e as automacoes estao
+ * acontecendo. As tres ultimas nao estavam na tela.
+ */
+describe("o que o cartao da maquina conta", () => {
+  const POLITICA = {
+    id: "p1",
+    nome: "Backup diario 03:00",
+    dispositivo_id: "d1",
+    ativa: true,
+    configuracao: {
+      origens: ["/dados"],
+      destino: { tipo: "local", caminho: "/destino" },
+      agendamento: { tipo: "diario", hora: "03:00", dia_da_semana: 0, dia_do_mes: 1 },
+      retencao: { diarias: 7, semanais: 4, mensais: 12 },
+      retry: { tentativas: 3, espera_inicial_min: 5 },
+      notificacao: { quando: "problema", emails: [] },
+      usar_vss: false,
+      cifrar: false,
+      assinar: true,
+      incremental: false,
+    },
+    protege_de_verdade: false,
+    criada_em: "2026-08-30T11:00:00+00:00",
+    atualizada_em: "2026-08-30T11:00:00+00:00",
+  };
+
+  const COMPLETO = {
+    "/api/dispositivos": { corpo: { dispositivos: [DISPOSITIVO] } },
+    "/api/agente/conectados": {
+      corpo: {
+        conectados: [
+          { dispositivo_id: "d1", nome: "PC da loja", conectado: true, desde: "" },
+        ],
+        total_conectados: 1,
+      },
+    },
+    "/api/politicas": { corpo: { politicas: [POLITICA] } },
+    "/api/historico": {
+      corpo: {
+        execucoes: [
+          {
+            id: "e1",
+            dispositivo_id: "d1",
+            politica_id: "p1",
+            origem: "agendamento",
+            resultado: "sucesso",
+            iniciada_em: "2026-08-30T17:10:00+00:00",
+            terminada_em: "2026-08-30T17:13:00+00:00",
+            arquivos: 5,
+            bytes_copiados: 2048,
+            ressalva: "",
+            artefatos: [],
+          },
+        ],
+      },
+    },
+    "/api/atividade/ao-vivo": {
+      corpo: {
+        agora: "2026-08-30T18:00:00+00:00",
+        executando: [],
+        proximas: [
+          {
+            politica_id: "p1",
+            nome: "Backup diario 03:00",
+            maquina: "PC da loja",
+            proxima_no_relogio_da_maquina: "2026-08-31T03:00:00",
+            quando: "diario",
+            hora: "03:00",
+          },
+        ],
+      },
+    },
+  };
+
+  it("conta quantos backups aquela maquina executa", async () => {
+    mockRotas(COMPLETO);
+
+    render(<Dispositivos papel="leitor" somenteLeitura />);
+
+    expect(await screen.findByText("Backups ativos")).toBeTruthy();
+    expect(screen.getByText("1")).toBeTruthy();
+  });
+
+  it("mostra o ultimo backup com o desfecho, e nao so a data", async () => {
+    // "Com ressalva" nao pode virar "Concluido": um backup que copiou quase
+    // tudo tem ausencias, e quem for restaurar precisa saber antes.
+    mockRotas(COMPLETO);
+
+    render(<Dispositivos papel="leitor" somenteLeitura />);
+
+    expect(await screen.findByText("Último backup")).toBeTruthy();
+    expect(screen.getByText(/Concluído/)).toBeTruthy();
+  });
+
+  it("mostra quando e a proxima execucao", async () => {
+    mockRotas(COMPLETO);
+
+    render(<Dispositivos papel="leitor" somenteLeitura />);
+
+    expect(await screen.findByText("Próxima execução")).toBeTruthy();
+    expect(screen.getByText(/Backup diario 03:00/)).toBeTruthy();
+  });
+
+  it("sem as rotas acessorias, o cartao continua de pe", async () => {
+    // A afirmacao principal e "existe uma maquina, e o Agente esta
+    // conectado". Uma rota acessoria fora do ar nao pode apagar da tela a
+    // maquina que esta ali, funcionando.
+    mockRotas({
+      "/api/dispositivos": { corpo: { dispositivos: [DISPOSITIVO] } },
+      "/api/agente/conectados": {
+        corpo: {
+          conectados: [
+            { dispositivo_id: "d1", nome: "PC da loja", conectado: true, desde: "" },
+          ],
+          total_conectados: 1,
+        },
+      },
+    });
+
+    render(<Dispositivos papel="leitor" somenteLeitura />);
+
+    expect(await screen.findByText("PC da loja")).toBeTruthy();
+    expect(screen.getByText("Conectado")).toBeTruthy();
+    expect(screen.getByText("nenhum ainda")).toBeTruthy();
+  });
+});

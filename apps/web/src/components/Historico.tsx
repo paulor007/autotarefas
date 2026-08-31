@@ -7,6 +7,8 @@ import { quando, tamanho } from "../lib/datas";
 interface Props {
   /** Vazio = toda a organização. Preenchido = só aquela máquina. */
   dispositivoId?: string;
+  /** Sessão pública: o detalhe da execução não mostra caminho interno. */
+  somenteLeitura?: boolean;
 }
 
 /** Quanto tempo entre uma leitura e a seguinte. */
@@ -27,7 +29,10 @@ const INTERVALO_MS = 30_000;
  * 2. **Histórico vazio é dito como vazio.** Não há linha de exemplo, nem
  *    "aguardando" para uma máquina que nunca executou nada.
  */
-export default function Historico({ dispositivoId = "" }: Props) {
+export default function Historico({
+  dispositivoId = "",
+  somenteLeitura = false,
+}: Props) {
   const [execucoes, setExecucoes] = useState<Execucao[] | null>(null);
   const [erro, setErro] = useState<string | null>(null);
   // Qual execucao esta aberta. Uma so: abrir varias transformaria a lista
@@ -134,7 +139,11 @@ export default function Historico({ dispositivoId = "" }: Props) {
           </button>
 
           {aberta === item.id && (
-            <DetalheDaExecucao execucaoId={item.id} aoFechar={() => setAberta("")} />
+            <DetalheDaExecucao
+              execucaoId={item.id}
+              somenteLeitura={somenteLeitura}
+              aoFechar={() => setAberta("")}
+            />
           )}
         </li>
       ))}

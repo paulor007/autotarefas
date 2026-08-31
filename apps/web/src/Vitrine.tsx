@@ -13,6 +13,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import Artifacts from "./components/Artifacts";
+import CartaoDoProduto from "./components/CartaoDoProduto";
 import Catalog from "./components/Catalog";
 import ExecutionPanel from "./components/ExecutionPanel";
 import Footer from "./components/Footer";
@@ -155,6 +156,9 @@ export default function Vitrine() {
     <div className="min-h-screen">
       <Navbar online={online} />
       <Hero health={health} />
+      {/* Logo abaixo da dobra, e antes do catalogo: e o produto, e nao mais
+          uma das ferramentas de upload. */}
+      <CartaoDoProduto />
       <StatusBar health={health} />
       <Catalog
         catalog={catalog}
