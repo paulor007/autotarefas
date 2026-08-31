@@ -24,16 +24,19 @@ class TestOsExemplos:
         E nao basta serem inventados: quem abrir o pacote restaurado precisa
         conseguir dizer que sao de exemplo sem perguntar a ninguem.
         """
-        for relativo, conteudo in vitrine.EXEMPLOS.items():
+        for relativo, conteudo in vitrine.exemplos().items():
             assert not Path(relativo).is_absolute()
-            texto = conteudo.lower()
-            assert "exemplo" in texto, relativo
+            # A marca fica na PRIMEIRA linha: um arquivo restaurado sai do
+            # pacote sozinho, longe daqui, e quem o encontrar precisa saber o
+            # que ele e sem abrir o resto.
+            primeira_linha = conteudo.splitlines()[0].lower()
+            assert "sintetico" in primeira_linha, relativo
 
     def test_semear_e_seguro_de_repetir(self, tmp_path: Path) -> None:
         primeira = vitrine.semear_dados(tmp_path)
         segunda = vitrine.semear_dados(tmp_path)
 
-        assert primeira == len(vitrine.EXEMPLOS)
+        assert primeira == len(vitrine.exemplos())
         assert segunda == 0
 
     def test_semear_nao_sobrescreve_o_que_ja_existe(self, tmp_path: Path) -> None:
@@ -43,7 +46,7 @@ class TestOsExemplos:
         Reescrever a cada deploy apagaria a diferenca que o incremental e o
         historico existem para mostrar.
         """
-        relativo = next(iter(vitrine.EXEMPLOS))
+        relativo = next(iter(vitrine.exemplos()))
         alvo = tmp_path / relativo
         alvo.parent.mkdir(parents=True, exist_ok=True)
         alvo.write_text("conteudo que mudou depois", encoding="utf-8")

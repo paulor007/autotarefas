@@ -68,9 +68,20 @@ uma só, um visitante estaria em média doze horas depois da última execução,
 painel mostraria evidência velha.
 
 **Arquivos de exemplo sintéticos, e obviamente sintéticos.** Cada um se declara
-no próprio conteúdo, inclusive os CSV — um arquivo restaurado sai do pacote
+na **primeira linha**, inclusive os CSV — um arquivo restaurado sai do pacote
 sozinho, longe daqui, e números plausíveis sem marca seriam confundidos com dado
 de alguém.
+
+São ~4,7 MB gerados de forma determinística (planilhas mensais, inventário,
+registro de operações e documentos), que produzem pacotes de ~1,2 MB. O tamanho
+é decisão de apresentação: um histórico de pacotes de 2 KB passa impressão de
+brinquedo, e o produto é sobre proteger o trabalho de alguém. Determinístico
+importa porque reprovisionar precisa produzir o mesmo conteúdo — senão o
+incremental acusaria mudança que não houve.
+
+**Os nomes são neutros.** Nem a máquina (`SERVIDOR-01`) nem as pastas sugerem
+setor ou departamento: este ambiente não pertence a nenhum, e o produto serve a
+qualquer pasta.
 
 ## 4. O destino, e a verdade incômoda
 
@@ -104,7 +115,7 @@ que o painel conta como proteção nunca entregaria nada.
 ## 5. O que o visitante encontra
 
     entra pelo portfólio  →  /app, sem login e sem conta
-    → faixa dizendo que é demonstração, e que nada muda
+    → faixa dizendo que é o ambiente público, e que a sessão não altera nada
     → máquina real conectada (presença, não cadastro)
     → quatro políticas ativas
     → último backup real, com data, tamanho e resultado
@@ -114,10 +125,16 @@ que o painel conta como proteção nunca entregaria nada.
     → execução em andamento, quando houver
     → detalhe da execução, com SHA-256 e conferência no destino
 
-O assistente de configuração abre **desarmado**: todos os campos vivos, a frase
-do passo 6 calculada pelo mesmo código, e nada para ativar no fim. Escondê-lo
-escondia justamente o que a pessoa veio ver — que dá para mandar a cópia para
-disco externo, pasta de rede ou nuvem.
+**"Ver configuração"** abre a configuração real daquela automação, em
+português: máquina, origem, destino, agendamento, retenção, incremental,
+verificação e notificação. Não é um formulário — o assistente de criar política
+chegou a ocupar esse lugar, aberto e vazio com valores padrão ao lado da
+política de verdade, e quem olhava via a tela de configurar uma coisa nova em
+vez da configuração da que estava logo acima.
+
+Caminho interno não aparece: a tela mostra "Dados do ambiente", e não a árvore
+de pastas. Quem administra a própria máquina continua vendo o caminho — para
+essa pessoa ele é o dado.
 
 "Executar agora" e "Remover" não aparecem na sessão pública. Botão que só sabe
 responder 403 é botão sem função, e o 403 chegaria como erro vermelho — a forma

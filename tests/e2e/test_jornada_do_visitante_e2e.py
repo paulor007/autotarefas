@@ -306,7 +306,7 @@ class TestAJornada:
         """
         visitante.goto(f"{vitrine.url}/app/dispositivos")
 
-        visitante.wait_for_selector("text=SERVIDOR-DEMONSTRACAO")
+        visitante.wait_for_selector("text=SERVIDOR-01")
         assert visitante.get_by_text("Conectado").first.is_visible()
 
     def test_04_encontra_politicas_reais_ativas(self, visitante: Page, vitrine: Vitrine) -> None:
@@ -437,7 +437,7 @@ class TestAJornada:
 
         configuracao = visitante.locator("#produto").inner_text()
         assert "Todos os dias às" in configuracao
-        assert "Dados administrativos" in configuracao
+        assert "Dados do ambiente" in configuracao
         # Fato, e nao opcao: todo pacote e conferido no destino, sempre.
         assert "Ativa, sempre" in configuracao
         assert ":\\" not in configuracao, "caminho interno voltou para a tela publica"

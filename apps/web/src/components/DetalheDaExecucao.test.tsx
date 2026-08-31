@@ -23,7 +23,7 @@ const BASE = {
   arquivos: 12,
   bytes_copiados: 2_097_152,
   ressalva: "",
-  maquina: "SERVIDOR-DEMONSTRACAO",
+  maquina: "SERVIDOR-01",
   artefatos: [
     {
       id: "a1",

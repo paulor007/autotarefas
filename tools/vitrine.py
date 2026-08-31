@@ -38,6 +38,7 @@ import os
 import subprocess  # nosec B404
 import sys
 from dataclasses import dataclass
+from functools import lru_cache
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -56,9 +57,12 @@ CASA = Path(os.environ.get("VITRINE_CASA") or (RAIZ / ".autotarefas" / "vitrine"
 BANCO = CASA / "vitrine.db"
 CONFIG_DO_AGENTE = CASA / "agente"
 #: A pasta protegida. O nome e escolhido para ser LIDO: a tela publica mostra
-#: o ultimo trecho do caminho, e "Dados administrativos" diz o que esta sendo
-#: protegido enquanto "dados" nao diz nada.
-DADOS = CASA / "Dados administrativos"
+#: o ultimo trecho do caminho, e "dados" nao diz nada.
+#:
+#: Neutro de proposito. "Dados administrativos" ou "Financeiro" sugeririam que
+#: este ambiente pertence a um setor — e ele nao pertence a nenhum: e o
+#: ambiente do projeto, e o produto serve a qualquer pasta.
+DADOS = CASA / "Dados do ambiente"
 DESTINO = CASA / "destino"
 
 #: Variaveis de ambiente que carregam o balde da vitrine para o cofre.
@@ -74,7 +78,7 @@ OPCIONAIS_DE_NUVEM = ("VITRINE_S3_ENDPOINT", "VITRINE_S3_REGIAO", "VITRINE_S3_PR
 
 ORGANIZACAO = "AutoTarefas Demonstracao"
 EMAIL_DO_DONO = "operacao@demonstracao.autotarefas"
-MAQUINA = "SERVIDOR-DEMONSTRACAO"
+MAQUINA = "SERVIDOR-01"
 
 #: Quatro politicas diarias, em horarios diferentes.
 #:
@@ -85,37 +89,130 @@ MAQUINA = "SERVIDOR-DEMONSTRACAO"
 #: nao tem.
 HORARIOS = ("03:00", "09:00", "15:00", "21:00")
 
-#: Arquivos de exemplo. Sinteticos, e obviamente sinteticos: nenhum dado real
-#: de ninguem entra num ambiente publico.
+#: Marca que todo arquivo de exemplo carrega na primeira linha.
 #:
-#: Cada um se declara no proprio conteudo, inclusive os CSV. Um arquivo
-#: restaurado sai do pacote sozinho, longe daqui: numeros plausiveis sem
-#: nenhuma marca seriam confundidos com dado de alguem.
-EXEMPLOS: dict[str, str] = {
-    "contratos/locacao-2026.txt": (
-        "CONTRATO DE LOCACAO (exemplo)\n"
-        "Arquivo sintetico do ambiente de demonstracao do AutoTarefas.\n"
-    ),
-    "contratos/prestacao-servicos.txt": (
-        "CONTRATO DE PRESTACAO DE SERVICOS (exemplo)\n"
-        "Arquivo sintetico do ambiente de demonstracao do AutoTarefas.\n"
-    ),
-    "financeiro/fluxo-de-caixa.csv": (
-        "# exemplo sintetico - ambiente de demonstracao do AutoTarefas\n"
-        "data,descricao,valor\n"
-        "2026-08-01,Recebimento,1250.00\n"
-        "2026-08-03,Fornecedor,-380.50\n"
-        "2026-08-07,Recebimento,940.00\n"
-    ),
-    "financeiro/notas-emitidas.csv": (
-        "# exemplo sintetico - ambiente de demonstracao do AutoTarefas\n"
-        "numero,cliente,valor\n001,Cliente A,1250.00\n002,Cliente B,340.00\n"
-    ),
-    "documentos/procedimentos.txt": (
-        "PROCEDIMENTOS INTERNOS (exemplo)\n"
-        "Arquivo sintetico do ambiente de demonstracao do AutoTarefas.\n"
-    ),
-}
+#: Um arquivo restaurado sai do pacote sozinho, longe daqui. Numeros plausiveis
+#: sem nenhuma marca seriam confundidos com dado de alguem — e a pessoa que
+#: encontrasse a planilha teria de perguntar a alguem de onde ela veio.
+MARCA = "Arquivo sintetico do ambiente publico do AutoTarefas. Nao contem dado real."
+
+#: Quantas linhas cada conjunto gerado tem.
+#:
+#: O tamanho e uma decisao de apresentacao, e nao de teste: um historico de
+#: pacotes de 2 KB passa a impressao de brinquedo, e o produto e sobre proteger
+#: o trabalho de alguem. O alvo aqui e um pacote de algumas centenas de KB —
+#: representativo o bastante para ser levado a serio, pequeno o bastante para
+#: nao ocupar disco a toa (a retencao guarda ate dez pacotes por politica, dos
+#: dois lados).
+LINHAS_POR_MES = 6000
+LINHAS_DO_INVENTARIO = 10000
+LINHAS_DO_REGISTRO = 8000
+
+#: Meses cobertos pelas planilhas mensais.
+MESES = 12
+
+
+def _valor(indice: int, teto: int) -> int:
+    """
+    Numero variado e **deterministico**, sem `random`.
+
+    Deterministico importa por dois motivos: reprovisionar produz exatamente o
+    mesmo conteudo (entao o incremental nao acusa mudanca que nao houve), e o
+    tamanho do pacote nao oscila entre uma execucao e outra.
+
+    Variado importa porque o pacote e um ZIP: mil linhas iguais comprimem a
+    quase nada, e o historico voltaria a mostrar um numero que nao representa
+    o trabalho de comprimir nada.
+    """
+    return (indice * 7919 + 104_729) % teto
+
+
+def _planilha_mensal(mes: int) -> str:
+    """Uma planilha de movimentacoes do mes, com cabecalho que se declara."""
+    linhas = [
+        f"# {MARCA}",
+        "identificador,data,categoria,quantidade,valor,referencia",
+    ]
+    for i in range(LINHAS_POR_MES):
+        dia = 1 + _valor(i + mes, 28)
+        categoria = "ABCDEF"[_valor(i, 6)]
+        quantidade = 1 + _valor(i * 3, 400)
+        valor = _valor(i * 11, 900_000) / 100
+        referencia = f"REF-{mes:02d}{_valor(i * 5, 100_000):05d}"
+        linhas.append(
+            f"{i:06d},2026-{mes:02d}-{dia:02d},Categoria {categoria},"
+            f"{quantidade},{valor:.2f},{referencia}"
+        )
+    return "\n".join(linhas) + "\n"
+
+
+def _inventario() -> str:
+    linhas = [f"# {MARCA}", "codigo,descricao,unidade,saldo,posicao"]
+    for i in range(LINHAS_DO_INVENTARIO):
+        linhas.append(
+            f"ITEM-{i:06d},Item sintetico {i},"
+            f"{'UN' if i % 2 else 'CX'},{_valor(i * 13, 5000)},"
+            f"P{_valor(i, 40):02d}-{_valor(i * 3, 20):02d}"
+        )
+    return "\n".join(linhas) + "\n"
+
+
+def _registro_de_operacoes() -> str:
+    linhas = [f"# {MARCA}"]
+    for i in range(LINHAS_DO_REGISTRO):
+        hora = _valor(i, 24)
+        minuto = _valor(i * 7, 60)
+        linhas.append(
+            f"2026-08-{1 + _valor(i, 28):02d} {hora:02d}:{minuto:02d}:00 "
+            f"operacao={_valor(i * 17, 9999):04d} "
+            f"estado={'concluida' if i % 3 else 'reprocessada'} "
+            f"duracao_ms={_valor(i * 29, 4000)}"
+        )
+    return "\n".join(linhas) + "\n"
+
+
+def _documento(titulo: str, paragrafos: int) -> str:
+    # A marca vem ANTES do titulo, como nos CSV: quem abre o arquivo restaurado
+    # le a primeira linha, e a primeira linha precisa dizer o que ele e.
+    corpo = [MARCA, "", f"{titulo.upper()} (exemplo)", ""]
+    for i in range(paragrafos):
+        corpo.append(
+            f"Secao {i + 1}. Texto sintetico gerado para dar volume ao "
+            "ambiente publico do AutoTarefas. Nao descreve procedimento real "
+            "de nenhuma organizacao, e nao substitui documento algum."
+        )
+        corpo.append("")
+    return "\n".join(corpo)
+
+
+@lru_cache(maxsize=1)
+def exemplos() -> dict[str, str]:
+    """
+    Os arquivos de exemplo do ambiente publico.
+
+    Sinteticos, e obviamente sinteticos: nenhum dado real de ninguem entra num
+    ambiente publico. Cada arquivo se declara na primeira linha, inclusive os
+    CSV.
+
+    Os nomes sao neutros de proposito. Uma pasta chamada "financeiro" ou
+    "administrativo" sugeriria que este ambiente pertence a um setor, quando
+    ele nao pertence a nenhum: e o ambiente do projeto, e o produto serve a
+    qualquer pasta.
+
+    Gerado sob demanda e guardado em cache: sao alguns megabytes de texto, e
+    monta-los no import faria toda importacao do modulo — inclusive nos testes
+    — pagar por isso.
+    """
+    arquivos: dict[str, str] = {
+        "planilhas/inventario.csv": _inventario(),
+        "registros/operacoes.log": _registro_de_operacoes(),
+        "documentos/procedimentos.txt": _documento("Procedimentos internos", 40),
+        "documentos/politica-de-guarda.txt": _documento("Politica de guarda", 30),
+        "documentos/manual-de-uso.txt": _documento("Manual de uso", 35),
+    }
+    for mes in range(1, MESES + 1):
+        arquivos[f"planilhas/movimentacoes-2026-{mes:02d}.csv"] = _planilha_mensal(mes)
+    return arquivos
 
 
 @dataclass(frozen=True)
@@ -199,7 +296,7 @@ def nome_da_politica(hora: str) -> str:
 def semear_dados(pasta: Path = DADOS) -> int:
     """Escreve os arquivos de exemplo que ainda nao existem."""
     escritos = 0
-    for relativo, conteudo in EXEMPLOS.items():
+    for relativo, conteudo in exemplos().items():
         alvo = pasta / relativo
         if alvo.exists():
             continue

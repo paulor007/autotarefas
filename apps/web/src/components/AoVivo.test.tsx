@@ -18,7 +18,7 @@ const SEM_NADA = {
     {
       politica_id: "p1",
       nome: "Backup diario 15:00",
-      maquina: "SERVIDOR-DEMONSTRACAO",
+      maquina: "SERVIDOR-01",
       proxima_no_relogio_da_maquina: "2026-08-30T15:00:00",
       quando: "diario",
       hora: "15:00",
@@ -32,7 +32,7 @@ const RODANDO = {
     {
       politica_id: "p1",
       politica_nome: "Backup diario 15:00",
-      maquina: "SERVIDOR-DEMONSTRACAO",
+      maquina: "SERVIDOR-01",
       dispositivo_id: "d1",
       etapa: "entregando",
       etapa_em_portugues: "Copiando para o destino",
