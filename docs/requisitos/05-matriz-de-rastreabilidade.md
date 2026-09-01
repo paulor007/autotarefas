@@ -41,7 +41,18 @@ obrigatório vazio é rejeitada com motivo, sem virar requisição · **[B6]** F
 tests/fixtures/fluxo/conferencia_mensal.yaml --out-dir …` executou os 4 passos
 (comparar → conciliar → transferir → corrigir) gravando cada um em sua pasta;
 segredo embutido no YAML é recusado na leitura (exit 2) e `--out-dir` da CLI
-vence o do arquivo · **[H]** evidência
+vence o do arquivo · **[G3]** conferência do RF-GOV-003 (31/08/2026) — leitura
+do código e dos testes no repositório, sem alteração de nada: existem
+`src/autotarefas/core/retention.py` (plano de expurgo calculado antes de apagar
+e registro do removido no audit sob `manutencao.expurgar`),
+`src/autotarefas/cli/commands/manutencao.py` (comando `expurgar`),
+`log_retention_days`/`screenshot_retention_days`/`audit_retention_days` em
+`core/settings.py` consumidos em `core/logger.py:142`, e o TTL de 15 min do Live
+em `apps/api/app/config.py::workspace_ttl_min` varrido por
+`jobs.py::sweep_expired`; testes correspondentes em `tests/core/test_retention.py`
+e `tests/cli/test_manutencao_cli.py`. **A conferência não promoveu o requisito**:
+ela mostrou que as duas lacunas restantes não são de código — ver a linha do
+GOV-003 e a ressalva 12 · **[H]** evidência
 colhida manualmente na auditoria
 (saídas de `--help`, leitura de código com linha citada).
 
@@ -89,7 +100,7 @@ colhida manualmente na auditoria
 | RF-WEB-004 | NÃO INICIADO | PÓS-V1 | — | — | — | tudo | INT-006 | Fase D4 |
 | RF-GOV-001 | CONCLUÍDO | OBRIG. V1 | `src/autotarefas/tasks/report_audit.py` | `tests/tasks/test_report_audit.py`, `tests/cli/test_report_cli.py` | [N] | Live → LIVE-006a | CORE-002 | ativar no Live (A3) |
 | RF-GOV-002 | CONCLUÍDO | OBRIG. V1 | `src/autotarefas/dashboard/{reader,renderer}.py` | `tests/dashboard/`, `tests/cli/test_dashboard_cli.py` | [N] | Live → LIVE-006a | GOV-001 | ativar no Live (A3) |
-| RF-GOV-003 | PARCIAL | **OBRIG. V1** | mascaramento em `core/security.py`; retenção fixa `core/logger.py:142`; `screenshot_retention_days` em `core/settings.py` | `tests/core/test_logger.py`, `test_security.py` | [N][H] | rotina de expurgo; retenção configurável; texto de transparência do Live | — (DP-05 aprovada) | **Fase A2** |
+| RF-GOV-003 | **PARCIAL** | **OBRIG. V1** | mascaramento em `core/security.py`; retenção configurável em `core/settings.py` + `core/logger.py:142`; expurgo em `core/retention.py`; comando em `cli/commands/manutencao.py`; TTL do Live em `apps/api/app/config.py` + `jobs.py::sweep_expired` | `tests/core/test_retention.py`, `tests/cli/test_manutencao_cli.py`, `tests/core/test_logger.py`, `tests/core/test_security.py` | [N][G3] | **duas, ambas fora do código:** (1) política de retenção/privacidade não documentada; (2) transparência correspondente ausente no Live | — (DP-05 aprovada) | documentar a política e levá-la ao Live → só então CONCLUÍDO |
 | RF-GOV-004 | CONCLUÍDO | OBRIG. V1 | `src/autotarefas/dashboard/reader.py` (`verify_input_hash`) | `tests/dashboard/test_reader.py` | [N] | — | CORE-002 | manter |
 | RF-LIVE-001 | CONCLUÍDO | OBRIG. V1 | `apps/api/app/catalog.py`, `engine.py::ACTIVE_AUTOMATIONS`, `main.py::_precheck` | `apps/api/tests/test_engine.py` | [L][H] | estado `oculto` da régua não implementado | — | manter |
 | RF-LIVE-002 | CONCLUÍDO | OBRIG. V1 | `apps/api/app/{main,engine,jobs,streaming}.py` | `test_engine.py`, `test_streaming.py` | [L] | — | LIVE-001 | manter |
@@ -128,10 +139,14 @@ colhida manualmente na auditoria
    "commits locais até a revisão final". **Pendência da A1:** executar no
    repositório local `npm ci && npm test && npm run typecheck && npm run build`
    e anexar a saída aqui.
-4. **Prioridades aprovadas, status inalterados** — a DP-01 de 10/08/2026 fixou o
+4. **Prioridades aprovadas, status inalterados (10/08/2026)** — a DP-01 fixou o
    recorte obrigatório em 41 requisitos e promoveu RF-INT-005; nenhum status mudou
-   por causa disso. RF-INT-005 permanece NÃO INICIADO até ter código, testes,
-   critérios de aceite cumpridos e evidência aqui.
+   por causa disso, e RF-INT-005 seguiu NÃO INICIADO enquanto não teve código,
+   testes, critérios de aceite cumpridos e evidência aqui.
+   **Atualização (14/08/2026):** essa condição foi cumprida na Fase B7 — o
+   requisito passou a CONCLUÍDO com a evidência **[B7]**, registrada na linha
+   dele. A regra que esta ressalva enunciava continua valendo; o que mudou foi o
+   requisito tê-la satisfeito.
 4b. **`origin/main` atrasado em relação à árvore local (A1) — quantificado na ressalva 10.** HEAD público em
    `ac3e58d` "feat(cli): adiciona comando analisar com perfilagem sem schema"
    (15/07/2026), `__version__ = "1.4.0"`. Ausentes no remoto: testes do frontend,
@@ -183,3 +198,17 @@ colhida manualmente na auditoria
    `dashboard.html`, `dashboard_exemplo.html` parecem resíduos de execução usados
    como exemplo. Decidir na Fase A1 se viram `examples/` ou saem do versionamento
    (nenhuma ação nesta etapa).
+
+12. **RF-GOV-003: o que a conferência de 31/08/2026 achou, e o que ela não fez.**
+   Achou implementação e testes para tudo o que a DP-05 pediu do lado do código —
+   retenção configurável, rotina de expurgo com registro no audit, comando de
+   manutenção e TTL no Live (evidência **[G3]**). **Não** promoveu o requisito a
+   CONCLUÍDO, e o motivo importa: as duas lacunas que restam não se resolvem com
+   código. Falta a **política de retenção e privacidade escrita** — a DP-05 fixou
+   prazos numa decisão interna, não num documento publicável — e falta o **Live
+   dizer isso a quem envia arquivo**: finalidade do processamento, tempo de
+   retenção, existência de arquivos de exemplo, recomendação de não enviar dados
+   pessoais desnecessários e a diferença entre demonstração pública e modo real
+   privado. Um sistema que cumpre em silêncio uma política que ninguém enunciou
+   não é transparente — é apenas bem-comportado por acaso, e ninguém consegue
+   verificar. Enquanto as duas faltarem, **PARCIAL**.

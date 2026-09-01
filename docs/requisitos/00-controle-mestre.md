@@ -32,6 +32,19 @@
 > **A1.3** (correção mínima da dependência vulnerável) e **A1.4** (consolidação da
 > integração contínua) — planejamento operacional em `06`. Nenhum requisito
 > funcional é concluído pela conclusão da A1.
+>
+> **Revisão 4 — alinhamento ao placar real (31/08/2026).** Este documento havia
+> parado em **30/41**, número correto em 10/08/2026 e desatualizado desde então:
+> as fases B1 a B7 concluíram REC-001..004, PLA-009, PLA-010, INT-005 e o
+> recorte aprovado de CORE-006, todos já registrados com evidência na matriz
+> (`05`) e com status CONCLUÍDO nas fichas (`03`). O controle mestre era o único
+> dos três a divergir — e, sendo a fonte oficial de acompanhamento, era o pior
+> lugar para uma divergência.
+>
+> **Nada mudou de status por causa desta revisão.** Ela é documental no sentido
+> estrito: transcreve para cá o que a matriz e as fichas já comprovavam. Os
+> números de 05/08 e 10/08 permanecem no texto, marcados como históricos.
+> **Placar vigente: 38/41** — ver §3.
 
 ---
 
@@ -74,20 +87,33 @@ progresso V1 = requisitos OBRIGATÓRIO V1 com status CONCLUÍDO
 ```
 
 Escopo aprovado em **10/08/2026** (DP-01): **41 requisitos OBRIGATÓRIO V1**, dos
-quais **30 CONCLUÍDOS**.
+quais **38 CONCLUÍDOS**.
 
-**Progresso documental da V1: 30/41.**
+**Progresso vigente da V1: 38/41.**
 
 Este número muda somente quando um requisito obrigatório passa a CONCLUÍDO pelo
 DoD (`09`), com evidência na matriz (`05`) — nunca por aprovação documental.
+
+> **Onde ler 30/41.** O número aparece adiante, na §4 (fotografia da auditoria
+> de 05/08/2026) e na §4.1 (baseline técnico da A1, 10/08/2026). Ali ele é
+> **histórico** e está correto: descreve o que se media naquelas datas. O placar
+> vigente é o desta seção. Nenhuma outra parte deste documento pode citar 30/41
+> sem dizer a que data se refere.
 
 ### 3.1 Escopo obrigatório aprovado da V1 (41 requisitos)
 
 | Grupo | Requisitos | Situação |
 |---|---|---|
-| Concluídos (30) | CORE-001..005 · ARQ-001, ARQ-003 · PLA-001..008 · INT-001..003 · COM-001..002 · WEB-001 · GOV-001/002/004 · LIVE-001..005/007 | manter (regressão = bloqueio) |
-| Parciais (4) | GOV-003 · CORE-006 (recorte aprovado) · WEB-002 · WEB-003 | concluir |
-| Não iniciados (7) | REC-001, REC-002, REC-003, REC-004 · PLA-009 · PLA-010 · **INT-005** | implementar |
+| Concluídos (38) | CORE-001..006 · ARQ-001, ARQ-003 · PLA-001..010 · REC-001..004 · INT-001..003, INT-005 · COM-001..002 · WEB-001 · GOV-001/002/004 · LIVE-001..005/007 | manter (regressão = bloqueio) |
+| Parciais (3) | GOV-003 · WEB-002 · WEB-003 | concluir |
+| Não iniciados (0) | — | — |
+
+**Nenhum requisito obrigatório da V1 permanece NÃO INICIADO.** Os sete que
+estavam nessa condição em 10/08/2026 — REC-001..004, PLA-009, PLA-010 e
+INT-005 — foram concluídos nas fases B1 a B7 (14/08/2026), e RF-CORE-006 foi
+concluído no **recorte aprovado** (DP-01(d)) na fase B6; o encadeamento genérico
+de tarefas arbitrárias segue PÓS-V1 e **não** faz parte do recorte. Evidência de
+cada um na matriz (`05`).
 
 **RECOMENDADOS V1 (não bloqueiam o release):** LIVE-006a (4 cards baratos) e
 RF-INT-006 (checkpoint/retomada).
@@ -95,7 +121,11 @@ RF-INT-006 (checkpoint/retomada).
 ARQ-002/004/005, COM-003, WEB-004, LIVE-006b (cards de navegador — DP-02) e o
 encadeamento genérico de CORE-006.
 
-## 4. Fotografia da auditoria de 05/08/2026
+## 4. Fotografia da auditoria de 05/08/2026 (histórica)
+
+> **Seção histórica.** Os números abaixo são o retrato de **05/08/2026** e não
+> são atualizados: eles registram o que a auditoria mediu naquele dia. O placar
+> vigente está na §3.
 
 Contagem por status (**51** requisitos funcionais catalogados em `03` — a
 revisão 2 corrigiu o total: a soma das listas de IDs sempre foi 51, e o texto
@@ -150,8 +180,13 @@ Substituições de baseline: **2052** substitui os 2023 do snapshot anterior; **
 substitui os 31. Os números antigos permanecem no texto **apenas** quando
 identificados como resultado do snapshot de 05/08.
 
-**As contagens de requisitos não mudam com a A1:** 51 catalogados · 30 CONCLUÍDOS ·
-4 PARCIAIS · 17 NÃO INICIADOS · 41 obrigatórios da V1 · progresso 30/41.
+**As contagens de requisitos não mudaram com a A1** — a A1 foi auditoria, e
+auditoria não conclui requisito. Em **10/08/2026** eram: 51 catalogados ·
+30 CONCLUÍDOS · 4 PARCIAIS · 17 NÃO INICIADOS · 41 obrigatórios da V1 ·
+progresso **30/41**.
+
+> Estes são os valores **daquela data**. As fases B1 a B7 (14/08/2026) levaram o
+> placar a **38/41** — ver §3.
 
 ## 5. Checklist mestre (marcar somente com evidência na matriz 05)
 
@@ -161,7 +196,7 @@ identificados como resultado do snapshot de 05/08.
 - [x] RF-CORE-003 Segurança transversal (paths, URLs, mascaramento) — CONCLUÍDO
 - [x] RF-CORE-004 Configuração por ambiente (.env, SecretStr) — CONCLUÍDO
 - [x] RF-CORE-005 CLI unificada (--dry-run, --yes, verbosidade) — CONCLUÍDO
-- [ ] RF-CORE-006 Reutilização de configurações (perfis/schemas ✔; receitas do usuário ✘) — PARCIAL
+- [x] RF-CORE-006 Reutilização de configurações — CONCLUÍDO no **recorte aprovado** (DP-01(d)): `autotarefas run fluxo.yaml`; encadeamento genérico de tarefas arbitrárias permanece PÓS-V1
 - [ ] RF-CORE-007 Sugestões automáticas de próximos passos — NÃO INICIADO
 - [ ] RF-CORE-008 Agendamento, gatilhos e encadeamento — NÃO INICIADO
 
@@ -181,21 +216,21 @@ identificados como resultado do snapshot de 05/08.
 - [x] RF-PLA-006 Limpeza segura com trilha de alterações — CONCLUÍDO
 - [x] RF-PLA-007 Artefatos e relatórios da auditoria (CSV/JSON/XLSX) — CONCLUÍDO
 - [x] RF-PLA-008 Pacote de evidências com manifesto e hashes — CONCLUÍDO
-- [ ] RF-PLA-009 Preservação da formatação original na versão tratada — NÃO INICIADO
-- [ ] RF-PLA-010 Correções por regras confirmadas (além da limpeza) — NÃO INICIADO
+- [x] RF-PLA-009 Preservação da formatação original na versão tratada — CONCLUÍDO
+- [x] RF-PLA-010 Correções por regras confirmadas (além da limpeza) — CONCLUÍDO
 
 ### REC — reconciliação e transferência entre planilhas
-- [ ] RF-REC-001 Comparação (diff) entre planilhas por chave — NÃO INICIADO
-- [ ] RF-REC-002 Reconciliação com tolerâncias e base conciliada — NÃO INICIADO
-- [ ] RF-REC-003 Transferência/enriquecimento entre planilhas — NÃO INICIADO
-- [ ] RF-REC-004 Configuração de reconciliação salva e reutilizável — NÃO INICIADO
+- [x] RF-REC-001 Comparação (diff) entre planilhas por chave — CONCLUÍDO
+- [x] RF-REC-002 Reconciliação com tolerâncias e base conciliada — CONCLUÍDO
+- [x] RF-REC-003 Transferência/enriquecimento entre planilhas — CONCLUÍDO
+- [x] RF-REC-004 Configuração de reconciliação salva e reutilizável — CONCLUÍDO
 
 ### INT — integração com sistemas via API
 - [x] RF-INT-001 Exportação via API paginada — CONCLUÍDO
 - [x] RF-INT-002 Importação/cadastro via API (idempotência + reenvio de falhos) — CONCLUÍDO
 - [x] RF-INT-003 Sincronização API→API por composição — CONCLUÍDO
 - [ ] RF-INT-004 Conectores declarativos por sistema (YAML) — NÃO INICIADO · PÓS-V1 (DP-01(b) e DP-08)
-- [ ] RF-INT-005 Mapeamento de colunas configurável na importação — NÃO INICIADO · **OBRIGATÓRIO V1** (DP-01(c), 10/08/2026) · Fase B7
+- [x] RF-INT-005 Mapeamento de colunas configurável na importação — CONCLUÍDO · **OBRIGATÓRIO V1** (DP-01(c), 10/08/2026) · Fase B7
 - [ ] RF-INT-006 Checkpoint e retomada de execuções longas — NÃO INICIADO · RECOMENDADO V1, não bloqueia (DP-01(c))
 
 ### COM — comunicação

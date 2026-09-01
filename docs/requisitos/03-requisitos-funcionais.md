@@ -127,10 +127,10 @@ módulo" para não repetir texto.
 **Falhas/Recuperação:** padrão. **Modo Live:** N/A (parâmetros são do servidor). **Modo real:** principal beneficiário.
 **Testes necessários:** parsing, precedência, recusa de segredo embutido.
 **Recorte V1 (revisão 2, 05/08/2026):** obrigatória a *configuração reutilizável do fluxo de planilhas* — um YAML que descreve a operação completa (leitura/seleção, validação, tratamento autorizado, reconciliação, apresentação), executável por `autotarefas run fluxo.yaml`; internamente multi-etapas, externamente uma operação; primeiro consumidor: REC-004. O encadeamento genérico de tasks arbitrárias (envios, extrações, condicionais) fica FORA da V1 — é orquestração, não requisito do resultado operacional (justificativa: nenhuma etapa da seção 9.1 do doc 01 depende dele; complexidade ALTA sem valor novo para o fluxo).
-**Prioridade:** OBRIGATÓRIO V1 no recorte acima — **recorte aprovado em 10/08/2026 (DP-01(d))**: configuração reutilizável do fluxo de planilhas, execução por `autotarefas run fluxo.yaml`, validação da configuração, precedência CLI > configuração > padrão e proibição de segredos embutidos; encadeamento genérico de tarefas arbitrárias permanece PÓS-V1. **Fase:** B6. **Status:** PARCIAL.
-**Evidências (parte existente):** `src/autotarefas/profiles/` + `tests/profiles/`; schemas/regras YAML por toda a suíte.
-**Lacunas:** não existe `run <fluxo.yaml>`; formato da configuração de fluxo não definido.
-**Próxima ação:** especificar o formato na Fase B6, junto de REC-004.
+**Prioridade:** OBRIGATÓRIO V1 no recorte acima — **recorte aprovado em 10/08/2026 (DP-01(d))**: configuração reutilizável do fluxo de planilhas, execução por `autotarefas run fluxo.yaml`, validação da configuração, precedência CLI > configuração > padrão e proibição de segredos embutidos; encadeamento genérico de tarefas arbitrárias permanece PÓS-V1. **Fase:** B6. **Status:** CONCLUÍDO no recorte aprovado (14/08/2026).
+**Evidências:** `src/autotarefas/flow.py` + `src/autotarefas/cli/commands/run.py` (+ `src/autotarefas/profiles/`); testes em `tests/test_flow.py` e `tests/profiles/`. Homologação B6: `autotarefas run tests/fixtures/fluxo/conferencia_mensal.yaml --out-dir …` executou os 4 passos (comparar → conciliar → transferir → corrigir) gravando cada um em sua pasta; segredo embutido no YAML é recusado na leitura (exit 2); `--out-dir` da CLI vence o do arquivo.
+**Lacunas (fora do recorte, por decisão):** encadeamento genérico de tarefas arbitrárias e agendamento seguem PÓS-V1 (Fase D4). Isto **não** é uma pendência do requisito na V1 — é a fronteira que a DP-01(d) desenhou.
+**Próxima ação:** manter. Reabrir apenas na Fase D4, se o encadeamento genérico entrar em escopo.
 
 ### RF-CORE-007 — Sugestões automáticas de próximos passos
 **Objetivo:** o produto propor, com base no resultado, o próximo passo útil.
@@ -581,13 +581,18 @@ sobre esse núcleo.*
 
 ### RF-GOV-003 — Retenção, expurgo e mascaramento programáveis
 **Objetivo:** dados e evidências com prazo de vida definido e cumprido (LGPD).
-**Estado atual (PARCIAL):** mascaramento OK (`mask_sensitive_in_dict`, screenshots mascaradas, `SecretStr`, redação de token); logs com retenção **fixa de 30 dias** (`src/autotarefas/core/logger.py`, linha 142); `screenshot_retention_days` existe em settings **sem rotina que expurgue**; audit sem qualquer expurgo; workspaces do Live têm TTL 15 min (OK).
+**Estado atual (PARCIAL) — conferido em 31/08/2026:** o que a DP-05 pediu do lado do **código** está implementado e testado; o que falta é **documental e de interface**.
+
+*Comprovado:* mascaramento (`mask_sensitive_in_dict`, screenshots mascaradas, `SecretStr`, redação de token); retenção **configurável** por settings — `log_retention_days`, `screenshot_retention_days` e `audit_retention_days` — consumida em `src/autotarefas/core/logger.py:142`; **rotina de expurgo** em `src/autotarefas/core/retention.py`, com plano calculado antes de apagar e registro do que foi removido no audit sob a ação `manutencao.expurgar`; comando `autotarefas manutencao expurgar` em `src/autotarefas/cli/commands/manutencao.py`; workspaces do Live com TTL de 15 min (`apps/api/app/config.py::workspace_ttl_min`, varridos por `apps/api/app/jobs.py::sweep_expired`). Testes: `tests/core/test_retention.py`, `tests/cli/test_manutencao_cli.py`, `tests/core/test_logger.py`, `tests/core/test_security.py`.
+
+*Por que continua PARCIAL — duas lacunas reais:* (i) **a política de retenção e privacidade não está documentada** em lugar nenhum publicável — a DP-05 fixou os prazos numa decisão interna, e o requisito pede a política escrita (SECURITY/privacidade); (ii) **o Live não conta nada disso a quem usa** — o TTL de 15 min existe e funciona, mas quem envia um arquivo não é informado da finalidade do processamento, do tempo de retenção, da existência de arquivos de exemplo, da recomendação de não enviar dados pessoais desnecessários, nem da diferença entre demonstração pública e modo real privado. Cumprir uma política que ninguém enunciou não é transparência; é coincidência.
 **Descrição detalhada (alvo):** comando `manutencao expurgar` aplicando: retenção de logs pela settings (não fixa), expurgo de screenshots além do prazo, expurgo opcional do audit além de N dias **com confirmação e registro do expurgo**; documentação da política em SECURITY/privacidade.
 **Critérios de aceite:** rodar o expurgo remove exatamente o que a política manda e grava no audit o que removeu; padrão continua conservador (sem expurgo silencioso).
 **Política aprovada em 10/08/2026 (DP-05), por ambiente:** Live público — uploads e artefatos com TTL de 15 min, logs operacionais sem dados sensíveis 30 dias, screenshots mascaradas 7 dias, audit 30 dias; modo real privado — uploads/artefatos configuráveis pelo operador, logs 30 dias por padrão (configurável), screenshots 30 dias por padrão (configurável), audit com retenção configurável e exclusão manual confirmada. O Live deve informar finalidade do processamento, tempo de retenção, existência de arquivos de exemplo, recomendação de não enviar dados pessoais desnecessários e a diferença entre demonstração pública e modo real privado. Registro obrigatório: **política técnica**, sujeita a revisão jurídica antes de uso comercial com dados pessoais de clientes. Dois pontos de aplicação ficaram em aberto e estão listados em `08` §5 (audit do Live e screenshots no Live).
 **Prioridade:** OBRIGATÓRIO V1 (fecha o compromisso LGPD antes do release). **Fase:** A2. **Status:** PARCIAL.
-**Evidências do existente:** caminhos citados acima. **Lacunas:** rotina de expurgo; retenção de log configurável.
-**Próxima ação:** implementar na Fase A2 (após DP-05 fixar os prazos).
+**Evidências do existente:** caminhos e testes citados no "Estado atual".
+**Lacunas:** (1) política de retenção/privacidade não documentada; (2) transparência correspondente ausente no Live.
+**Próxima ação:** documentar a política e levá-la ao Live. Só então CONCLUÍDO — a implementação sozinha não fecha este requisito, porque ele é sobre o compromisso *declarado* com quem entrega os dados.
 
 ### RF-GOV-004 — Verificação de integridade das evidências
 **Descrição detalhada:** `verify_input_hash` recalcula o HMAC do input e compara com o gravado; exposto no painel (GOV-002).
