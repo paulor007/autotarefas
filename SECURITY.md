@@ -245,18 +245,27 @@ configurada — e ela está descrita adiante, com todas as letras.
 ### Live público — execução isolada por upload
 
 Quem experimenta pelo navegador envia um arquivo, vê a automação rodar num
-espaço isolado e baixa o resultado. Nada disso é para guardar.
+espaço isolado e baixa o resultado. **Nem o arquivo enviado nem o resultado
+ficam** — é o que preocupa quem envia arquivo, e continua valendo. O que fica é
+o registro do servidor: a execução vira evento em log mascarado, e esse log tem
+prazo próprio.
 
 | Dado | Prazo | Onde no código |
 |---|---|---|
 | Uploads e artefatos da execução | **TTL de 15 minutos**, depois removidos | `apps/api/app/config.py::workspace_ttl_min` (padrão 15), varredura em `apps/api/app/jobs.py::sweep_expired` |
-| Logs operacionais, **sem dados sensíveis** | **30 dias**, com remoção automática | `core/logger.py` — rotação diária à meia-noite e `retention` do Loguru alimentada por `log_retention_days` |
+| Logs operacionais **do servidor** — evento da execução, não o conteúdo do arquivo enviado | **30 dias** (padrão `log_retention_days`), mascarados | `core/logger.py` configura o sink em arquivo no import do módulo, sem distinção de ambiente; `apps/api/app/spreadsheets.py` usa esse mesmo logger |
 | Registro da execução isolada | **vive apenas enquanto o workspace vive** — não há trilha persistente das execuções do Live | mesmo TTL acima |
 
-O log é o mesmo mecanismo do modo real privado: o Live importa o logger do
-núcleo (`apps/api/app/spreadsheets.py`), e configurar o logger instala o
-arquivo com rotação e retenção. "Sem dados sensíveis" não é promessa vaga — é o
-mascaramento descrito adiante, aplicado antes de a linha chegar ao arquivo.
+**O que vai para esse log é evento, não planilha.** "Iniciou", "terminou",
+"falhou por isto" — não o conteúdo da planilha enviada, que vive e morre no
+workspace. E o que vai passa antes pelo `_mask_patcher` (`core/logger.py:92`),
+registrado em `logger.configure(patcher=...)` e portanto aplicado a **todos**
+os sinks: a linha já chega mascarada ao arquivo.
+
+O sink não distingue ambiente. Ele é instalado quando o módulo do logger é
+importado, e o Live importa o logger do núcleo
+(`apps/api/app/spreadsheets.py:51`) — mesmo arquivo, mesma rotação, mesma
+janela de 30 dias do modo real privado.
 
 Dois pontos que **não** são promessa deste ambiente, e por que:
 
@@ -277,39 +286,31 @@ pessoais que não sejam necessários** — nem os seus, nem os de terceiros.
 ### Modo real privado — instalação da empresa
 
 Aqui os dados são do operador e ficam na máquina dele. A remoção pelo
-AutoTarefas é um comando explícito, com prévia e confirmação — **com uma
-exceção, que é o log**.
+AutoTarefas é um comando explícito, com prévia e confirmação — e isso vale para
+**screenshots, trilha de auditoria, uploads e artefatos**.
+
+**Arquivos de log são a exceção.** Eles são apagados automaticamente pelo
+próprio sink de arquivo quando passam da janela de retenção, sem comando e sem
+pergunta.
 
 | Dado | Padrão | Removido como | Configurável | Onde no código |
 |---|---|---|---|---|
 | Logs operacionais | **30 dias** | **automaticamente**, sem confirmação | `log_retention_days` (1–3650) | `core/settings.py`, aplicado em `core/logger.py` |
 | Screenshots (mascaradas) | **30 dias** | pelo comando de expurgo, com confirmação | `screenshot_retention_days` (1–365) | `core/settings.py` |
 | Trilha de auditoria (núcleo/CLI) | **preservada** — sem prazo por padrão | pelo comando de expurgo, com confirmação | `audit_retention_days` (padrão `None`) | `core/settings.py`, expurgo em `core/retention.py` |
-| Uploads e artefatos escolhidos pelo operador | **ciclo de vida do operador** | **não são removidos pelo AutoTarefas** | destino definido por quem executa | fora do plano de expurgo, por decisão |
+| Uploads e artefatos escolhidos pelo operador | **ciclo de vida do operador** | **não são removidos pelo AutoTarefas** | "configuráveis" na DP-05 no sentido de que **o operador escolhe o destino e o ciclo de vida** — e é justamente por isso que o plano de expurgo não os toca | fora de `build_purge_plan`, que recebe apenas `logs_dir`, `screenshots_dir` e o audit |
 
-**O log é a exceção, e ela é deliberada.** O arquivo rotaciona à meia-noite e o
-mecanismo de retenção do Loguru apaga os rotacionados além da janela
-configurada — **sem prévia e sem confirmação**. É o comportamento certo para
-log: ele cresce todo dia, e exigir um gesto humano para não encher o disco
-transformaria higiene em incidente. Vale dizer com todas as letras justamente
-porque **contraria** a regra que governa o resto dos dados.
+**A exceção é deliberada.** Log cresce todo dia, e exigir um gesto humano para
+não encher o disco transformaria higiene em incidente. Vale dizer com todas as
+letras justamente porque **contraria** a regra que governa o resto dos dados.
 
-São dois mecanismos sobre o mesmo dado, e não um: o comando de expurgo
-**também** lista e remove logs expirados (`core/retention.py`), servindo de
-segunda rede para o que a rotação não tenha alcançado — arquivos de um período
-em que o processo não estava no ar, por exemplo. O expurgo só considera
-arquivos que o próprio produto gera (`autotarefas_*.log` e `.log.zip`); um
-arquivo alheio deixado na mesma pasta não entra no plano.
-
-**Uploads e artefatos: por que "configurável" não quer dizer "expurgável".** A
-política prevê que o ciclo de vida deles seja definido pelo operador — e é
-exatamente por isso que o expurgo não os toca. Quem executa escolhe o destino
-(`--out-dir` e afins) e, com ele, onde os arquivos passam a viver: pode ser uma
-pasta temporária, uma pasta de rede, um diretório que já tem política de backup
-própria. O AutoTarefas não tem como saber o que mais existe naquele lugar, e
-apagar por prazo dentro de um diretório escolhido por outra pessoa seria
-destruir arquivo alheio com boa intenção. A configuração está em **onde os
-artefatos são gravados**; a remoção fica com quem escolheu o lugar.
+**Por que "configurável" não quer dizer "expurgável".** Quem executa escolhe o
+destino (`--out-dir` e afins) e, com ele, onde os arquivos passam a viver: pode
+ser uma pasta temporária, uma pasta de rede, um diretório que já tem política
+de backup própria. O AutoTarefas não tem como saber o que mais existe naquele
+lugar, e apagar por prazo dentro de um diretório escolhido por outra pessoa
+seria destruir arquivo alheio com boa intenção. A configuração está em **onde
+os artefatos são gravados**; a remoção fica com quem escolheu o lugar.
 
 O padrão do audit é `None` de propósito: **preservar é o comportamento
 conservador**. Expurgar histórico de auditoria por conta própria seria destruir
@@ -329,15 +330,29 @@ Comportamento verificado em `cli/commands/manutencao.py` e `core/retention.py`:
    linhas de audit seriam removidos.
 2. **`--dry-run` não remove nada**, e diz isso.
 3. **Pede confirmação explícita**, com resposta padrão **não**. Sem
-   confirmação, nada é removido. `--yes` existe para automação e é a única
-   forma de pular a pergunta.
+   confirmação, **este comando** não remove nada. `--yes` existe para automação
+   e é a única forma de pular a pergunta.
 4. **Registra o que removeu na trilha de auditoria**, sob a ação
    `manutencao.expurgar`. Expurgo silencioso seria a operação mais perigosa do
    produto sem nenhum rastro.
 5. **Recusa rodar no ambiente do Live** (`environment == "demo"`), com saída 2:
-   lá o ciclo de vida é o TTL do workspace, e não este comando.
+   lá o ciclo de vida dos arquivos é o TTL do workspace, e o do log é a
+   rotação do sink — nenhum dos dois passa por este comando.
 6. **Não toca em uploads e artefatos do operador** — eles são dele, e o
    software não decide quando apagá-los.
+
+**Duas formas de remoção convivem**, e vale saber qual age sobre o quê:
+
+- o comando **`manutencao expurgar`** acima — explícito, com prévia e
+  confirmação, alcançando **logs, screenshots e audit**;
+- o **`retention` do sink de arquivo** (`core/logger.py:142`), combinado com
+  `rotation="00:00"`: apaga sozinho os arquivos de log rotacionados que
+  passaram da janela, sem prévia e sem confirmação.
+
+O detalhe que fecha o raciocínio está no item 5: **como o comando recusa rodar
+no ambiente `demo`, no Live público a limpeza de log acontece exclusivamente
+pelo segundo mecanismo.** É ele que torna verdadeira, na prática, a linha de 30
+dias da tabela do Live — lá não existe operador para digitar comando nenhum.
 
 ### Mascaramento
 

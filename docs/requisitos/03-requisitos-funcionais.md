@@ -591,7 +591,7 @@ sobre esse núcleo.*
 **Política aprovada em 10/08/2026 (DP-05), por ambiente:** Live público — uploads e artefatos com TTL de 15 min, logs operacionais sem dados sensíveis 30 dias, screenshots mascaradas 7 dias, audit 30 dias; modo real privado — uploads/artefatos configuráveis pelo operador, logs 30 dias por padrão (configurável), screenshots 30 dias por padrão (configurável), audit com retenção configurável e exclusão manual confirmada. O Live deve informar finalidade do processamento, tempo de retenção, existência de arquivos de exemplo, recomendação de não enviar dados pessoais desnecessários e a diferença entre demonstração pública e modo real privado. Registro obrigatório: **política técnica**, sujeita a revisão jurídica antes de uso comercial com dados pessoais de clientes. Dois pontos de aplicação ficaram em aberto e estão listados em `08` §5 (audit do Live e screenshots no Live).
 **Prioridade:** OBRIGATÓRIO V1 (fecha o compromisso LGPD antes do release). **Fase:** A2. **Status:** PARCIAL.
 **Evidências do existente:** caminhos e testes citados no "Estado atual".
-**Lacunas:** (1) política de retenção/privacidade não documentada; (2) transparência correspondente ausente no Live.
+**Lacunas:** (1) ~~política de retenção/privacidade não documentada~~ — **fechada**: documentada em `SECURITY.md`, seção "🗄️ Retenção de dados e privacidade", com os dois ambientes separados, os prazos conferidos no código e os dois mecanismos de remoção; (2) transparência correspondente ausente no Live.
 **Próxima ação:** documentar a política e levá-la ao Live. Só então CONCLUÍDO — a implementação sozinha não fecha este requisito, porque ele é sobre o compromisso *declarado* com quem entrega os dados.
 
 ### RF-GOV-004 — Verificação de integridade das evidências
