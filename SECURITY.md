@@ -227,6 +227,110 @@ contra automação acidental em sistemas reais durante desenvolvimento.
 
 ---
 
+## 🗄️ Retenção de dados e privacidade
+
+> **Política técnica.** Ela descreve o que o software faz hoje, verificado no
+> código. **Não é parecer jurídico** e **está sujeita a revisão jurídica antes
+> de qualquer uso comercial com dados pessoais de clientes** (DP-05,
+> 10/08/2026). Enquanto essa revisão não acontecer, trate esta seção como
+> compromisso de engenharia, não como conformidade declarada.
+
+O AutoTarefas roda em **dois ambientes com regras diferentes**, e a diferença é
+o ponto de partida: confundi-los levaria alguém a supor que o Live guarda dados
+como um servidor de produção, ou que a instalação da empresa apaga arquivos
+sozinha. Nenhuma das duas é verdade.
+
+### Live público — execução isolada por upload
+
+Quem experimenta pelo navegador envia um arquivo, vê a automação rodar num
+espaço isolado e baixa o resultado. Nada disso é para guardar.
+
+| Dado | Prazo | Onde no código |
+|---|---|---|
+| Uploads e artefatos da execução | **TTL de 15 minutos**, depois removidos | `apps/api/app/config.py::workspace_ttl_min` (padrão 15), varredura em `apps/api/app/jobs.py::sweep_expired` |
+| Registro da execução isolada | **vive apenas enquanto o workspace vive** — não há trilha persistente das execuções do Live | mesmo TTL acima |
+
+Dois pontos que **não** são promessa deste ambiente, e por que:
+
+- **Não há audit agregado do servidor para as execuções do Live** na V1. O
+  registro morre com o workspace. Um prazo de 30 dias chegou a ser cogitado e
+  ficou **reservado** para um audit agregado futuro, caso venha a existir
+  (PA-01). Documentar 30 dias aqui seria prometer retenção de um recurso que a
+  arquitetura não tem.
+- **Screenshots do RPA não se aplicam ao Live público.** O RPA não roda
+  publicamente (DP-02), então não há screenshot pública para expurgar. O prazo
+  preventivo de 7 dias só passa a valer **se** a execução pública com navegador
+  for habilitada mais adiante (PA-02).
+
+**Recomendação a quem usa o Live:** ele existe para demonstrar o
+comportamento do produto, e há arquivos de exemplo para isso. **Não envie dados
+pessoais que não sejam necessários** — nem os seus, nem os de terceiros.
+
+### Modo real privado — instalação da empresa
+
+Aqui os dados são do operador, ficam na máquina dele, e o software **não apaga
+nada sozinho**. A remoção é um comando explícito, com prévia e confirmação.
+
+| Dado | Padrão | Configurável | Onde no código |
+|---|---|---|---|
+| Logs operacionais | **30 dias** | `log_retention_days` (1–3650) | `core/settings.py`, aplicado em `core/logger.py` |
+| Screenshots (mascaradas) | **30 dias** | `screenshot_retention_days` (1–365) | `core/settings.py` |
+| Trilha de auditoria (núcleo/CLI) | **preservada** — sem expurgo automático | `audit_retention_days` (padrão `None`) | `core/settings.py`, expurgo em `core/retention.py` |
+| Uploads e artefatos escolhidos pelo operador | **não são gerenciados pelo software** | — | fora do plano de expurgo, por decisão |
+
+O padrão do audit é `None` de propósito: **preservar é o comportamento
+conservador**. Expurgar histórico de auditoria por conta própria seria destruir
+justamente a evidência que o produto existe para manter. Quem quiser um prazo
+precisa configurá-lo e confirmar a execução.
+
+#### Como o expurgo acontece
+
+```bash
+autotarefas manutencao expurgar            # mostra o plano e pede confirmação
+autotarefas --dry-run manutencao expurgar  # só mostra o plano, não remove nada
+```
+
+Comportamento verificado em `cli/commands/manutencao.py` e `core/retention.py`:
+
+1. **Calcula o plano antes de apagar** e o exibe — quantos logs, screenshots e
+   linhas de audit seriam removidos.
+2. **`--dry-run` não remove nada**, e diz isso.
+3. **Pede confirmação explícita**, com resposta padrão **não**. Sem
+   confirmação, nada é removido. `--yes` existe para automação e é a única
+   forma de pular a pergunta.
+4. **Registra o que removeu na trilha de auditoria**, sob a ação
+   `manutencao.expurgar`. Expurgo silencioso seria a operação mais perigosa do
+   produto sem nenhum rastro.
+5. **Recusa rodar no ambiente do Live** (`environment == "demo"`), com saída 2:
+   lá o ciclo de vida é o TTL do workspace, e não este comando.
+6. **Não toca em uploads e artefatos do operador** — eles são dele, e o
+   software não decide quando apagá-los.
+
+### Mascaramento
+
+Independente do ambiente e de qualquer prazo, dados sensíveis são mascarados
+antes de chegar a log, relatório ou screenshot: `mask_sensitive_in_dict` em
+`core/security.py`, `SecretStr` para segredos em configuração, redação de
+token, e `screenshots_mask_sensitive` ligado por padrão.
+
+### O que esta política ainda não cobre
+
+Registrado aqui porque uma política com buraco não declarado é pior do que uma
+política curta:
+
+- **A trilha de auditoria da plataforma** (organizações, dispositivos,
+  políticas e execuções do produto de backup — `apps/api/app/db/models.py`)
+  nasceu **depois** da DP-05 e **ainda não tem prazo de retenção definido**.
+  Ela é encadeada por hash e hoje é preservada integralmente. Nenhum número foi
+  inventado para ela nesta seção; definir esse prazo é decisão pendente.
+- **A transparência correspondente ainda não aparece no Live.** O TTL de 15
+  minutos funciona, mas quem envia um arquivo não é informado disso na tela.
+  Cumprir em silêncio uma política que ninguém enunciou não é transparência —
+  é bom comportamento que o usuário não tem como verificar. É a lacuna que
+  falta fechar no RF-GOV-003.
+
+---
+
 ## 📦 Hardening de Dependências
 
 ### Estratégia
