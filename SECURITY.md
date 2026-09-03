@@ -237,8 +237,10 @@ contra automação acidental em sistemas reais durante desenvolvimento.
 
 O AutoTarefas roda em **dois ambientes com regras diferentes**, e a diferença é
 o ponto de partida: confundi-los levaria alguém a supor que o Live guarda dados
-como um servidor de produção, ou que a instalação da empresa apaga arquivos
-sozinha. Nenhuma das duas é verdade.
+como um servidor de produção, ou que a instalação da empresa apaga arquivos do
+operador por conta própria. Nenhuma das duas é verdade. A única remoção
+automática do modo real é a dos **próprios logs do produto**, na janela
+configurada — e ela está descrita adiante, com todas as letras.
 
 ### Live público — execução isolada por upload
 
@@ -248,7 +250,13 @@ espaço isolado e baixa o resultado. Nada disso é para guardar.
 | Dado | Prazo | Onde no código |
 |---|---|---|
 | Uploads e artefatos da execução | **TTL de 15 minutos**, depois removidos | `apps/api/app/config.py::workspace_ttl_min` (padrão 15), varredura em `apps/api/app/jobs.py::sweep_expired` |
+| Logs operacionais, **sem dados sensíveis** | **30 dias**, com remoção automática | `core/logger.py` — rotação diária à meia-noite e `retention` do Loguru alimentada por `log_retention_days` |
 | Registro da execução isolada | **vive apenas enquanto o workspace vive** — não há trilha persistente das execuções do Live | mesmo TTL acima |
+
+O log é o mesmo mecanismo do modo real privado: o Live importa o logger do
+núcleo (`apps/api/app/spreadsheets.py`), e configurar o logger instala o
+arquivo com rotação e retenção. "Sem dados sensíveis" não é promessa vaga — é o
+mascaramento descrito adiante, aplicado antes de a linha chegar ao arquivo.
 
 Dois pontos que **não** são promessa deste ambiente, e por que:
 
@@ -268,15 +276,40 @@ pessoais que não sejam necessários** — nem os seus, nem os de terceiros.
 
 ### Modo real privado — instalação da empresa
 
-Aqui os dados são do operador, ficam na máquina dele, e o software **não apaga
-nada sozinho**. A remoção é um comando explícito, com prévia e confirmação.
+Aqui os dados são do operador e ficam na máquina dele. A remoção pelo
+AutoTarefas é um comando explícito, com prévia e confirmação — **com uma
+exceção, que é o log**.
 
-| Dado | Padrão | Configurável | Onde no código |
-|---|---|---|---|
-| Logs operacionais | **30 dias** | `log_retention_days` (1–3650) | `core/settings.py`, aplicado em `core/logger.py` |
-| Screenshots (mascaradas) | **30 dias** | `screenshot_retention_days` (1–365) | `core/settings.py` |
-| Trilha de auditoria (núcleo/CLI) | **preservada** — sem expurgo automático | `audit_retention_days` (padrão `None`) | `core/settings.py`, expurgo em `core/retention.py` |
-| Uploads e artefatos escolhidos pelo operador | **não são gerenciados pelo software** | — | fora do plano de expurgo, por decisão |
+| Dado | Padrão | Removido como | Configurável | Onde no código |
+|---|---|---|---|---|
+| Logs operacionais | **30 dias** | **automaticamente**, sem confirmação | `log_retention_days` (1–3650) | `core/settings.py`, aplicado em `core/logger.py` |
+| Screenshots (mascaradas) | **30 dias** | pelo comando de expurgo, com confirmação | `screenshot_retention_days` (1–365) | `core/settings.py` |
+| Trilha de auditoria (núcleo/CLI) | **preservada** — sem prazo por padrão | pelo comando de expurgo, com confirmação | `audit_retention_days` (padrão `None`) | `core/settings.py`, expurgo em `core/retention.py` |
+| Uploads e artefatos escolhidos pelo operador | **ciclo de vida do operador** | **não são removidos pelo AutoTarefas** | destino definido por quem executa | fora do plano de expurgo, por decisão |
+
+**O log é a exceção, e ela é deliberada.** O arquivo rotaciona à meia-noite e o
+mecanismo de retenção do Loguru apaga os rotacionados além da janela
+configurada — **sem prévia e sem confirmação**. É o comportamento certo para
+log: ele cresce todo dia, e exigir um gesto humano para não encher o disco
+transformaria higiene em incidente. Vale dizer com todas as letras justamente
+porque **contraria** a regra que governa o resto dos dados.
+
+São dois mecanismos sobre o mesmo dado, e não um: o comando de expurgo
+**também** lista e remove logs expirados (`core/retention.py`), servindo de
+segunda rede para o que a rotação não tenha alcançado — arquivos de um período
+em que o processo não estava no ar, por exemplo. O expurgo só considera
+arquivos que o próprio produto gera (`autotarefas_*.log` e `.log.zip`); um
+arquivo alheio deixado na mesma pasta não entra no plano.
+
+**Uploads e artefatos: por que "configurável" não quer dizer "expurgável".** A
+política prevê que o ciclo de vida deles seja definido pelo operador — e é
+exatamente por isso que o expurgo não os toca. Quem executa escolhe o destino
+(`--out-dir` e afins) e, com ele, onde os arquivos passam a viver: pode ser uma
+pasta temporária, uma pasta de rede, um diretório que já tem política de backup
+própria. O AutoTarefas não tem como saber o que mais existe naquele lugar, e
+apagar por prazo dentro de um diretório escolhido por outra pessoa seria
+destruir arquivo alheio com boa intenção. A configuração está em **onde os
+artefatos são gravados**; a remoção fica com quem escolheu o lugar.
 
 O padrão do audit é `None` de propósito: **preservar é o comportamento
 conservador**. Expurgar histórico de auditoria por conta própria seria destruir
