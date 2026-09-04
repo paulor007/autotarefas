@@ -65,13 +65,25 @@ card. Resumo:
 
 | Subetapa | Finalidade | Estado |
 | --- | --- | --- |
-| 02.A | Segurança de caminhos e ressalvas visíveis | implementada, **não homologada** |
-| 02.B | Assinatura HMAC com chave externa | não iniciada |
-| 02.C | Criptografia AES e gestão da senha | não iniciada |
-| 02.D | VSS para arquivos abertos | não iniciada |
-| 02.E | Agendamento, notificações e retenção | não iniciada |
-| 02.F | Destinos externos e conector S3 | não iniciada |
-| 02.G | Agente local e interface operacional | **G.0 concluída**; **G.1 implementada, aguardando homologação** (+ G.1.1); G.2–G.8 não iniciadas |
-| 02.H | Restauração guiada pela interface | não iniciada |
-| 02.I | Backup incremental com catálogo | não iniciada |
-| 02.J | Hooks e proteção antes de ação destrutiva | não iniciada |
+| 02.A | Segurança de caminhos e ressalvas visíveis | ✅ implementada |
+| 02.B | Assinatura HMAC com chave externa | ✅ implementada |
+| 02.C | Criptografia AES e gestão da senha | ✅ implementada |
+| 02.D | VSS para arquivos abertos | ✅ implementada · **teste com elevação pendente** |
+| 02.E | Agendamento, notificações e retenção | ✅ implementada · **envio de e-mail exige SMTP no cofre** |
+| 02.F | Destinos externos e conector S3 | ✅ implementada · **nuvem real pendente** |
+| 02.G | Agente local e interface operacional | ✅ implementada — trilha G inteira (G.0 a G.10.5), com a homologação de 20 passos em navegador real (G.9) |
+| 02.H | Restauração guiada pela interface | ✅ implementada |
+| 02.I | Backup incremental com catálogo | ✅ implementada |
+| 02.J | Hooks e proteção antes de ação destrutiva | ✅ implementada |
+
+**As três ressalvas acima são reais e continuam abertas**, e nenhuma delas é de
+código faltando — as três dependem de algo que só existe fora do repositório:
+
+- **02.D — VSS:** o instantâneo de volume está implementado, mas o teste com
+  **elevação** exige privilégio administrativo numa máquina física;
+- **02.E — notificação por e-mail:** o agendamento e a retenção funcionam; o
+  **envio** espera credencial SMTP guardada no cofre;
+- **02.F — destino na nuvem:** o conector S3 compatível está pronto e
+  exercitado, mas a **entrega contra um balde real** depende de conta e
+  credencial. Enquanto não houver, o painel mostra "proteção parcial", e isso é
+  honestidade de estado, não defeito.

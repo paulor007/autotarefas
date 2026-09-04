@@ -371,11 +371,13 @@ política curta:
   nasceu **depois** da DP-05 e **ainda não tem prazo de retenção definido**.
   Ela é encadeada por hash e hoje é preservada integralmente. Nenhum número foi
   inventado para ela nesta seção; definir esse prazo é decisão pendente.
-- **A transparência correspondente ainda não aparece no Live.** O TTL de 15
-  minutos funciona, mas quem envia um arquivo não é informado disso na tela.
-  Cumprir em silêncio uma política que ninguém enunciou não é transparência —
-  é bom comportamento que o usuário não tem como verificar. É a lacuna que
-  falta fechar no RF-GOV-003.
+
+A transparência no Live, que estava listada aqui, **deixou de ser lacuna**: o
+componente `AvisoDePrivacidade` (`apps/web/src/components/`) enuncia esta
+política na tela, **antes** do campo de upload, nos dois caminhos que levam a
+um envio. Quem manda um arquivo lê a finalidade, o prazo de 15 minutos, o log
+de 30 dias, a existência de arquivos de exemplo e a diferença entre este
+ambiente e a instalação privada — antes de mandar, não depois.
 
 ---
 
