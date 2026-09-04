@@ -2,6 +2,7 @@
 import { FileUp, Loader2, Play } from "lucide-react";
 
 import type { RunStatus } from "../hooks/useExecution";
+import AvisoDePrivacidade from "./AvisoDePrivacidade";
 import ErrorBoundary from "./ErrorBoundary";
 import SpreadsheetJourney from "./SpreadsheetJourney";
 import type { Automation, UploadKind } from "../lib/api";
@@ -225,6 +226,9 @@ export default function ExecutionPanel({
                     {selected.upload_hint}
                   </p>
                 )}
+                <div className="mb-3">
+                  <AvisoDePrivacidade />
+                </div>
                 <FileDrop
                   accept={uploadAccept(upload)}
                   multiple={upload === "folder"}

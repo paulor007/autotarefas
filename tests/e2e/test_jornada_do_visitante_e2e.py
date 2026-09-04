@@ -455,7 +455,42 @@ class TestAJornada:
         assert resposta.status == 403
         assert "ambiente público" in resposta.text()
 
-    def test_15_o_visitante_nao_baixa_o_instalador(self, visitante: Page, vitrine: Vitrine) -> None:
+    def test_15_sabe_o_que_acontece_com_o_arquivo_antes_de_envia_lo(
+        self, visitante: Page, vitrine: Vitrine
+    ) -> None:
+        """
+        O aviso tem que chegar antes do upload, nao depois.
+
+        O TTL de 15 minutos ja funcionava sem ninguem ser avisado — e cumprir
+        em silencio uma politica que ninguem enunciou nao e transparencia, e
+        bom comportamento que o visitante nao tem como conferir (RF-GOV-003).
+        """
+        visitante.goto(f"{vitrine.url}/")
+        cartao = visitante.get_by_role("heading", name="Análise e organização de planilhas").first
+        cartao.scroll_into_view_if_needed()
+        visitante.get_by_role("button", name="Selecionar").first.click()
+
+        aviso = visitante.get_by_role("note", name="Privacidade e retenção")
+
+        assert aviso.is_visible()
+        texto = aviso.inner_text()
+        assert "15" in texto
+        assert "minutos" in texto
+        assert "arquivos de exemplo" in texto
+        assert "não envie dados pessoais que não sejam necessários" in texto
+        assert "ambiente público" in texto
+
+        # ANTES da area de envio, e nao embaixo dela: depois de enviar ja nao
+        # e informacao, e aviso tardio. O <input type=file> e hidden, entao a
+        # referencia e a zona visivel de arrastar.
+        zona = visitante.get_by_text("Arraste um arquivo ou clique para selecionar")
+        caixa_do_aviso = aviso.bounding_box()
+        caixa_da_zona = zona.bounding_box()
+        assert caixa_do_aviso is not None
+        assert caixa_da_zona is not None
+        assert caixa_do_aviso["y"] < caixa_da_zona["y"]
+
+    def test_16_o_visitante_nao_baixa_o_instalador(self, visitante: Page, vitrine: Vitrine) -> None:
         """
         Um binario de dezenas de MB entregue a qualquer visitante, em laco.
 

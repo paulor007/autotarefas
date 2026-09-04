@@ -44,7 +44,7 @@
 > **Nada mudou de status por causa desta revisão.** Ela é documental no sentido
 > estrito: transcreve para cá o que a matriz e as fichas já comprovavam. Os
 > números de 05/08 e 10/08 permanecem no texto, marcados como históricos.
-> **Placar vigente: 38/41** — ver §3.
+> **Placar vigente: 39/41** — ver §3.
 
 ---
 
@@ -87,9 +87,9 @@ progresso V1 = requisitos OBRIGATÓRIO V1 com status CONCLUÍDO
 ```
 
 Escopo aprovado em **10/08/2026** (DP-01): **41 requisitos OBRIGATÓRIO V1**, dos
-quais **38 CONCLUÍDOS**.
+quais **39 CONCLUÍDOS**.
 
-**Progresso vigente da V1: 38/41.**
+**Progresso vigente da V1: 39/41.**
 
 Este número muda somente quando um requisito obrigatório passa a CONCLUÍDO pelo
 DoD (`09`), com evidência na matriz (`05`) — nunca por aprovação documental.
@@ -104,8 +104,8 @@ DoD (`09`), com evidência na matriz (`05`) — nunca por aprovação documental
 
 | Grupo | Requisitos | Situação |
 |---|---|---|
-| Concluídos (38) | CORE-001..006 · ARQ-001, ARQ-003 · PLA-001..010 · REC-001..004 · INT-001..003, INT-005 · COM-001..002 · WEB-001 · GOV-001/002/004 · LIVE-001..005/007 | manter (regressão = bloqueio) |
-| Parciais (3) | GOV-003 · WEB-002 · WEB-003 | concluir |
+| Concluídos (39) | CORE-001..006 · ARQ-001, ARQ-003 · PLA-001..010 · REC-001..004 · INT-001..003, INT-005 · COM-001..002 · WEB-001 · GOV-001..004 · LIVE-001..005/007 | manter (regressão = bloqueio) |
+| Parciais (2) | WEB-002 · WEB-003 | concluir |
 | Não iniciados (0) | — | — |
 
 **Nenhum requisito obrigatório da V1 permanece NÃO INICIADO.** Os sete que
@@ -186,7 +186,7 @@ auditoria não conclui requisito. Em **10/08/2026** eram: 51 catalogados ·
 progresso **30/41**.
 
 > Estes são os valores **daquela data**. As fases B1 a B7 (14/08/2026) levaram o
-> placar a **38/41** — ver §3.
+> placar a **39/41** — ver §3.
 
 ## 5. Checklist mestre (marcar somente com evidência na matriz 05)
 
@@ -247,7 +247,7 @@ progresso **30/41**.
 ### GOV — governança e auditoria
 - [x] RF-GOV-001 Relatórios consolidados do audit trail — CONCLUÍDO
 - [x] RF-GOV-002 Painel HTML do audit trail — CONCLUÍDO
-- [ ] RF-GOV-003 Retenção, expurgo e mascaramento programáveis — PARCIAL
+- [x] RF-GOV-003 Retenção, expurgo e mascaramento programáveis
 - [x] RF-GOV-004 Verificação de integridade das evidências (HMAC) — CONCLUÍDO
 
 ### LIVE — Live System público

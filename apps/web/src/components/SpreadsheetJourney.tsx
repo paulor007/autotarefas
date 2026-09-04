@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 
 import { useSpreadsheetJourney } from "../hooks/useSpreadsheetJourney";
 import { useValidationReport } from "../hooks/useValidationReport";
+import AvisoDePrivacidade from "./AvisoDePrivacidade";
 import FileDrop from "./FileDrop";
 import SpreadsheetAnalysis from "./SpreadsheetAnalysis";
 import SpreadsheetResult from "./SpreadsheetResult";
@@ -139,6 +140,8 @@ export default function SpreadsheetJourney() {
             LibreOffice (.ods) também são lidas, mas para elas não há versão
             organizada — só a análise.
           </p>
+
+          <AvisoDePrivacidade />
 
           <FileDrop
             accept={SPREADSHEET_ACCEPT}

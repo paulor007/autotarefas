@@ -2,16 +2,23 @@
 
 **Revisão 3 — baseline documental aprovado em 10/08/2026.**
 Versão do software: `1.4.0` (inalterada — esta revisão é documental).
-Escopo obrigatório da V1: **41 requisitos**, dos quais **38 CONCLUÍDOS**
-(progresso documental **38/41**). Total catalogado: **51** requisitos funcionais.
+Escopo obrigatório da V1: **41 requisitos**, dos quais **39 CONCLUÍDOS**
+(progresso documental **39/41**). Total catalogado: **51** requisitos funcionais.
 
 > **Atualização de 14/08/2026 — Fase B concluída.** Entraram como CONCLUÍDOS:
 > RF-REC-001 (`comparar`), RF-REC-002 (`conciliar`), RF-REC-003 (`transferir`),
 > RF-PLA-009 (planilha tratada com a apresentação preservada), RF-PLA-010
 > (`corrigir` por regras confirmadas), RF-INT-005 (mapeamento na importação) e
 > RF-CORE-006 (recorte) + RF-REC-004 (`run fluxo.yaml`). Os três obrigatórios
-> restantes dependem de execução com **navegador real** (RF-WEB-002 e RF-WEB-003)
-> e do fechamento do RF-GOV-003; as evidências por requisito estão no `05`.
+> restantes dependiam de execução com **navegador real** (RF-WEB-002 e
+> RF-WEB-003) e do fechamento do RF-GOV-003; as evidências por requisito estão
+> no `05`.
+
+> **Atualização de 03/09/2026 — RF-GOV-003 CONCLUÍDO (39/41).** As duas lacunas
+> eram documentais: a política de retenção e privacidade foi escrita no
+> `SECURITY.md` e o Live passou a enunciá-la antes do upload. Restam **dois**
+> obrigatórios, ambos dependentes de execução com navegador real: RF-WEB-002 e
+> RF-WEB-003.
 
 ---
 

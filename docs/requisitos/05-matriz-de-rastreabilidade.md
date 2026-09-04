@@ -52,7 +52,15 @@ em `apps/api/app/config.py::workspace_ttl_min` varrido por
 `jobs.py::sweep_expired`; testes correspondentes em `tests/core/test_retention.py`
 e `tests/cli/test_manutencao_cli.py`. **A conferência não promoveu o requisito**:
 ela mostrou que as duas lacunas restantes não são de código — ver a linha do
-GOV-003 e a ressalva 12 · **[H]** evidência
+GOV-003 e a ressalva 12 · **[G4]** fechamento do RF-GOV-003 (03/09/2026) — as
+duas lacunas documentais fechadas: a política escrita em `SECURITY.md`
+(seção "Retenção de dados e privacidade", com os dois ambientes separados e
+cada prazo conferido no código) e a transparência no Live pelo
+`AvisoDePrivacidade`, renderizado antes do campo de upload nos dois caminhos
+que existem (`ExecutionPanel` e `SpreadsheetJourney`); coberto por 6 asserções
+de unidade e por um passo do e2e da jornada do visitante que confere, em
+navegador real, que o aviso está visível e **acima** da área de envio ·
+**[H]** evidência
 colhida manualmente na auditoria
 (saídas de `--help`, leitura de código com linha citada).
 
@@ -100,7 +108,7 @@ colhida manualmente na auditoria
 | RF-WEB-004 | NÃO INICIADO | PÓS-V1 | — | — | — | tudo | INT-006 | Fase D4 |
 | RF-GOV-001 | CONCLUÍDO | OBRIG. V1 | `src/autotarefas/tasks/report_audit.py` | `tests/tasks/test_report_audit.py`, `tests/cli/test_report_cli.py` | [N] | Live → LIVE-006a | CORE-002 | ativar no Live (A3) |
 | RF-GOV-002 | CONCLUÍDO | OBRIG. V1 | `src/autotarefas/dashboard/{reader,renderer}.py` | `tests/dashboard/`, `tests/cli/test_dashboard_cli.py` | [N] | Live → LIVE-006a | GOV-001 | ativar no Live (A3) |
-| RF-GOV-003 | **PARCIAL** | **OBRIG. V1** | mascaramento em `core/security.py`; retenção configurável em `core/settings.py` + `core/logger.py:142`; expurgo em `core/retention.py`; comando em `cli/commands/manutencao.py`; TTL do Live em `apps/api/app/config.py` + `jobs.py::sweep_expired` | `tests/core/test_retention.py`, `tests/cli/test_manutencao_cli.py`, `tests/core/test_logger.py`, `tests/core/test_security.py` | [N][G3] | **duas, ambas fora do código:** (1) política de retenção/privacidade não documentada; (2) transparência correspondente ausente no Live | — (DP-05 aprovada) | documentar a política e levá-la ao Live → só então CONCLUÍDO |
+| RF-GOV-003 | CONCLUÍDO | **OBRIG. V1** | mascaramento em `core/security.py`; retenção configurável em `core/settings.py` + `core/logger.py:142`; expurgo em `core/retention.py`; comando em `cli/commands/manutencao.py`; TTL do Live em `apps/api/app/config.py` + `jobs.py::sweep_expired`; política escrita em `SECURITY.md` §"Retenção de dados e privacidade"; aviso na tela em `apps/web/src/components/AvisoDePrivacidade.tsx`, antes do `FileDrop` em `ExecutionPanel.tsx` e `SpreadsheetJourney.tsx` | `tests/core/test_retention.py`, `tests/cli/test_manutencao_cli.py`, `tests/core/test_logger.py`, `tests/core/test_security.py`, `apps/web/src/components/AvisoDePrivacidade.test.tsx`, `tests/e2e/test_jornada_do_visitante_e2e.py::test_15_sabe_o_que_acontece_com_o_arquivo_antes_de_envia_lo` | [N][G3][G4] | — | — (DP-05 aprovada) | manter |
 | RF-GOV-004 | CONCLUÍDO | OBRIG. V1 | `src/autotarefas/dashboard/reader.py` (`verify_input_hash`) | `tests/dashboard/test_reader.py` | [N] | — | CORE-002 | manter |
 | RF-LIVE-001 | CONCLUÍDO | OBRIG. V1 | `apps/api/app/catalog.py`, `engine.py::ACTIVE_AUTOMATIONS`, `main.py::_precheck` | `apps/api/tests/test_engine.py` | [L][H] | estado `oculto` da régua não implementado | — | manter |
 | RF-LIVE-002 | CONCLUÍDO | OBRIG. V1 | `apps/api/app/{main,engine,jobs,streaming}.py` | `test_engine.py`, `test_streaming.py` | [L] | — | LIVE-001 | manter |
@@ -212,3 +220,13 @@ colhida manualmente na auditoria
    privado. Um sistema que cumpre em silêncio uma política que ninguém enunciou
    não é transparente — é apenas bem-comportado por acaso, e ninguém consegue
    verificar. Enquanto as duas faltarem, **PARCIAL**.
+
+   **Fechado em 03/09/2026 (evidência [G4]).** A política foi escrita no
+   `SECURITY.md` e o Live passou a dizê-la antes do upload. A ordem importou:
+   escrever primeiro obrigou a conferir cada prazo no código, e a conferência
+   corrigiu o que seria dito — não há audit de 30 dias no Live (PA-01), as
+   screenshots de 7 dias não se aplicam (DP-02/PA-02), e o log é apagado
+   automaticamente pelo sink, sem confirmação. O aviso na tela repete só o que
+   o código sustenta. Continua **fora** do escopo deste requisito, e registrado
+   na própria seção do `SECURITY.md`: a trilha de auditoria da **plataforma**
+   nasceu depois da DP-05 e ainda não tem prazo definido.
