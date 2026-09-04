@@ -2,8 +2,8 @@
 
 **Revisão 3 — baseline documental aprovado em 10/08/2026.**
 Versão do software: `1.4.0` (inalterada — esta revisão é documental).
-Escopo obrigatório da V1: **41 requisitos**, dos quais **39 CONCLUÍDOS**
-(progresso documental **39/41**). Total catalogado: **51** requisitos funcionais.
+Escopo obrigatório da V1: **41 requisitos**, dos quais **40 CONCLUÍDOS**
+(progresso documental **40/41**). Total catalogado: **51** requisitos funcionais.
 
 > **Atualização de 14/08/2026 — Fase B concluída.** Entraram como CONCLUÍDOS:
 > RF-REC-001 (`comparar`), RF-REC-002 (`conciliar`), RF-REC-003 (`transferir`),
@@ -19,6 +19,11 @@ Escopo obrigatório da V1: **41 requisitos**, dos quais **39 CONCLUÍDOS**
 > `SECURITY.md` e o Live passou a enunciá-la antes do upload. Restam **dois**
 > obrigatórios, ambos dependentes de execução com navegador real: RF-WEB-002 e
 > RF-WEB-003.
+
+> **Atualização de 04/09/2026 — RF-WEB-002 CONCLUÍDO (40/41).** Com o Chromium
+> instalado, o e2e de `extract web --js` passa inteiro (2 de 2, nenhum skip) e
+> prova por contraste que a mesma página rende 0 itens sem `--js` e 3 com
+> `--js`. Resta **um** obrigatório: RF-WEB-003 (RPA de cadastro).
 
 ---
 

@@ -60,7 +60,17 @@ cada prazo conferido no código) e a transparência no Live pelo
 que existem (`ExecutionPanel` e `SpreadsheetJourney`); coberto por 6 asserções
 de unidade e por um passo do e2e da jornada do visitante que confere, em
 navegador real, que o aviso está visível e **acima** da área de envio ·
-**[H]** evidência
+**[C1]** homologação C1 do RF-WEB-002
+(04/09/2026) — `playwright install chromium` e depois
+`pytest tests/e2e/test_extract_web_js_e2e.py -v --no-cov`: **2 passed**, nenhum
+*skipped*, em 10,90s. O arquivo prova por contraste, rodando a mesma
+`ExtractWebTask` contra a mesma pagina `/catalogo-js` do servidor demo (cujo
+conteúdo só existe depois do JavaScript): **sem `--js` extrai 0 itens; com
+`--js` o Chromium renderiza e extrai os 3 produtos**. O contraste 0 vs 3 é o
+que separa a renderização do parser — sem ele, um parser que lesse HTML cru
+passaria pelo mesmo assert. O caso com navegador tem `skipif` ligado a
+`verify_playwright_installed()`, entao ver "2 passed" (e nao "1 passed, 1
+skipped") e a propria prova de que o navegador rodou · **[H]** evidência
 colhida manualmente na auditoria
 (saídas de `--help`, leitura de código com linha citada).
 
@@ -103,7 +113,7 @@ colhida manualmente na auditoria
 | RF-COM-002 | CONCLUÍDO | OBRIG. V1 | `src/autotarefas/tasks/send_telegram.py` | `tests/tasks/test_send_telegram.py`, `tests/cli/test_send_telegram_cli.py`, `tests/tools/demo_server/test_telegram_mock.py` | [N][L] | — | CORE-001 | manter |
 | RF-COM-003 | NÃO INICIADO | PÓS-V1 | — | — | [H] (grep "idempot" vazio em send_email/telegram) | tudo | INT-002 (desenho) | Fase D1 |
 | RF-WEB-001 | CONCLUÍDO | OBRIG. V1 | `src/autotarefas/tasks/extract_web.py` | `tests/tasks/test_extract_web.py`, `tests/cli/test_extract_web_cli.py` | [N][L] | — | CORE-001 | manter |
-| RF-WEB-002 | **PARCIAL** | OBRIG. V1 (modo real) | ramo `--js` + `src/autotarefas/core/browser.py` | `tests/tasks/test_extract_web_js.py` (unidade) + `tests/e2e/test_extract_web_js_e2e.py` (1 passa, 1 *skipped* sem Chromium — medido na A1) | [N][A1] | falta a execução com navegador instalado; fora da V1 pública por DP-02 | WEB-001 | `playwright install chromium && pytest tests/e2e` na homologação C1 → CONCLUÍDO |
+| RF-WEB-002 | CONCLUÍDO | OBRIG. V1 (modo real) | ramo `--js` em `src/autotarefas/tasks/extract_web.py` + `BrowserSession` em `src/autotarefas/core/browser.py` | `tests/tasks/test_extract_web_js.py` (unidade, browser mockado) + `tests/e2e/test_extract_web_js_e2e.py` (**os 2 passam** com Chromium instalado) | [N][A1][C1] | — (execução pública segue fora da V1 por DP-02, o que não é lacuna deste requisito) | WEB-001 | manter |
 | RF-WEB-003 | **PARCIAL** | OBRIG. V1 (modo real) | `src/autotarefas/tasks/rpa_cadastro.py` | `tests/tasks/test_rpa_cadastro.py`, `tests/cli/test_rpa_cli.py`, `tests/core/test_browser.py` (navegador mockado) | [N][A1] | **não existe teste com navegador real para o RPA**; decisão de 10/08/2026: teste automatizado com navegador real é obrigatório antes de CONCLUÍDO, homologação manual é complementar | CORE browser | criar o teste com navegador real antes da C1 |
 | RF-WEB-004 | NÃO INICIADO | PÓS-V1 | — | — | — | tudo | INT-006 | Fase D4 |
 | RF-GOV-001 | CONCLUÍDO | OBRIG. V1 | `src/autotarefas/tasks/report_audit.py` | `tests/tasks/test_report_audit.py`, `tests/cli/test_report_cli.py` | [N] | Live → LIVE-006a | CORE-002 | ativar no Live (A3) |
