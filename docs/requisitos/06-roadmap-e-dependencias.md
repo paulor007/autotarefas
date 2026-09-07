@@ -526,6 +526,31 @@ RPA) · **LIVE-006b** — reavaliar execução pública dos cards de navegador c
 Chromium, após a definição da hospedagem (DP-02) · encadeamento genérico de
 CORE-006.
 
+### Pedidos de mudança registrados (V2)
+
+| ID | Pedido | Estado |
+|---|---|---|
+| **CR-001** | **Formulário de feedback embutido no Live** — quem experimenta consegue dizer o que achou sem sair da página | registrado, não planejado |
+
+Duas observações que a estimativa precisa carregar. A **versão sem código já
+existe**: um link para as *GitHub Issues* do repositório entrega o essencial —
+o visitante fala, a fala fica pública e rastreável, e nada disso custa
+manutenção. O **formulário próprio** é outra coisa: exige endpoint que aceite
+POST anônimo, anti-spam (um campo aberto na internet vira alvo em dias),
+moderação de quem lê e responde, e — o ponto que costuma passar em branco —
+**uma decisão nova de retenção**, porque texto livre é o único lugar do Live
+onde alguém pode digitar dado pessoal por conta própria. A DP-05 não cobre esse
+caso: ela trata de arquivo enviado e log de execução, não de campo de texto. O
+CR-001 só entra em planejamento junto com essa decisão.
+
+### Card 02 — Backup automático verificável
+
+Fora da V1 por **DP-09** (07/09/2026): o card não tem nenhum ID RF, e sem ID não
+há critério pelo qual declará-lo concluído. Código e vitrine permanecem. Criar
+os IDs RF do Card 02, com critérios de aceite próprios, é trabalho de V2 — e é
+o que destravaria as três pendências dele (elevação para o VSS, balde S3 real,
+SMTP no cofre), que dependem de hardware ou credencial, não de código.
+
 ## Bloqueadores do release V1
 
 Gates técnicos e documentais: **A1.1, A1.2, A1.3 e A1.4** (obrigatórios antes da

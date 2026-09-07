@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sys
 import zipfile
 from pathlib import Path
 from typing import Any
@@ -688,6 +689,16 @@ class TestCodigoDeSaida:
 
         assert resultado.exit_code == 0
 
+    @pytest.mark.skipif(
+        sys.platform != "win32",
+        reason=(
+            "trava de arquivo via msvcrt: o helper `_travar` reproduz o "
+            "bloqueio exclusivo que o Excel/Word poe no arquivo aberto, e "
+            "`msvcrt` so existe no Windows. O comportamento do PRODUTO sob "
+            "arquivo ilegivel nao e especifico de plataforma; o que e "
+            "especifico e o jeito de PRODUZIR essa trava"
+        ),
+    )
     def test_com_ressalvas_sai_1_e_nomeia_o_arquivo(
         self, tmp_path: Path, cli_ctx: CLIContext
     ) -> None:
@@ -710,6 +721,16 @@ class TestCodigoDeSaida:
         # A saida tem de dizer o que fazer, nao so que deu errado.
         assert "fora do horario de uso" in resultado.output
 
+    @pytest.mark.skipif(
+        sys.platform != "win32",
+        reason=(
+            "trava de arquivo via msvcrt: o helper `_travar` reproduz o "
+            "bloqueio exclusivo que o Excel/Word poe no arquivo aberto, e "
+            "`msvcrt` so existe no Windows. O comportamento do PRODUTO sob "
+            "arquivo ilegivel nao e especifico de plataforma; o que e "
+            "especifico e o jeito de PRODUZIR essa trava"
+        ),
+    )
     def test_falha_total_sai_2(self, tmp_path: Path, cli_ctx: CLIContext) -> None:
         pasta = tmp_path / "so_travado"
         pasta.mkdir()
@@ -821,6 +842,16 @@ class TestComandoVerificar:
         # O console quebra linha; comparar frase inteira seria teste fragil.
         assert "sem MANIFESTO" in resultado.output
 
+    @pytest.mark.skipif(
+        sys.platform != "win32",
+        reason=(
+            "trava de arquivo via msvcrt: o helper `_travar` reproduz o "
+            "bloqueio exclusivo que o Excel/Word poe no arquivo aberto, e "
+            "`msvcrt` so existe no Windows. O comportamento do PRODUTO sob "
+            "arquivo ilegivel nao e especifico de plataforma; o que e "
+            "especifico e o jeito de PRODUZIR essa trava"
+        ),
+    )
     def test_avisa_o_que_ficou_de_fora_na_origem(self, tmp_path: Path, cli_ctx: CLIContext) -> None:
         pasta = tmp_path / "escritorio"
         pasta.mkdir()

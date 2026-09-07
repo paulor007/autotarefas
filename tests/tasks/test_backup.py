@@ -7,6 +7,7 @@ import hashlib
 import io
 import os
 import subprocess
+import sys
 import zipfile
 from datetime import UTC, datetime
 from pathlib import Path
@@ -609,6 +610,16 @@ class TestArquivoIlegivelNaoDerrubaOBackup:
             (pasta / f"z{i}_recibo.txt").write_text(f"recibo {i}", encoding="utf-8")
         return pasta
 
+    @pytest.mark.skipif(
+        sys.platform != "win32",
+        reason=(
+            "trava de arquivo via msvcrt: o helper `_travar` reproduz o "
+            "bloqueio exclusivo que o Excel/Word poe no arquivo aberto, e "
+            "`msvcrt` so existe no Windows. O comportamento do PRODUTO sob "
+            "arquivo ilegivel nao e especifico de plataforma; o que e "
+            "especifico e o jeito de PRODUZIR essa trava"
+        ),
+    )
     def test_backup_conclui_com_ressalva(self, tmp_path: Path, escritorio: Path) -> None:
         dest = tmp_path / "backup.zip"
         fh = _travar(escritorio / "m_planilha.xlsx")
@@ -622,6 +633,16 @@ class TestArquivoIlegivelNaoDerrubaOBackup:
         assert result.data["unreadable_count"] == 1
         assert dest.is_file(), "o pacote com os outros 6 arquivos tem de ser entregue"
 
+    @pytest.mark.skipif(
+        sys.platform != "win32",
+        reason=(
+            "trava de arquivo via msvcrt: o helper `_travar` reproduz o "
+            "bloqueio exclusivo que o Excel/Word poe no arquivo aberto, e "
+            "`msvcrt` so existe no Windows. O comportamento do PRODUTO sob "
+            "arquivo ilegivel nao e especifico de plataforma; o que e "
+            "especifico e o jeito de PRODUZIR essa trava"
+        ),
+    )
     def test_o_arquivo_que_faltou_e_nomeado_com_o_motivo(
         self, tmp_path: Path, escritorio: Path
     ) -> None:
@@ -637,6 +658,16 @@ class TestArquivoIlegivelNaoDerrubaOBackup:
         assert ausente["arquivo"] == "escritorio/m_planilha.xlsx"
         assert "aberto por outro programa" in ausente["motivo"]
 
+    @pytest.mark.skipif(
+        sys.platform != "win32",
+        reason=(
+            "trava de arquivo via msvcrt: o helper `_travar` reproduz o "
+            "bloqueio exclusivo que o Excel/Word poe no arquivo aberto, e "
+            "`msvcrt` so existe no Windows. O comportamento do PRODUTO sob "
+            "arquivo ilegivel nao e especifico de plataforma; o que e "
+            "especifico e o jeito de PRODUZIR essa trava"
+        ),
+    )
     def test_nao_sobra_entrada_vazia_no_lugar_do_arquivo(
         self, tmp_path: Path, escritorio: Path
     ) -> None:
@@ -676,6 +707,16 @@ class TestArquivoIlegivelNaoDerrubaOBackup:
         assert [e.arcname for e in entradas] == ["dados/fica.txt"]
         assert "deixou de existir" in ilegiveis[0].reason
 
+    @pytest.mark.skipif(
+        sys.platform != "win32",
+        reason=(
+            "trava de arquivo via msvcrt: o helper `_travar` reproduz o "
+            "bloqueio exclusivo que o Excel/Word poe no arquivo aberto, e "
+            "`msvcrt` so existe no Windows. O comportamento do PRODUTO sob "
+            "arquivo ilegivel nao e especifico de plataforma; o que e "
+            "especifico e o jeito de PRODUZIR essa trava"
+        ),
+    )
     def test_tudo_ilegivel_e_falha_e_nao_pacote_vazio(self, tmp_path: Path) -> None:
         """Um pacote vazio com cara de backup seria a pior mentira possivel."""
         pasta = tmp_path / "so_travado"
@@ -696,6 +737,16 @@ class TestArquivoIlegivelNaoDerrubaOBackup:
 class TestGravacaoAtomica:
     """O caminho final ou nao existe, ou esta inteiro."""
 
+    @pytest.mark.skipif(
+        sys.platform != "win32",
+        reason=(
+            "trava de arquivo via msvcrt: o helper `_travar` reproduz o "
+            "bloqueio exclusivo que o Excel/Word poe no arquivo aberto, e "
+            "`msvcrt` so existe no Windows. O comportamento do PRODUTO sob "
+            "arquivo ilegivel nao e especifico de plataforma; o que e "
+            "especifico e o jeito de PRODUZIR essa trava"
+        ),
+    )
     def test_nao_sobra_arquivo_parcial_quando_falha(self, tmp_path: Path) -> None:
         pasta = tmp_path / "d"
         pasta.mkdir()
@@ -812,6 +863,16 @@ class TestManifesto:
             texto = zf.read(MANIFEST_NAME).decode("utf-8")
         assert str(tmp_path) not in texto
 
+    @pytest.mark.skipif(
+        sys.platform != "win32",
+        reason=(
+            "trava de arquivo via msvcrt: o helper `_travar` reproduz o "
+            "bloqueio exclusivo que o Excel/Word poe no arquivo aberto, e "
+            "`msvcrt` so existe no Windows. O comportamento do PRODUTO sob "
+            "arquivo ilegivel nao e especifico de plataforma; o que e "
+            "especifico e o jeito de PRODUZIR essa trava"
+        ),
+    )
     def test_registra_quem_ficou_de_fora(self, tmp_path: Path) -> None:
         pasta = tmp_path / "d"
         pasta.mkdir()
@@ -881,6 +942,16 @@ class TestVerificacao:
         assert relatorio.ok is False
         assert relatorio.missing == (removido,)
 
+    @pytest.mark.skipif(
+        sys.platform != "win32",
+        reason=(
+            "trava de arquivo via msvcrt: o helper `_travar` reproduz o "
+            "bloqueio exclusivo que o Excel/Word poe no arquivo aberto, e "
+            "`msvcrt` so existe no Windows. O comportamento do PRODUTO sob "
+            "arquivo ilegivel nao e especifico de plataforma; o que e "
+            "especifico e o jeito de PRODUZIR essa trava"
+        ),
+    )
     def test_lembra_o_que_ficou_de_fora_na_origem(self, tmp_path: Path) -> None:
         """Quem confere precisa saber que esses arquivos nunca estiveram la."""
         pasta = tmp_path / "d"
@@ -1103,6 +1174,15 @@ class TestAvisoDeMesmoVolume:
         assert result.status == TaskStatus.SUCCESS
         assert dest.is_file()
 
+    @pytest.mark.skipif(
+        sys.platform != "win32",
+        reason=(
+            "caminho UNC (//servidor/share): a semantica de volume que "
+            "`same_volume` compara e do Windows. Em POSIX o caminho vira uma "
+            "pasta comum e o teste perderia o sentido — nao ha volume "
+            "diferente para detectar"
+        ),
+    )
     def test_volumes_diferentes_nao_geram_aviso(self, tmp_path: Path) -> None:
         pasta = tmp_path / "d"
         pasta.mkdir()
