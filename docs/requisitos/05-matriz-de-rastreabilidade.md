@@ -70,7 +70,21 @@ conteúdo só existe depois do JavaScript): **sem `--js` extrai 0 itens; com
 que separa a renderização do parser — sem ele, um parser que lesse HTML cru
 passaria pelo mesmo assert. O caso com navegador tem `skipif` ligado a
 `verify_playwright_installed()`, entao ver "2 passed" (e nao "1 passed, 1
-skipped") e a propria prova de que o navegador rodou · **[H]** evidência
+skipped") e a propria prova de que o navegador rodou · **[C2]** homologação C1
+do RF-WEB-003 (07/09/2026) — `pytest tests/e2e/test_rpa_cadastro_e2e.py -v
+--no-cov`: **6 passed**, nenhum *skipped*, em 25,32s. O Chromium abre o
+formulário do servidor demo, preenche e submete; a asserção que fecha cada caso
+não é o retorno da task, é o `GET /cadastros` do **destino** — verificar o
+retorno provaria que a task acha que deu certo, ler o destino prova que deu.
+Os dois critérios de aceite da ficha estão cobertos: (a) *linha ruim não
+interrompe* — a planilha põe a linha válida **depois** da de CPF inválido, e
+ela chega ao destino; (b) *screenshot de erro não expõe campo sensível* — a
+imagem é decodificada com `zlib` da stdlib (o projeto não tem Pillow) e a cor
+de máscara `#FF00FF` é contada: a asserção foi conferida por mutação, trocando
+a cor procurada por uma inexistente, e falhou com 0 pixels, o que mostra que
+ela discrimina em vez de passar por acaso. Cobertos também o duplicado
+(`skipped`, destino com um registro só), o agregado `PARTIAL` e o dry-run, que
+roda sem navegador · **[H]** evidência
 colhida manualmente na auditoria
 (saídas de `--help`, leitura de código com linha citada).
 
@@ -114,7 +128,7 @@ colhida manualmente na auditoria
 | RF-COM-003 | NÃO INICIADO | PÓS-V1 | — | — | [H] (grep "idempot" vazio em send_email/telegram) | tudo | INT-002 (desenho) | Fase D1 |
 | RF-WEB-001 | CONCLUÍDO | OBRIG. V1 | `src/autotarefas/tasks/extract_web.py` | `tests/tasks/test_extract_web.py`, `tests/cli/test_extract_web_cli.py` | [N][L] | — | CORE-001 | manter |
 | RF-WEB-002 | CONCLUÍDO | OBRIG. V1 (modo real) | ramo `--js` em `src/autotarefas/tasks/extract_web.py` + `BrowserSession` em `src/autotarefas/core/browser.py` | `tests/tasks/test_extract_web_js.py` (unidade, browser mockado) + `tests/e2e/test_extract_web_js_e2e.py` (**os 2 passam** com Chromium instalado) | [N][A1][C1] | — (execução pública segue fora da V1 por DP-02, o que não é lacuna deste requisito) | WEB-001 | manter |
-| RF-WEB-003 | **PARCIAL** | OBRIG. V1 (modo real) | `src/autotarefas/tasks/rpa_cadastro.py` | `tests/tasks/test_rpa_cadastro.py`, `tests/cli/test_rpa_cli.py`, `tests/core/test_browser.py` (navegador mockado) | [N][A1] | **não existe teste com navegador real para o RPA**; decisão de 10/08/2026: teste automatizado com navegador real é obrigatório antes de CONCLUÍDO, homologação manual é complementar | CORE browser | criar o teste com navegador real antes da C1 |
+| RF-WEB-003 | CONCLUÍDO | OBRIG. V1 (modo real) | `src/autotarefas/tasks/rpa_cadastro.py` + `src/autotarefas/core/browser.py` (`screenshot_safe`) | `tests/tasks/test_rpa_cadastro.py`, `tests/cli/test_rpa_cli.py`, `tests/core/test_browser.py` (navegador mockado) + **`tests/e2e/test_rpa_cadastro_e2e.py` (navegador real, 6 casos)** | [N][A1][C2] | — | CORE browser | manter |
 | RF-WEB-004 | NÃO INICIADO | PÓS-V1 | — | — | — | tudo | INT-006 | Fase D4 |
 | RF-GOV-001 | CONCLUÍDO | OBRIG. V1 | `src/autotarefas/tasks/report_audit.py` | `tests/tasks/test_report_audit.py`, `tests/cli/test_report_cli.py` | [N] | Live → LIVE-006a | CORE-002 | ativar no Live (A3) |
 | RF-GOV-002 | CONCLUÍDO | OBRIG. V1 | `src/autotarefas/dashboard/{reader,renderer}.py` | `tests/dashboard/`, `tests/cli/test_dashboard_cli.py` | [N] | Live → LIVE-006a | GOV-001 | ativar no Live (A3) |

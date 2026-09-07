@@ -2,8 +2,8 @@
 
 **Revisão 3 — baseline documental aprovado em 10/08/2026.**
 Versão do software: `1.4.0` (inalterada — esta revisão é documental).
-Escopo obrigatório da V1: **41 requisitos**, dos quais **40 CONCLUÍDOS**
-(progresso documental **40/41**). Total catalogado: **51** requisitos funcionais.
+Escopo obrigatório da V1: **41 requisitos**, e os **41 estão CONCLUÍDOS**
+(progresso documental **41/41**). Total catalogado: **51** requisitos funcionais.
 
 > **Atualização de 14/08/2026 — Fase B concluída.** Entraram como CONCLUÍDOS:
 > RF-REC-001 (`comparar`), RF-REC-002 (`conciliar`), RF-REC-003 (`transferir`),
@@ -24,6 +24,15 @@ Escopo obrigatório da V1: **41 requisitos**, dos quais **40 CONCLUÍDOS**
 > instalado, o e2e de `extract web --js` passa inteiro (2 de 2, nenhum skip) e
 > prova por contraste que a mesma página rende 0 itens sem `--js` e 3 com
 > `--js`. Resta **um** obrigatório: RF-WEB-003 (RPA de cadastro).
+
+> **Atualização de 07/09/2026 — RF-WEB-003 CONCLUÍDO (41/41).** O RPA de
+> cadastro passou a ter teste com navegador real: 6 casos, e cada um fecha
+> lendo o destino (`GET /cadastros`) em vez do retorno da task. Os dois
+> critérios de aceite da ficha estão cobertos — linha ruim não interrompe, e a
+> screenshot de erro sai com o campo sensível mascarado. **O escopo obrigatório
+> da V1 está fechado.** O que segue aberto não é requisito: são as três
+> ressalvas do Card 02 (VSS com elevação, SMTP no cofre, balde S3 real), que
+> dependem de hardware ou credencial, e a suíte do Card 02 na CI.
 
 ---
 

@@ -44,7 +44,7 @@
 > **Nada mudou de status por causa desta revisão.** Ela é documental no sentido
 > estrito: transcreve para cá o que a matriz e as fichas já comprovavam. Os
 > números de 05/08 e 10/08 permanecem no texto, marcados como históricos.
-> **Placar vigente: 40/41** — ver §3.
+> **Placar vigente: 41/41** — ver §3.
 
 ---
 
@@ -87,9 +87,9 @@ progresso V1 = requisitos OBRIGATÓRIO V1 com status CONCLUÍDO
 ```
 
 Escopo aprovado em **10/08/2026** (DP-01): **41 requisitos OBRIGATÓRIO V1**, dos
-quais **40 CONCLUÍDOS**.
+quais **41 CONCLUÍDOS** — o escopo obrigatório da V1 está fechado.
 
-**Progresso vigente da V1: 40/41.**
+**Progresso vigente da V1: 41/41.**
 
 Este número muda somente quando um requisito obrigatório passa a CONCLUÍDO pelo
 DoD (`09`), com evidência na matriz (`05`) — nunca por aprovação documental.
@@ -104,8 +104,8 @@ DoD (`09`), com evidência na matriz (`05`) — nunca por aprovação documental
 
 | Grupo | Requisitos | Situação |
 |---|---|---|
-| Concluídos (40) | CORE-001..006 · ARQ-001, ARQ-003 · PLA-001..010 · REC-001..004 · INT-001..003, INT-005 · COM-001..002 · WEB-001, WEB-002 · GOV-001..004 · LIVE-001..005/007 | manter (regressão = bloqueio) |
-| Parciais (1) | WEB-003 | concluir |
+| Concluídos (41) | CORE-001..006 · ARQ-001, ARQ-003 · PLA-001..010 · REC-001..004 · INT-001..003, INT-005 · COM-001..002 · WEB-001..003 · GOV-001..004 · LIVE-001..005/007 | manter (regressão = bloqueio) |
+| Parciais (0) | — | — |
 | Não iniciados (0) | — | — |
 
 **Nenhum requisito obrigatório da V1 permanece NÃO INICIADO.** Os sete que
@@ -186,7 +186,7 @@ auditoria não conclui requisito. Em **10/08/2026** eram: 51 catalogados ·
 progresso **30/41**.
 
 > Estes são os valores **daquela data**. As fases B1 a B7 (14/08/2026) levaram o
-> placar a **40/41** — ver §3.
+> placar a **41/41** — ver §3.
 
 ## 5. Checklist mestre (marcar somente com evidência na matriz 05)
 
@@ -241,7 +241,7 @@ progresso **30/41**.
 ### WEB — web scraping e RPA
 - [x] RF-WEB-001 Scraping HTML paginado por seletores CSS — CONCLUÍDO
 - [x] RF-WEB-002 Scraping com JavaScript (navegador)
-- [ ] RF-WEB-003 RPA de cadastro com screenshots mascarados — PARCIAL (código + testes de unidade prontos; e2e pendente → CONCLUÍDO na Fase C1)
+- [x] RF-WEB-003 RPA de cadastro com screenshots mascarados
 - [ ] RF-WEB-004 Retomada e resiliência a mudanças de página — NÃO INICIADO
 
 ### GOV — governança e auditoria
