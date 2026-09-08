@@ -89,9 +89,9 @@ jobs:
       - name: Instalar dependencias
         run: npm ci
 
-      - name: Auditar todas as dependencias
-        run: npm audit
-
+      # O portao bloqueante responde a pergunta que importa para quem instala:
+      # o que a gente PUBLICA esta vulneravel? A auditoria completa continua
+      # existindo abaixo, informativa, depois do build.
       - name: Auditar dependencias de producao
         run: npm audit --omit=dev
 
@@ -103,3 +103,11 @@ jobs:
 
       - name: Build
         run: npm run build
+
+      # Informativa, e no fim de proposito. Quando ela bloqueava e vinha
+      # primeiro, um advisory numa dependencia transitiva de build pulava
+      # typecheck, testes e build — e podia esconder um erro de TypeScript real.
+      # Portao que mascara falha verdadeira e pior que portao nenhum.
+      - name: Auditar todas as dependencias (informativo)
+        run: npm audit
+        continue-on-error: true
