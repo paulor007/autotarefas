@@ -58,6 +58,7 @@ import os
 import re
 import shutil
 import stat
+import sys
 import tempfile
 import time
 import zipfile
@@ -157,9 +158,13 @@ def is_link(path: Path) -> bool:
     """
     if path.is_symlink():
         return True
+    if sys.platform != "win32":
+        # Ponto de reanalise e conceito do Windows: em POSIX o `is_symlink`
+        # acima ja respondeu tudo o que havia para responder.
+        return False
     try:
         atributos = path.lstat().st_file_attributes
-    except (OSError, AttributeError):  # POSIX nao tem o atributo
+    except OSError:  # caminho sumiu ou ficou inacessivel entre uma chamada e outra
         return False
     return bool(atributos & stat.FILE_ATTRIBUTE_REPARSE_POINT)
 
