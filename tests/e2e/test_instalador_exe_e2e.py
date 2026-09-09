@@ -7,7 +7,7 @@ codigo.
 Tres perguntas, e cada uma tem um jeito proprio de falhar:
 
 1. o executavel baixado **ja sabe para onde ligar**? Se o carimbo nao chegar, a
-   janela pede endereco e codigo — e a promessa vira mentira;
+   janela pede endereco e codigo - e a promessa vira mentira;
 2. o executavel **roda** na maquina do cliente? Um `.exe` de 29 MB que abre e
    fecha e pior do que nao ter executavel nenhum;
 3. o que a janela faz por baixo **funciona contra o servidor real**? Pareamento,
@@ -17,7 +17,7 @@ A janela em si nao entra: ela e casca, e tudo que decide alguma coisa mora em
 `assistente.py`, que os testes de unidade cobrem. O que este arquivo acrescenta
 e o contato com o servidor de verdade.
 
-Pula sozinho quando o executavel nao foi gerado — ele nao e versionado. Para
+Pula sozinho quando o executavel nao foi gerado - ele nao e versionado. Para
 gerar:
 
     pip install -e ".[instalador]"
@@ -48,7 +48,7 @@ TIMEOUT_SUBIDA_S = 90
 #
 # A guarda morava dentro da fixture `live`, e por isso valia so para quem
 # pedia a fixture. O `test_sem_pareamento_o_modo_servico_recusa_rapido` nao
-# pede — ele chama o `.exe` direto —, escapava da guarda e quebrava a CI com
+# pede - ele chama o `.exe` direto -, escapava da guarda e quebrava a CI com
 # `FileNotFoundError`. A guarda estava presa ao MECANISMO (a fixture) quando o
 # que ela descreve e uma condicao do AMBIENTE.
 #
@@ -57,7 +57,7 @@ TIMEOUT_SUBIDA_S = 90
 _SEM_EXECUTAVEL = not EXECUTAVEL.is_file()
 _MOTIVO_SEM_EXECUTAVEL = (
     "executavel nao gerado: rode `python tools/construir_agente.py` depois de "
-    '`pip install -e ".[instalador]"`. E artefato de build, nao versionado — '
+    '`pip install -e ".[instalador]"`. E artefato de build, nao versionado - '
     "num checkout limpo ele nunca existe, e no Linux nao pode existir"
 )
 
@@ -92,7 +92,7 @@ def live(tmp_path_factory: pytest.TempPathFactory) -> Iterator[tuple[str, str]]:
 
     Sem guarda do executavel aqui: ela subiu para o `pytestmark` do modulo,
     onde alcanca todo teste. Repetir a checagem daria duas afirmacoes do mesmo
-    fato, livres para divergir — e foi essa divergencia que deixou um teste
+    fato, livres para divergir - e foi essa divergencia que deixou um teste
     escapar.
     """
     pasta = tmp_path_factory.mktemp("exe")
@@ -198,7 +198,7 @@ class TestOQueATelaOferece:
         """
         O carimbo e o que dispensa a pessoa de digitar endereco e codigo.
 
-        Sem ele a janela teria dois campos — dois jeitos de errar, e o suporte
+        Sem ele a janela teria dois campos - dois jeitos de errar, e o suporte
         recebendo "diz que o codigo esta errado" pelo resto da vida.
         """
         from apps.agente.agente import carimbo
@@ -224,7 +224,7 @@ class TestOQueATelaOferece:
         O servidor confere de quem e o codigo antes de colar no arquivo.
 
         Carimbar o que o navegador mandou permitiria um instalador apontando
-        para o codigo de outra empresa — e o cliente entraria na organizacao
+        para o codigo de outra empresa - e o cliente entraria na organizacao
         errada sem nunca saber.
         """
         from apps.agente.agente import carimbo
@@ -244,7 +244,7 @@ class TestOExecutavelRoda:
         """
         Um `.exe` que abre e fecha em silencio e pior do que nao existir.
 
-        Aqui ele sai com codigo de erro — e depressa, porque o Agendador vai
+        Aqui ele sai com codigo de erro - e depressa, porque o Agendador vai
         chama-lo assim a cada login enquanto a maquina nao estiver pareada.
         """
         resultado = subprocess.run(  # noqa: S603
