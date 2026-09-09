@@ -506,6 +506,27 @@ conciliar → corrigir → planilha tratada → **importar com mapeamento** →
 evidências), jornada cronometrada ≤ 3 min, evidências registradas na matriz.
 Commit: `docs(requisitos): evidencias de homologacao V1 (e2e e importacao mapeada)`
 
+**C1.1 — O instalador nao e verificavel pela CI, e isso e estrutural.**
+Os seis testes de `tests/e2e/test_instalador_exe_e2e.py` dependem de
+`dist-agente/AutoTarefas-Agente.exe`, que e **artefato de build e nao esta
+versionado** — num checkout limpo ele nunca existe, e no Linux da CI ele **nao
+pode** existir, porque e um executavel do Windows gerado pelo PyInstaller. A
+consequencia precisa ficar escrita: **CI verde nao significa instalador
+verificado.** Ele so e exercitado numa maquina Windows onde alguem rodou
+`pip install -e ".[instalador]"` e `python tools/construir_agente.py` antes da
+suite. Fora dai os seis pulam, com o motivo na propria mensagem do skip.
+
+Por isso a verificacao do instalador entra no **roteiro manual** desta fase, e
+nao no portao automatico: gerar o `.exe`, rodar
+`pytest tests/e2e/test_instalador_exe_e2e.py` na maquina que o gerou, e
+registrar a saida como evidencia. Publicar um instalador que a esteira nunca
+executou seria confiar num artefato que ninguem viu rodar.
+
+Registrado em 09/09/2026, depois de a guarda do executavel subir da fixture
+`live` para o `pytestmark` do modulo. Ate entao ela alcancava so os testes que
+pediam a fixture, e o unico que chamava o `.exe` direto escapava — quebrando a
+CI com `FileNotFoundError` em vez de pular.
+
 **C2. Ritual de release V1** — fora do escopo desta etapa documental:
 README/CHANGELOG completos, bump em `__init__.py`, tag, push com tags (deploy do
 Pages). Só após A1, A2, A4, B1–B7 e C1.

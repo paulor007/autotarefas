@@ -44,7 +44,28 @@ EXECUTAVEL = RAIZ / "dist-agente" / "AutoTarefas-Agente.exe"
 
 TIMEOUT_SUBIDA_S = 90
 
-pytestmark = [pytest.mark.e2e, pytest.mark.slow]
+# O fato que este arquivo inteiro depende, dito UMA vez.
+#
+# A guarda morava dentro da fixture `live`, e por isso valia so para quem
+# pedia a fixture. O `test_sem_pareamento_o_modo_servico_recusa_rapido` nao
+# pede — ele chama o `.exe` direto —, escapava da guarda e quebrava a CI com
+# `FileNotFoundError`. A guarda estava presa ao MECANISMO (a fixture) quando o
+# que ela descreve e uma condicao do AMBIENTE.
+#
+# No modulo, ela vale por construcao, inclusive para o proximo teste que
+# alguem escrever sem lembrar da fixture.
+_SEM_EXECUTAVEL = not EXECUTAVEL.is_file()
+_MOTIVO_SEM_EXECUTAVEL = (
+    "executavel nao gerado: rode `python tools/construir_agente.py` depois de "
+    '`pip install -e ".[instalador]"`. E artefato de build, nao versionado — '
+    "num checkout limpo ele nunca existe, e no Linux nao pode existir"
+)
+
+pytestmark = [
+    pytest.mark.e2e,
+    pytest.mark.slow,
+    pytest.mark.skipif(_SEM_EXECUTAVEL, reason=_MOTIVO_SEM_EXECUTAVEL),
+]
 
 
 def _porta_livre() -> int:
@@ -66,13 +87,14 @@ def _esperar_porta(porta: int) -> bool:
 
 @pytest.fixture(scope="module")
 def live(tmp_path_factory: pytest.TempPathFactory) -> Iterator[tuple[str, str]]:
-    """Sobe o Live e devolve (endereco, cookie de sessao do dono)."""
-    if not EXECUTAVEL.is_file():
-        pytest.skip(
-            "executavel nao gerado: rode `python tools/construir_agente.py` "
-            'depois de `pip install -e ".[instalador]"`'
-        )
+    """
+    Sobe o Live e devolve (endereco, cookie de sessao do dono).
 
+    Sem guarda do executavel aqui: ela subiu para o `pytestmark` do modulo,
+    onde alcanca todo teste. Repetir a checagem daria duas afirmacoes do mesmo
+    fato, livres para divergir — e foi essa divergencia que deixou um teste
+    escapar.
+    """
     pasta = tmp_path_factory.mktemp("exe")
     porta = _porta_livre()
     endereco = f"http://127.0.0.1:{porta}"
