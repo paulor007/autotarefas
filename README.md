@@ -3,49 +3,101 @@
 [![CI](https://github.com/paulor007/autotarefas/actions/workflows/ci.yml/badge.svg)](https://github.com/paulor007/autotarefas/actions/workflows/ci.yml)
 [![Docs](https://img.shields.io/badge/docs-online-success.svg)](https://paulor007.github.io/autotarefas/)
 [![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/)
-[![Version](https://img.shields.io/badge/version-1.1.0-blue.svg)]()
+[![Version](https://img.shields.io/badge/version-1.5.0-blue.svg)]()
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Coverage](https://img.shields.io/badge/coverage-92%25-brightgreen.svg)]()
 [![mypy: strict](https://img.shields.io/badge/mypy-strict-blue.svg)](http://mypy-lang.org/)
 [![Security: documented](https://img.shields.io/badge/security-documented-green.svg)](SECURITY.md)
 
-Robô de automação operacional para tarefas em planilhas (CSV, Excel),
-arquivos, sistemas web (RPA) e APIs. Projeto Python moderno com foco em
-**segurança**, **rastreabilidade** (audit trail) e **robustez**.
+**Ferramenta que trata planilhas e as conecta a sistemas.**
 
-> 🏆 **v1.1.0 — estável + web scraping.** Validador + Backup +
-> Organizador + Segurança + Relatórios + RPA Cadastro + Extração via API +
-> **Extração via Web Scraping** + Envio via API + Notificações por Email +
-> Sincronização API→API, com **CI/CD** (GitHub Actions) e **documentação
-> publicada** (GitHub Pages).
+Quase toda empresa pequena tem a mesma pilha de trabalho: uma planilha que
+chegou de outro lugar e precisa ser conferida antes de valer alguma coisa.
+Linhas repetidas que ninguém viu, CPF com um dígito trocado, data que veio
+como texto, duas versões do mesmo arquivo que não batem. Alguém confere isso à
+mão, no fim do mês, e depois copia o resultado para outro sistema — também à
+mão.
 
-📚 **Documentação completa:** <https://paulor007.github.io/autotarefas/>
+O problema não é só o tempo. É que **ninguém consegue provar depois o que foi
+feito**: qual linha foi alterada, por qual regra, quem autorizou, e se o
+arquivo original continua íntegro.
+
+O AutoTarefas resolve as duas metades. Ele **analisa, confere, concilia e
+corrige** planilhas por regras que você declara — nunca por adivinhação — e
+**leva o resultado a outro sistema** por API, e-mail ou navegador. Cada
+execução deixa registro em trilha de auditoria encadeada por hash, com os
+dados sensíveis mascarados antes de chegar ao log.
+
+📚 **Documentação:** <https://paulor007.github.io/autotarefas/>
+🔒 **Política de segurança e retenção:** [SECURITY.md](SECURITY.md)
 
 ---
 
-## ✨ Destaques
+## O que a V1 entrega
 
-- **Automação web (RPA)** — cadastra registros web a partir de planilha, com navegador real (Playwright)
-- **Extração via API** — consome APIs REST paginadas (com retry e rate limit) e salva em CSV/XLSX/JSON
-- **Extração via Web Scraping** — raspa páginas HTML por seletores CSS, segue a paginação e salva em CSV/XLSX/JSON; o modo `--js` renderiza páginas carregadas por JavaScript (Playwright)
-- **Envio via API** — cadastro em massa: lê planilha e faz POST de cada linha (retry, rate limit, relatório)
-- **Notificações por Email** — envia emails em massa de uma planilha, com template `{coluna}` e senha protegida
-- **Notificações por Telegram** — envia mensagens pela Bot API de uma planilha (gratuito), com template `{coluna}` e token protegido
-- **Sincronização API→API** — extrai de uma API e envia para outra num passo só (composição de tasks)
-- **Sistema demo local** — servidor Flask para testar automações e extrações com segurança
-- **Validador de planilhas** com schema declarativo em YAML
-- **Validadores brasileiros**: CPF e CNPJ com algoritmo módulo 11
-- **Backup ZIP** com hash SHA-256 e excludes inteligentes
-- **Organizador de arquivos** com regras YAML
-- **Relatórios consolidados** do audit trail (summary/list/errors)
-- **Dashboard de auditoria** — painel HTML visual das execuções, gerado localmente (v1.4.0)
-- **Segurança transversal documentada** — 13 princípios, threat model
-- **Audit trail completo** — toda execução em SQLite append-only com HMAC-SHA256
-- **Mascaramento automático** — CPFs, CNPJs, senhas e tokens nunca vazam em logs nem em screenshots
-- **Dry-run em tudo** — simula operações antes de fazer mudanças reais
-- **Integração contínua** — CI no GitHub Actions (Python 3.12 e 3.13)
-- **Type-safe** — mypy strict, 0 erros
-- **1229 testes**, 92% de cobertura
+Sete capacidades, todas com teste automatizado e evidência registrada na
+[matriz de rastreabilidade](docs/requisitos/05-matriz-de-rastreabilidade.md):
+
+| | O que faz |
+|---|---|
+| **Analisar** | descreve a estrutura de um CSV/XLSX sem você escrever schema nenhum, e sugere um |
+| **Validar** | confere a planilha contra regras declaradas em YAML; separa o que passou do que precisa de revisão humana |
+| **Comparar e conciliar** | acha o que difere entre duas planilhas, por chave, e reconcilia com tolerâncias que você define |
+| **Corrigir** | aplica correções **autorizadas** — de/para, padronização, preenchimento — e manda para revisão o que não estava na lista |
+| **Preservar a apresentação** | a planilha tratada sai com o formato original intacto: painel congelado, autofiltro, largura, moeda |
+| **Conectar** | envia para API com mapeamento de colunas, por e-mail ou Telegram; extrai de API e de páginas web, inclusive as montadas por JavaScript |
+| **Provar** | trilha de auditoria encadeada por hash, pacote de execução com manifesto e SHA-256, mascaramento de dado sensível |
+
+**Escopo obrigatório da V1: 41 de 41 requisitos concluídos.** O acompanhamento
+requisito a requisito está no [pacote de
+requisitos](https://paulor007.github.io/autotarefas/requisitos/).
+
+### O que **não** está na V1
+
+**O backup automático verificável fica de fora** (decisão DP-09). O código
+existe, funciona e continua no repositório — agente próprio, agendamento na
+máquina, retenção GFS, restauração guiada e verificação de integridade. O que
+falta não é código: **ele não tem nenhum ID de requisito**, e sem requisito não
+há critério de aceite pelo qual declará-lo concluído. Declarar seria inventar a
+régua depois da medição. Criar esses IDs é trabalho de V2.
+
+Três pendências dele dependem de hardware ou credencial, e não de programação:
+teste do VSS com elevação, credencial SMTP no cofre para o envio de e-mail, e
+um balde S3 real para o destino em nuvem. Enquanto não houver o balde, o painel
+mostra "proteção parcial" — que é estado honesto, não defeito.
+
+---
+
+## O Live
+
+O AutoTarefas tem uma interface web onde a jornada de planilhas roda inteira
+pelo navegador: envia o arquivo, vê a análise, confirma as regras e baixa o
+resultado.
+
+**Ele não está hospedado publicamente.** A escolha de hospedagem foi adiada por
+decisão registrada (DP-03), junto com os números de disponibilidade e
+capacidade que só fazem sentido depois de medições reproduzíveis. Publicar um
+endereço agora seria prometer um serviço que ninguém dimensionou.
+
+Para rodar na sua máquina:
+
+```bash
+pip install -e ".[demo]"        # os mocks contra os quais as automações rodam,
+                                # sem tocar em sistema de ninguém
+python -m uvicorn apps.api.app.main:app --port 7860       # backend, em um terminal
+npm --prefix apps/web install
+npm --prefix apps/web run dev                             # interface, em outro
+```
+
+A interface abre em <http://localhost:5173> e fala com o backend na 7860.
+FastAPI, Uvicorn, SQLAlchemy e `python-multipart` são dependências **base** do
+pacote — `pip install -e .` já as traz.
+
+Quem envia um arquivo é informado, **antes do upload**, do que acontece com
+ele: o arquivo e o resultado somem em 15 minutos, o servidor guarda apenas o
+evento da execução em log mascarado por 30 dias, há arquivos de exemplo
+prontos, e a recomendação é não enviar dado pessoal desnecessário. Os prazos e
+o mecanismo estão em [SECURITY.md](SECURITY.md).
 
 ---
 
@@ -59,38 +111,56 @@ python -m venv venv
 source venv/bin/activate         # Linux/Mac
 # .\venv\Scripts\Activate.ps1    # Windows PowerShell
 
-pip install -e ".[dev]"
+pip install -e .
 ```
 
 **Pré-requisitos**: Python 3.12+, Git.
 
+Isso basta para a CLI **e** para o Live: FastAPI, Uvicorn, SQLAlchemy e
+Playwright são dependências base. O ferramental de desenvolvimento (pytest,
+mypy, ruff) fica no `[dev]`, na seção **Desenvolvimento**, mais abaixo.
+
 ### Extras opcionais
 
 ```bash
-pip install -e ".[rpa]"          # automação web (Playwright)
-playwright install chromium      # baixa o navegador (~200MB)
+playwright install chromium      # baixa o navegador (~200MB), para RPA e `extract web --js`
 
 pip install -e ".[demo]"         # servidor demo local (Flask + SMTP)
 pip install -e ".[docs]"         # documentação (MkDocs Material)
 
-pip install -e ".[dev,rpa,demo,docs]"  # tudo junto
+pip install -e ".[dev,demo,docs]"      # tudo junto
 ```
 
 ---
 
-## 🎯 Quick Start
+## 🎯 Comece por aqui
+
+Uma planilha entra torta e sai conferida. Sem escrever schema, sem configurar
+nada:
 
 ```bash
-autotarefas init                  # Inicializa ~/.autotarefas/
-autotarefas info                  # Verifica o sistema
-autotarefas --help                # Lista comandos
-autotarefas report                # Vê o que você já fez!
+autotarefas init                          # cria ~/.autotarefas/ (uma vez só)
+
+# 1. O que tem dentro deste arquivo?
+autotarefas analisar vendas.xlsx
+#    -> descreve as colunas, os tipos, o que parece data, o que parece CPF,
+#       quantas linhas estao repetidas — e sugere um schema
+
+# 2. Confere contra o que foi sugerido
+autotarefas validate vendas.xlsx --schema schema_sugerido.yaml --out-dir saida/
+#    -> saida/planilha_tratada.xlsx  (validas, com o formato original intacto)
+#    -> saida/itens_para_revisao.csv (o que precisa de uma pessoa, com o motivo)
+
+# 3. Prove depois o que foi feito
+autotarefas report                        # o que rodou, quando, com que resultado
 ```
+
+Nada aqui altera o arquivo original. Todo comando que mexe em disco aceita
+`--dry-run` e mostra o que faria antes de fazer.
 
 ---
 
-## 📋 Validador de Planilhas (v0.2.0)
-
+## 📋 Validador de Planilhas
 Valida planilhas CSV/Excel contra schemas YAML declarativos.
 
 ```bash
@@ -102,8 +172,7 @@ Validações: tipo, intervalo, regex, enum, CPF, CNPJ.
 
 ---
 
-## 💾 Backup de Arquivos (v0.3.0)
-
+## 💾 Backup de Arquivos
 Compacta arquivos/pastas em ZIP com hash SHA-256 para integridade.
 
 ```bash
@@ -113,8 +182,7 @@ autotarefas backup D:\projeto --output backup.zip \
 
 ---
 
-## 🗂️ Organizador de Arquivos (v0.3.0)
-
+## 🗂️ Organizador de Arquivos
 Organiza arquivos em sub-pastas conforme regras declarativas em YAML.
 
 ```bash
@@ -126,16 +194,16 @@ Variáveis no destination: `{year}`, `{month:02d}`, `{day:02d}`, `{ext}`.
 
 ---
 
-## 🤖 Automação Web — RPA (v0.5.0)
-
+## 🤖 Automação Web — RPA
 Automatiza cadastros web a partir de uma planilha, usando um navegador
 real (Chromium via Playwright). Valida CPF localmente, é tolerante a
 falhas por linha e mascara dados sensíveis em screenshots.
 
 ### Instalação
 
+O Playwright já vem com o pacote. Falta só o navegador:
+
 ```bash
-pip install -e ".[rpa]"
 playwright install chromium
 ```
 
@@ -209,8 +277,7 @@ default. Para sistemas reais, use `--allow-remote` (com responsabilidade).
 
 ---
 
-## 🔌 Extração via API (v0.6.0)
-
+## 🔌 Extração via API
 Consome uma API REST paginada e salva os dados em arquivo. Faz paginação
 automática, com retry resiliente e controle de taxa.
 
@@ -286,8 +353,7 @@ python -m tools.demo_server          # http://localhost:5555
 
 ---
 
-## 🕸️ Extração via Web Scraping (v1.1.0)
-
+## 🕸️ Extração via Web Scraping
 Raspa páginas HTML que **não** expõem API. Você descreve o que extrair
 com seletores CSS; o comando percorre as linhas, segue a paginação e
 salva em arquivo — espelhando o `extract api`.
@@ -384,8 +450,7 @@ python -m tools.demo_server          # /catalogo e /catalogo-js
 
 ---
 
-## 📤 Envio via API (v0.7.0)
-
+## 📤 Envio via API
 Lê uma planilha e envia cada linha para uma API (POST). É o caminho
 profissional para **cadastro em massa** num sistema que exponha API REST
 — muito mais rápido que automação via navegador.
@@ -451,8 +516,7 @@ comando avisa que a credencial trafegaria sem criptografia.
 
 ---
 
-## 📧 Notificações por Email (v0.8.0)
-
+## 📧 Notificações por Email
 Lê uma planilha de destinatários e envia um email **personalizado por
 linha**, via SMTP. O assunto e o corpo aceitam `{coluna}`: trechos como
 `{nome}` são trocados pelos valores da linha.
@@ -517,8 +581,7 @@ Os emails recebidos são mostrados no console e salvos em `.eml`.
 
 ---
 
-## 📨 Notificações por Telegram (v1.2.0)
-
+## 📨 Notificações por Telegram
 Lê uma planilha e envia uma mensagem **personalizada por linha** via
 Telegram (Bot API). O texto aceita `{coluna}`: trechos como `{nome}` são
 trocados pelos valores da linha. Gratuito — sem gateway pago.
@@ -585,8 +648,7 @@ As mensagens recebidas ficam em `GET http://localhost:5555/telegram/mensagens`.
 
 ---
 
-## 🔄 Sincronização entre APIs (v1.0.0)
-
+## 🔄 Sincronização entre APIs
 Liga extração e envio num passo só: **extrai de uma API origem e envia
 para uma API destino**. É o caso de uso clássico de migração/replicação
 de dados entre sistemas que expõem APIs REST.
@@ -643,8 +705,7 @@ autotarefas --dry-run sync api -s URL_ORIGEM -d URL_DESTINO
 
 ---
 
-## 📊 Relatórios Consolidados (v0.4.0)
-
+## 📊 Relatórios Consolidados
 Consulta o **audit trail** e gera estatísticas, listas ou apenas falhas.
 Toda execução de qualquer comando é registrada automaticamente em
 SQLite, e o `report` te dá visibilidade sobre tudo.
@@ -721,8 +782,7 @@ Falhas recentes (ultimas 5):
 
 ---
 
-## 📊 Dashboard de Auditoria (v1.4.0)
-
+## 📊 Dashboard de Auditoria
 Um **painel HTML** do audit trail: as mesmas execuções do `report`, agora
 visuais. O comando lê o histórico, gera uma página **estática e autocontida**
 (sem servidor, sem dependência extra) e pode abri-la no navegador.
@@ -765,8 +825,7 @@ autotarefas dashboard --task validate --status failure --limit 50
 
 ---
 
-## 🛡️ Segurança (v0.4.0)
-
+## 🛡️ Segurança
 Este projeto adere a **13 princípios documentados** de segurança.
 Consulte [SECURITY.md](SECURITY.md) para detalhes completos.
 
@@ -804,6 +863,14 @@ Documentação completa em **MkDocs Material**, publicada no GitHub Pages:
 Inclui guia de comandos, visão de arquitetura e uma **referência de API
 gerada automaticamente das docstrings** (via `mkdocstrings`).
 
+> **Lacuna conhecida.** O guia de comandos do site cobre 12 dos 22 comandos —
+> faltam os que entraram nesta versão (`analisar`, `comparar`, `conciliar`,
+> `corrigir`, `transferir`, `perfis`, `run`, `restaurar`, `verificar`,
+> `manutencao`, `cofre`). Enquanto isso não fecha, a referência detalhada dos
+> comandos antigos continua **aqui neste README**, mais abaixo. Manter os dois
+> é duplicação, e ela está registrada para ser resolvida movendo o conteúdo
+> para o site — não apagando daqui antes de o site cobrir o que falta.
+
 Para rodar localmente:
 
 ```bash
@@ -815,17 +882,46 @@ mkdocs serve          # http://127.0.0.1:8000
 
 ## 📋 Outros Comandos
 
+**Planilhas — analisar, conferir e corrigir:**
+
 ```bash
-autotarefas info        # mostra info do sistema
-autotarefas init        # cria estrutura ~/.autotarefas/
-autotarefas validate    # valida planilha CSV/Excel
-autotarefas backup      # compacta arquivos em ZIP
-autotarefas organize    # organiza arquivos em pastas
-autotarefas report      # relatórios do audit trail
-autotarefas rpa         # automação web (rpa cadastro)
-autotarefas extract     # extração via API (extract api) e web scraping (extract web)
-autotarefas send        # envio via API (send api) e email (send email)
-autotarefas sync        # sincronização API->API (sync api)
+autotarefas analisar     # descreve a estrutura e sugere um schema
+autotarefas validate     # valida contra schema YAML
+autotarefas perfis       # schemas prontos, sem escrever YAML
+autotarefas comparar     # o que difere entre duas planilhas, por chave
+autotarefas conciliar    # reconcilia por regras, com tolerâncias
+autotarefas corrigir     # aplica só as correções autorizadas
+autotarefas transferir   # copia campos autorizados entre planilhas
+autotarefas run          # encadeia tudo isso num fluxo YAML
+```
+
+**Conectar a sistemas:**
+
+```bash
+autotarefas extract      # de API (extract api) e de páginas web (extract web)
+autotarefas send         # para API, e-mail e Telegram
+autotarefas sync         # de uma API para outra, num passo
+autotarefas rpa          # cadastro em sistema web sem API (navegador real)
+```
+
+**Arquivos e evidência:**
+
+```bash
+autotarefas backup       # compacta em ZIP verificável, com manifesto
+autotarefas verificar    # confere a integridade de um pacote
+autotarefas restaurar    # restaura os arquivos de um pacote
+autotarefas organize     # organiza arquivos em pastas por regras
+autotarefas report       # relatórios do audit trail
+autotarefas dashboard    # painel HTML do audit trail
+```
+
+**Administração:**
+
+```bash
+autotarefas info         # versão, ambiente e configuração
+autotarefas init         # cria a estrutura ~/.autotarefas/
+autotarefas cofre        # chave mestra que protege os segredos
+autotarefas manutencao   # expurgo confirmado, conforme a política de retenção
 ```
 
 ### Opções globais
@@ -841,22 +937,24 @@ autotarefas sync        # sincronização API->API (sync api)
 
 ---
 
-## 🛣️ Roadmap
+## 🛣️ Onde o projeto está
 
-- ✅ **v0.1.0** — Core + CLI base
-- ✅ **v0.2.0** — Validador de planilhas
-- ✅ **v0.3.0** — Backup + Organizador
-- ✅ **v0.4.0** — Segurança Transversal + Relatórios
-- ✅ **v0.5.0** — Sistema demo + RPA Cadastro Web
-- ✅ **v0.6.0** — Extração via API
-- ✅ **v0.7.0** — Envio via API (cadastro em massa)
-- ✅ **v0.8.0** — Notificações por Email
-- ✅ **v1.0.0** — Versão estável: CI/CD + documentação + sincronização API→API
-- ✅ **v1.1.0** — Web scraping (`extract web`)
-- ✅ **v1.2.0** — Notificações por Telegram
-- ✅ **v1.3.0** — Extração com JavaScript (`extract web --js`)
-- ✅ **v1.4.0** — Dashboard de auditoria (`autotarefas dashboard`) _(atual)_
-- ⏳ **futuro** — Paginação por clique em SPAs no modo `--js`
+**v1.5.0 — V1 completa: 41 de 41 requisitos obrigatórios concluídos.**
+
+O histórico versão a versão está no [CHANGELOG](CHANGELOG.md). O
+acompanhamento requisito a requisito, com evidência de teste em cada linha,
+está na [matriz de rastreabilidade](docs/requisitos/05-matriz-de-rastreabilidade.md).
+
+Próximos passos, nesta ordem:
+
+- **piloto com uso real** — a V1 está completa em requisitos, e ainda não foi
+  usada por outra pessoa em trabalho de verdade. É o que falta para saber o que
+  o catálogo não mede;
+- **hospedagem do Live** (DP-03), que destrava os números de disponibilidade e
+  capacidade hoje em aberto;
+- **IDs de requisito para o backup automático**, sem os quais ele não tem como
+  ser declarado concluído (DP-09);
+- **paginação por clique em SPAs** no modo `extract web --js`.
 
 ---
 
@@ -886,8 +984,11 @@ a cada push e pull request.
 - **SQLite** — audit trail local
 - **pandas** + **openpyxl** + **PyYAML** — planilhas, schemas e output da extração
 - **zipfile** + **hashlib** + **shutil** — backup/organizador (stdlib!)
-- **Playwright** — automação web (RPA)
-- **Flask** — servidor demo local (desenvolvimento)
+- **Playwright** — automação web (RPA) e páginas montadas por JavaScript
+- **FastAPI** + **Uvicorn** — backend do Live, com streaming SSE
+- **SQLAlchemy** — persistência da plataforma
+- **React** + **Vite** + **TypeScript** + **Tailwind** — interface do Live
+- **Flask** — mocks determinísticos contra os quais as automações rodam
 - **httpx** — requests HTTP (extração, envio e sincronização via API)
 - **BeautifulSoup** — parsing de HTML (web scraping; parser `html.parser` da stdlib)
 - **tenacity** — retry com backoff exponencial

@@ -24,7 +24,7 @@ build-backend = "hatchling.build"
 [project]
 name = "autotarefas"
 dynamic = ["version"]
-description = "Robô de Automação Operacional em Python — valida planilhas, organiza arquivos, automatiza cadastros e extrai dados de sistemas web."
+description = "Ferramenta que trata planilhas e as conecta a sistemas."
 authors = [
     { name = "Paulo Lavarini", email = "paulo.lavarini@gmail.com" },
 ]
@@ -44,7 +44,7 @@ keywords = [
 ]
 
 classifiers = [
-    "Development Status :: 2 - Pre-Alpha",
+    "Development Status :: 4 - Beta",
     "Environment :: Console",
     "Intended Audience :: Developers",
     "Intended Audience :: System Administrators",
@@ -101,6 +101,11 @@ dependencies = [
     # === Sistema demo (Fase 8.0) ===
     "fastapi>=0.136.1,<1.0.0",      # Sistema-alvo do RPA
     "uvicorn[standard]>=0.47.0,<1.0.0",  # ASGI server pro FastAPI
+    # Runtime do Live, e nao ferramenta de desenvolvimento: sem ele o Starlette
+    # levanta `RuntimeError: Form data requires "python-multipart"` ao montar
+    # as rotas de upload. Esteve em [dev] por um dia — era o remendo minimo
+    # para a CI, e o lugar errado.
+    "python-multipart>=0.0.20,<0.1.0",
     "jinja2>=3.1.6,<4.0.0",         # Templates HTML do sistema demo
     "faker>=40.19.1,<41.0.0",        # Dados fictícios pro sistema demo
 
@@ -133,13 +138,6 @@ dev = [
     "pytest-mock>=3.15.1,<4.0.0",   # Mocking
     "pytest-asyncio>=1.3.0,<2.0.0",  # Pra Playwright async
 
-    # Sem ele a suite do Live nem COLETA: o Starlette levanta
-    # `RuntimeError: Form data requires "python-multipart"` ao montar as rotas
-    # de upload. Aqui e nao em `dependencies` porque quem so usa o CLI nunca
-    # sobe a API — na maquina de quem desenvolve ele vinha por transitividade,
-    # e foi assim que ficou dois meses sem ser declarado.
-    "python-multipart>=0.0.20,<0.1.0",
-
     # === Type checking ===
     "mypy>=2.1.0,<3.0.0",
     "types-PyYAML>=6.0.12.20260518,<7.0.0",  # Stubs do PyYAML
@@ -171,9 +169,10 @@ demo = [
     "flask>=3.1.2,<4.0.0",
     "aiosmtpd>=1.4.6,<2.0.0",
 ]
-rpa = [
-    "playwright>=1.60.0,<2.0.0",
-]
+# O extra `[rpa]` saiu na 1.5.0: o Playwright ja e dependencia base, entao
+# ele instalava o que ja estava instalado. O que o RPA precisa de verdade e
+# `playwright install chromium`, que baixa o navegador. Quem ainda rodar
+# `.[rpa]` recebe so um aviso do pip, e a instalacao segue normal.
 
 # Para gerar documentação (instala com: pip install -e ".[docs]")
 docs = [

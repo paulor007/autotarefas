@@ -527,6 +527,28 @@ Registrado em 09/09/2026, depois de a guarda do executavel subir da fixture
 pediam a fixture, e o unico que chamava o `.exe` direto escapava — quebrando a
 CI com `FileNotFoundError` em vez de pular.
 
+**C1.2 — Três duplicações conhecidas, adiadas de propósito para depois da 1.5.0.**
+Registradas em 11/09/2026, na revisão do README e do `pyproject` do release. As
+três têm a mesma forma — duas declarações do mesmo fato, livres para divergir —
+e nenhuma foi resolvida na véspera da tag porque cada uma mexe em instalação ou
+em documentação publicada:
+
+1. **O guia de comandos do site cobre 12 dos 22 comandos.** `docs/comandos.md`
+   não traz os que entraram na 1.5.0 (`analisar`, `comparar`, `conciliar`,
+   `corrigir`, `transferir`, `perfis`, `run`, `restaurar`, `verificar`,
+   `manutencao`, `cofre`). Por isso a referência detalhada dos comandos antigos
+   continua no README. Resolver **movendo** o conteúdo do README para o site e
+   escrevendo o que falta — não apagando do README antes de o site cobrir.
+2. **`apps/api/requirements.txt` duplica o `pyproject.toml`.** Serve ao
+   container, e declara de novo `fastapi`, `uvicorn`, `sqlalchemy` e
+   `python-multipart`, que já são dependências base do pacote. Um dia as duas
+   listas vão divergir. Resolver fazendo o container instalar o próprio pacote.
+3. **O Playwright é dependência base, mas só o RPA e o `extract web --js` o
+   usam.** Na 1.5.0 o extra `[rpa]`, que duplicava a base, foi removido. A
+   correção conceitual é o inverso: tirar o Playwright da base e deixá-lo só num
+   extra, para quem usa apenas planilhas não baixar um pacote de navegador.
+   Ficou para depois porque muda a instalação de quem já usa RPA.
+
 **C2. Ritual de release V1** — fora do escopo desta etapa documental:
 README/CHANGELOG completos, bump em `__init__.py`, tag, push com tags (deploy do
 Pages). Só após A1, A2, A4, B1–B7 e C1.

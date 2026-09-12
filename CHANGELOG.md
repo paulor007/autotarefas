@@ -9,7 +9,162 @@ e este projeto adere a [Versionamento Semântico](https://semver.org/lang/pt-BR/
 
 ## [Não lançado]
 
-Em desenvolvimento.
+---
+
+## [1.5.0] — 2026-09-10
+
+🎯 **V1 completa: 41 de 41 requisitos obrigatórios concluídos.**
+
+A 1.4.0 tinha as ferramentas soltas — validar, extrair, enviar. Esta versão
+fecha o percurso entre elas: uma planilha entra torta e sai conferida,
+corrigida por regras declaradas, com a apresentação original intacta e o
+registro de cada decisão. O agrupamento abaixo é **por requisito entregue**, e
+cada bloco tem evidência na [matriz de
+rastreabilidade](https://paulor007.github.io/autotarefas/requisitos/05-matriz-de-rastreabilidade/).
+
+### Added
+
+**O Live: o produto rodando no navegador** — RF-LIVE-001 a 005 e 007
+
+A entrega mais visível desta versão, e a única que permite entender o produto
+sem instalar nada. Nasceu inteira depois da 1.4.0.
+
+- **Catálogo curado, com régua explícita de ativo e em breve.** Treze
+  automações em sete categorias. O que ainda não executa aparece como "em
+  breve" e o servidor responde 501 — em vez de prometer na tela e falhar no
+  clique.
+- **Execução isolada de verdade, em duas fases.** Cada execução ganha um
+  workspace próprio, com `AUTOTAREFAS_HOME` isolado; o `POST` agenda e devolve
+  um token, e o `GET` transmite a saída **linha a linha por SSE**, com evento
+  final de conclusão ou de tempo esgotado. Quem assiste vê o terminal de
+  verdade, não uma animação.
+- **Jornada guiada de planilhas.** Envia o arquivo, vê a análise da estrutura,
+  confirma as regras e as correções seguras, e baixa a versão organizada
+  separada dos registros que precisam de revisão. Aceita arquivo de exemplo,
+  arquivo próprio, perfil embutido ou YAML autoral.
+- **Limites que protegem o servidor, e são conhecidos.** Rate limit por IP,
+  teto de execuções simultâneas e de workspaces, TTL de 15 minutos, tempo
+  máximo por execução com encerramento forçado, stream limitado em linhas e
+  bytes, upload com teto de tamanho e allowlist de extensão por automação.
+  O subprocesso roda **sem shell**, com argumentos montados pelo servidor.
+- **Mocks determinísticos internos.** Um servidor de demonstração sobe junto
+  com o Live, para que as automações de API, e-mail e navegador tenham contra o
+  que rodar sem tocar em sistema de ninguém.
+- **Interface React consumindo apenas APIs reais.** Terminal ao vivo,
+  artefatos com download, resumos por tipo de execução, estados de erro e de
+  servidor fora do ar.
+
+**Reconciliação de planilhas** — RF-REC-001 a 004
+
+- `autotarefas comparar` — compara duas planilhas por chave e relata o que
+  difere, o que só existe de um lado e as chaves duplicadas.
+- `autotarefas conciliar` — reconcilia por regras declaradas, com tolerâncias
+  numéricas; divergência não autorizada vai para revisão em vez de ser
+  aplicada em silêncio.
+- `autotarefas transferir` — copia **apenas** os campos autorizados de uma
+  planilha para outra; campo fora da lista fica intacto, e o hash dos dois
+  arquivos é conferido antes e depois.
+- Ambos gravam relatório das decisões: o que mudou, por qual regra, e o que
+  ficou pendente de gente.
+
+**Correções autorizadas e apresentação preservada** — RF-PLA-009 e 010
+
+- `autotarefas corrigir` aplica de/para, padronização e preenchimento de
+  vazios **só** do que está no arquivo de regras. Valor desconhecido não é
+  adivinhado: vai para `itens_para_revisao.csv` com o motivo.
+- A planilha tratada sai com o formato do original preservado — painel
+  congelado, autofiltro, largura de coluna, fonte e preenchimento do cabeçalho,
+  formato de moeda. Um relatório de preservação acompanha, declarando o que
+  não pôde ser mantido.
+
+**Fluxo reutilizável** — RF-CORE-006 (recorte V1) e RF-REC-004
+
+- `autotarefas run fluxo.yaml` encadeia analisar → comparar → conciliar →
+  corrigir num passo, gravando cada etapa em sua pasta.
+- Precedência explícita: opção da linha de comando vence a do arquivo.
+- Segredo embutido no YAML é **recusado na leitura**, com saída 2.
+
+**Mapeamento de colunas na importação** — RF-INT-005
+
+- `autotarefas send api --map/--map-file` traduz os nomes das colunas da
+  planilha para o vocabulário da API de destino. Corrigir a planilha e adequá-la
+  a um sistema são responsabilidades distintas, e agora têm ferramentas
+  distintas.
+- `--obrigatorio` rejeita a linha com campo vazio, com motivo, **sem** virar
+  requisição. Mapeamento inválido aborta antes do primeiro POST.
+- `--previa` mostra o payload que sairia, sem enviar nada.
+
+**Análise sem schema** — RF-PLA-002
+
+- `autotarefas analisar` descreve a estrutura de um CSV/XLSX e sugere um
+  schema. Ninguém precisa entender YAML para começar.
+- `autotarefas perfis` entrega schemas prontos para casos comuns.
+
+**Aviso de privacidade no Live** — RF-GOV-003
+
+- Quem envia um arquivo pela interface descrita acima é informado **antes do upload**: para
+  que serve o processamento, que o arquivo e o resultado somem em 15 minutos,
+  que o servidor guarda apenas o evento da execução em log mascarado por 30
+  dias, que há arquivos de exemplo, e que não se deve enviar dado pessoal
+  desnecessário.
+- Cumprir em silêncio uma política que ninguém enunciou não é transparência —
+  é bom comportamento que o usuário não tem como verificar.
+
+**Restauração e verificação de pacotes**
+
+- `autotarefas verificar` confere a integridade de um pacote contra o manifesto
+  e o SHA-256 de cada arquivo; pacote de outra ferramenta é recusado com o
+  motivo, em vez de aprovado por engano.
+- `autotarefas restaurar` restaura pelo nome do pacote, recusando caminho que
+  tente escapar da pasta escolhida.
+
+### Changed
+
+- **Retenção configurável e expurgo confirmado** (RF-GOV-003). Prazos de log,
+  screenshot e trilha de auditoria vêm da configuração, e não fixos no código.
+  O comando `manutencao expurgar` calcula o plano antes de apagar, aceita
+  `--dry-run`, pede confirmação com resposta padrão **não**, registra o que
+  removeu na trilha e **recusa rodar no ambiente do Live**.
+- **A política de retenção e privacidade passou a ser escrita**, em
+  [SECURITY.md](SECURITY.md), separando o ambiente público do modo real
+  privado. Cada prazo foi conferido no código antes de virar texto — e a
+  conferência mudou duas afirmações que teriam sido promessas falsas.
+- **O portão de auditoria do frontend passou a perguntar sobre produção.** O
+  passo bloqueante é `npm audit --omit=dev`; a auditoria completa continua,
+  informativa, depois do build. Antes, um advisory numa dependência de build
+  derrubava a esteira antes de typecheck, testes e build rodarem — um portão
+  que mascarava falha verdadeira.
+
+### Fixed
+
+- **Guarda de plataforma nos testes de Windows.** Onze testes de backup
+  dependem de `msvcrt` (trava de arquivo como o Excel faz) ou de semântica de
+  caminho UNC; passavam a impressão de suíte quebrada em Linux. Agora pulam,
+  com o motivo específico escrito no `reason`.
+- **`is_link` acessava `st_file_attributes` sem guarda de plataforma.** O
+  comportamento em execução estava correto, mas o mypy no Linux recusava o
+  acesso e derrubava a CI antes dos testes.
+- **A guarda do executável do agente subiu da fixture para o módulo.** Presa à
+  fixture, alcançava só os testes que a pediam; um teste que chamava o `.exe`
+  direto escapava e quebrava em qualquer máquina sem o artefato de build.
+- **`python-multipart` não estava declarado.** Vinha por transitividade na
+  máquina de desenvolvimento; num ambiente limpo, a suíte do Live nem coletava.
+- **Retenção com escopo por política** no produto de backup — correção em código que, pela DP-09, **não faz parte da V1**, mas continua no repositório e em funcionamento. Duas políticas na
+  mesma máquina podiam atuar sobre o mesmo conjunto de pacotes, e uma retenção
+  curta apagava o que a outra deveria preservar.
+
+### Notas
+
+- **O backup automático verificável não faz parte da V1** (DP-09). O código
+  permanece no repositório e funcionando; o que falta é ter IDs de requisito
+  próprios, sem os quais não existe critério pelo qual declará-lo concluído.
+- **O Live não está hospedado publicamente** (DP-03): a escolha de hospedagem
+  foi adiada junto com os números de disponibilidade e capacidade que dependem
+  de medições reproduzíveis.
+- **Nenhuma quebra de compatibilidade.** Comparados os comandos e parâmetros
+  entre `v1.4.0` e esta versão: nenhum comando foi removido ou renomeado,
+  nenhum parâmetro de comando existente passou a ser obrigatório, e
+  `extract api --output` deixou de ser obrigatório. Por isso MINOR, e não MAJOR.
 
 ---
 
@@ -957,7 +1112,8 @@ com 2 comandos, ~220 testes.
 
 ---
 
-[Não lançado]: https://github.com/paulor007/autotarefas/compare/v1.4.0...HEAD
+[Não lançado]: https://github.com/paulor007/autotarefas/compare/v1.5.0...HEAD
+[1.5.0]: https://github.com/paulor007/autotarefas/releases/tag/v1.5.0
 [1.4.0]: https://github.com/paulor007/autotarefas/releases/tag/v1.4.0
 [1.3.0]: https://github.com/paulor007/autotarefas/releases/tag/v1.3.0
 [1.2.0]: https://github.com/paulor007/autotarefas/releases/tag/v1.2.0
