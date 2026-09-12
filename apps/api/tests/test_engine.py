@@ -70,7 +70,7 @@ def test_catalog_e_health(client: TestClient) -> None:
     health = client.get("/api/health").json()
     assert health["status"] == "ok"
     assert set(health["active_automations"]) == set(engine.ACTIVE_AUTOMATIONS)
-    assert len(health["active_automations"]) == 7
+    assert len(health["active_automations"]) == 11
     assert health["limits"]["max_concurrent_runs"] == 4
     assert health["limits"]["egress_lockdown"] is True
 
@@ -177,8 +177,8 @@ def test_run_desconhecida_404(client: TestClient) -> None:
 
 
 def test_run_nao_ativa_501(client: TestClient) -> None:
-    # send_email existe no catalogo, mas ainda nao esta disponivel ao vivo
-    assert client.post("/api/run/send_email").status_code == HTTP_NOT_IMPLEMENTED
+    # rpa_cadastro existe no catalogo, mas ainda nao esta disponivel ao vivo
+    assert client.post("/api/run/rpa_cadastro").status_code == HTTP_NOT_IMPLEMENTED
 
 
 def test_upload_extensao_proibida(client: TestClient) -> None:
@@ -216,6 +216,65 @@ def test_reset_url_send_api() -> None:
     assert url is not None
     assert url.endswith("/limpar")
     assert recipes.reset_url("validate") is None
+
+
+def test_recipe_report_argv(tmp_path: Path) -> None:
+    argv = recipes.build_argv("report", tmp_path, [])
+    assert "report" in argv
+    assert "--format" in argv
+    assert "json" in argv
+
+
+def test_recipe_dashboard_argv(tmp_path: Path) -> None:
+    argv = recipes.build_argv("dashboard", tmp_path, [])
+    assert "dashboard" in argv
+    assert any(part.endswith("painel_auditoria.html") for part in argv)
+
+
+def test_seed_workspace_report_grava_trilha_real(tmp_path: Path) -> None:
+    """
+    A trilha semeada precisa ser gravavel/legivel pela MESMA classe que a
+    escreveu — e a prova de que o HMAC de cadeia esta valido, nao so que
+    "existe um arquivo .db".
+    """
+    from autotarefas.core.audit import AuditTrail
+
+    recipes.seed_workspace("report", tmp_path)
+    db = tmp_path / "home" / "audit.db"
+    assert db.exists()
+
+    trilha = AuditTrail(db_path=db)
+    entradas = trilha.query(limit=100)
+    assert len(entradas) == 8
+
+
+def test_seed_workspace_ignora_automacoes_sem_necessidade(tmp_path: Path) -> None:
+    recipes.seed_workspace("validate", tmp_path)
+    assert not (tmp_path / "home" / "audit.db").exists()
+
+
+def test_recipe_send_email_argv(tmp_path: Path) -> None:
+    argv = recipes.build_argv("send_email", tmp_path, [])
+    assert "send" in argv
+    assert "email" in argv
+    assert "--no-tls" in argv
+    assert "contatos_email_demo.csv" in " ".join(argv)
+
+
+def test_recipe_sync_api_argv(tmp_path: Path) -> None:
+    argv = recipes.build_argv("sync_api", tmp_path, [])
+    assert "sync" in argv
+    assert "api" in argv
+    # Origem e destino falam o mesmo idioma (cliente); o catalogo de
+    # produtos nao teria CPF, e a sincronizacao falharia cem por cento.
+    assert any("/api/clientes-legado" in part for part in argv)
+    assert any(part.endswith("/api/clientes") for part in argv)
+
+
+def test_reset_url_sync_api() -> None:
+    url = recipes.reset_url("sync_api")
+    assert url is not None
+    assert url.endswith("/limpar")
 
 
 def test_recipe_send_telegram_argv(tmp_path: Path) -> None:
@@ -418,6 +477,63 @@ def demo_crm() -> Iterator[None]:
         _remover_log()
 
 
+@pytest.fixture(scope="module")
+def demo_smtp(tmp_path_factory: pytest.TempPathFactory) -> Iterator[None]:
+    """
+    Sobe o SMTP de debug (tools.smtp_debug) na porta do mock, so para os
+    testes que precisam dele — mesmo motivo do `demo_crm`: o conftest desliga
+    o autostart do app (DEMO_SERVERS_AUTOSTART=0) para a suite nao pagar o
+    custo de subir mocks que a maioria dos testes nao usa.
+
+    `DEMO_SMTP_SAVE_DIR` aponta para um `tmp_path` do proprio pytest: os
+    `.eml` da suite não podem cair em `emails_recebidos/` na raiz do
+    repositorio, que é o padrão do modulo quando ninguem configura nada.
+    """
+    import os as os_module
+    import socket
+    import subprocess
+    import sys
+    import time
+
+    from apps.api.app.config import settings
+
+    raiz = Path(__file__).resolve().parents[3]
+    port = settings.smtp_port
+    save_dir = tmp_path_factory.mktemp("emails_recebidos")
+
+    proc = subprocess.Popen(
+        [sys.executable, "-m", "tools.smtp_debug"],
+        cwd=str(raiz),
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        env={
+            **os_module.environ,
+            "DEMO_SMTP_PORT": str(port),
+            "DEMO_SMTP_SAVE_DIR": str(save_dir),
+        },
+    )
+    try:
+        for _ in range(30):
+            if proc.poll() is not None:
+                pytest.fail(f"smtp_debug encerrou com codigo {proc.returncode} antes de subir.")
+            try:
+                with socket.create_connection(("127.0.0.1", port), timeout=1):
+                    break
+            except OSError:
+                pass
+            time.sleep(0.5)
+        else:
+            pytest.fail(f"smtp_debug nao aceitou conexao na porta {port} apos 15s.")
+        yield
+    finally:
+        proc.terminate()
+        try:
+            proc.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            proc.wait(timeout=10)
+
+
 def _baixar_report(client: TestClient, result: dict[str, Any]) -> dict[str, Any]:
     art = next(a for a in result["artifacts"] if a["name"] == "importacao_report.json")
     report: dict[str, Any] = client.get(art["download_url"]).json()
@@ -495,6 +611,121 @@ def test_extract_api_independente_do_cadastro(client: TestClient) -> None:
     art = next(a for a in result["artifacts"] if a["name"] == "extracao_report.json")
     report = client.get(art["download_url"]).json()
     assert report["total_registros"] == 47
+
+
+@pytest.mark.usefixtures("demo_crm")
+def test_catalogo_sync_api_reposicionado(client: TestClient) -> None:
+    catalog = client.get("/api/catalog").json()
+    sync = next(a for a in catalog["automations"] if a["id"] == "sync_api")
+    assert sync["title"] == "Sincronizar API"
+
+
+@pytest.mark.usefixtures("demo_crm")
+def test_sync_api_stream_gera_artefatos(client: TestClient) -> None:
+    """
+    Prova por leitura do destino, nao so do retorno da task: os 12 clientes
+    do CRM legado (`/api/clientes-legado`) precisam aparecer de verdade em
+    `/api/clientes` depois da sincronizacao — verificar so o relatorio
+    provaria que a task ACHA que enviou; ler o destino prova que enviou.
+    """
+    import httpx
+
+    from apps.api.app.config import settings
+
+    result = _run_and_collect(client, "sync_api")
+    assert result["outcome"] == "ok"
+    names = sorted(a["name"] for a in result["artifacts"])
+    assert names == ["sync_report.json"]
+
+    art = result["artifacts"][0]
+    report = client.get(art["download_url"]).json()
+    assert len(report) == 12
+    assert all(linha["_categoria"] == "sucesso" for linha in report)
+    assert {linha["nome"] for linha in report} >= {"Ana Ferreira", "Bruno Costa"}
+
+    base = f"http://127.0.0.1:{settings.demo_primary_port}"
+    destino = httpx.get(f"{base}/api/clientes", params={"per_page": 20}, timeout=5.0)
+    assert destino.status_code == HTTP_OK
+    assert destino.json()["total"] == 12
+    nomes_no_destino = {c["nome"] for c in destino.json()["data"]}
+    assert "Ana Ferreira" in nomes_no_destino
+
+
+@pytest.mark.usefixtures("demo_crm")
+def test_sync_api_segunda_execucao_nao_duplica(client: TestClient) -> None:
+    """Reset entre execucoes: a segunda rodada nao recai em 409 em cascata."""
+    primeira = _run_and_collect(client, "sync_api")
+    segunda = _run_and_collect(client, "sync_api")
+    assert primeira["outcome"] == "ok"
+    assert segunda["outcome"] == "ok"
+
+
+def test_catalogo_send_email_reposicionado(client: TestClient) -> None:
+    catalog = client.get("/api/catalog").json()
+    send = next(a for a in catalog["automations"] if a["id"] == "send_email")
+    assert send["title"] == "Disparar e-mails"
+
+
+@pytest.mark.usefixtures("demo_smtp")
+def test_send_email_stream_gera_artefatos(client: TestClient) -> None:
+    """
+    O SMTP de debug e uma instancia PROPRIA da suite (fixture `demo_smtp`),
+    nao a que o lifespan do app subiria — o conftest desliga o autostart
+    para a suite inteira, entao cada teste que precisa de mock sobe o seu.
+    """
+    result = _run_and_collect(client, "send_email")
+    assert result["outcome"] == "ok"
+    names = sorted(a["name"] for a in result["artifacts"])
+    assert names == ["send_email_report.json"]
+
+    art = result["artifacts"][0]
+    report = client.get(art["download_url"]).json()
+    assert len(report) == 4
+    assert all(linha["_resultado"] == "ok" for linha in report)
+    assert {linha["email"] for linha in report} >= {"ana.beatriz@exemplo.com.br"}
+
+
+def test_catalogo_report_e_dashboard_reposicionados(client: TestClient) -> None:
+    catalog = client.get("/api/catalog").json()
+    ids = {a["id"] for a in catalog["automations"]}
+    report = next(a for a in catalog["automations"] if a["id"] == "report")
+    dashboard = next(a for a in catalog["automations"] if a["id"] == "dashboard")
+    assert report["title"] == "Relatório de auditoria"
+    assert dashboard["title"] == "Painel de auditoria"
+    assert {"report", "dashboard"} <= ids
+
+
+def test_report_stream_resume_a_trilha_semeada(client: TestClient) -> None:
+    """
+    Prova que a semente e a leitura sao a MESMA trilha: os numeros do
+    relatorio precisam bater com o que `seed_workspace` gravou, nao so
+    "rodou sem erro".
+    """
+    result = _run_and_collect(client, "report")
+    assert result["outcome"] == "ok"
+    names = sorted(a["name"] for a in result["artifacts"])
+    assert names == ["auditoria_resumo.json"]
+
+    art = result["artifacts"][0]
+    resumo = client.get(art["download_url"]).json()
+    assert resumo["total_executions"] == 8
+    assert resumo["by_status"]["success"] == 6
+    assert resumo["by_status"]["partial"] == 2
+    assert resumo["total_rows_affected"] == 218
+
+
+def test_dashboard_stream_gera_painel_html(client: TestClient) -> None:
+    result = _run_and_collect(client, "dashboard")
+    assert result["outcome"] == "ok"
+    names = sorted(a["name"] for a in result["artifacts"])
+    assert names == ["painel_auditoria.html"]
+
+    art = result["artifacts"][0]
+    html = client.get(art["download_url"]).text
+    assert "<html" in html.lower()
+    # os nomes das tasks semeadas precisam aparecer no painel renderizado
+    assert "validate" in html
+    assert "backup" in html
 
 
 @pytest.mark.usefixtures("demo_crm")

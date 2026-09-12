@@ -19,6 +19,7 @@ Destino deste arquivo:
 
 from __future__ import annotations
 
+import os
 import time
 from email import policy
 from email.message import EmailMessage
@@ -28,9 +29,12 @@ from typing import Any, cast
 
 from aiosmtpd.controller import Controller
 
-HOST = "localhost"
-PORT = 8025
-SAVE_DIR = Path("emails_recebidos")
+HOST = os.environ.get("DEMO_SMTP_HOST", "localhost")
+PORT = int(os.environ.get("DEMO_SMTP_PORT", "8025"))
+# Env var so o Live (demo_servers.py) pode apontar para uma pasta de runtime
+# fora da arvore do repositorio — sem isso, a instancia compartilhada sujaria
+# o cwd do processo com um email_NNN.eml por execucao de qualquer visitante.
+SAVE_DIR = Path(os.environ.get("DEMO_SMTP_SAVE_DIR", "emails_recebidos"))
 _BODY_PREVIEW = 800
 
 

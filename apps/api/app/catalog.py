@@ -162,11 +162,11 @@ AUTOMATIONS: tuple[Automation, ...] = (
         "notificacoes",
         "Disparar e-mails",
         "SMTP de demonstração",
-        "Gera um e-mail por linha do CSV e entrega num servidor SMTP de teste "
-        "(nada sai para fora).",
+        "Gera um e-mail por linha de uma planilha de contatos e entrega num "
+        "servidor SMTP de teste (nada sai para fora).",
         False,
-        "csv",
-        "Envie um .csv (ou use o de exemplo).",
+        "none",
+        "",
         "report",
     ),
     Automation(

@@ -41,6 +41,10 @@ ACTIVE_AUTOMATIONS: tuple[str, ...] = (
     "extract_api",
     "send_api",
     "send_telegram",
+    "sync_api",
+    "send_email",
+    "report",
+    "dashboard",
 )
 
 _TIMEOUT_EXIT = 124
@@ -421,6 +425,7 @@ async def run_streaming(
     reset = recipes.reset_url(automation_id)
     if reset is not None:
         await _reset_demo_state(reset)
+    recipes.seed_workspace(automation_id, job.workspace)
 
     argv = recipes.build_argv(automation_id, job.workspace, inputs, journey)
     loop = asyncio.get_running_loop()

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import sys
 from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from .config import settings
@@ -17,6 +18,7 @@ ASSETS = Path(__file__).resolve().parent / "assets"
 _SCHEMA = ASSETS / "schema_clientes.yaml"
 _ORGANIZE_RULES = ASSETS / "organize_rules.yaml"
 _CONTATOS = ASSETS / "contatos_demo.csv"
+_CONTATOS_EMAIL = ASSETS / "contatos_email_demo.csv"
 
 # Mock interno (sobe no lifespan); host/porta fixos no servidor.
 _PRIMARY = f"http://127.0.0.1:{settings.demo_primary_port}"
@@ -151,6 +153,63 @@ def build_argv(  # noqa: PLR0911
             "-r",
             str(out_dir / "send_telegram_report.json"),
         ]
+    if automation_id == "report":
+        return [
+            *base,
+            "report",
+            "--type",
+            "summary",
+            "--format",
+            "json",
+            "--days",
+            "1",
+            "-o",
+            str(out_dir / "auditoria_resumo.json"),
+        ]
+    if automation_id == "dashboard":
+        return [
+            *base,
+            "dashboard",
+            "-o",
+            str(out_dir / "painel_auditoria.html"),
+        ]
+    if automation_id == "send_email":
+        return [
+            *base,
+            "send",
+            "email",
+            "-p",
+            str(_CONTATOS_EMAIL),
+            "--smtp-host",
+            "127.0.0.1",
+            "--smtp-port",
+            str(settings.smtp_port),
+            "--no-tls",
+            "--from",
+            "autotarefas-demo@exemplo.com",
+            "--subject",
+            "Ola {nome}!",
+            "--body",
+            "Recebemos sua solicitacao e ja esta em processamento, {nome}.",
+            "-r",
+            str(out_dir / "send_email_report.json"),
+        ]
+    if automation_id == "sync_api":
+        # CRM legado -> CRM novo: as duas pontas falam o mesmo idioma
+        # (nome/email/cpf/telefone). O catalogo de produtos nao serviria
+        # como origem — produto nao tem CPF, e a sincronizacao falharia
+        # cem por cento das linhas.
+        return [
+            *base,
+            "sync",
+            "api",
+            "-s",
+            f"{_PRIMARY}/api/clientes-legado",
+            "-d",
+            f"{_PRIMARY}/api/clientes",
+            "-r",
+            str(out_dir / "sync_report.json"),
+        ]
     raise KeyError(automation_id)
 
 
@@ -166,9 +225,66 @@ def reset_url(automation_id: str) -> str | None:
     Returns:
         URL para POST, ou None se a automacao nao precisa de reset.
     """
-    if automation_id == "send_api":
+    if automation_id in ("send_api", "sync_api"):
+        # Os dois escrevem em /api/clientes; sem reset, a 2a execucao
+        # de qualquer um dos dois recai no mesmo 409 em cascata.
         return f"{_PRIMARY}/limpar"
     return None
+
+
+# Automacoes cujo argv sozinho nao basta: precisam de algo pronto no
+# workspace ANTES de rodar, alem dos arquivos que o argv referencia.
+_PRECISA_SEMENTE = ("report", "dashboard")
+
+
+def seed_workspace(automation_id: str, workspace: Path) -> None:
+    """
+    Prepara o workspace ANTES do argv rodar, para automacoes que precisam.
+
+    `report` e `dashboard` leem a trilha de auditoria de AUTOTAREFAS_HOME
+    (`workspace/home` aqui), e cada execucao do Live nasce com esse
+    diretorio vazio — workspace efemero, TTL de 15 min, sem historico
+    anterior. Rodar os dois sem preparar nada seria tecnicamente real e
+    inutil como demonstracao: um resumo de zero execucoes.
+
+    A trilha semeada usa a MESMA classe que grava a trilha de verdade
+    (`AuditTrail.record`), nunca SQL a mao — e o unico jeito de garantir
+    HMAC de cadeia valido, que e a propria razao da trilha existir.
+    """
+    if automation_id not in _PRECISA_SEMENTE:
+        return
+
+    from autotarefas.core.audit import AuditTrail
+
+    home = workspace / "home"
+    home.mkdir(parents=True, exist_ok=True)
+    trilha = AuditTrail(db_path=home / "audit.db")
+
+    # Deterministico na FORMA (nomes, contagem, distribuicao de status),
+    # nao no instante — trilha de auditoria e para parecer viva, e "agora
+    # menos alguns minutos" e o que uma trilha de verdade teria.
+    agora = datetime.now(UTC)
+    # (nome, status, minutos_atras, linhas_afetadas, linhas_com_falha)
+    execucoes = (
+        ("validate", "success", 5, 40, 0),
+        ("backup", "success", 14, 47, 0),
+        ("organize", "success", 22, 23, 0),
+        ("send_api", "partial", 31, 6, 2),
+        ("extract_api", "success", 40, 47, 0),
+        ("send_telegram", "success", 48, 12, 0),
+        ("sync_api", "success", 57, 12, 0),
+        ("validate", "partial", 65, 31, 4),
+    )
+    for indice, (nome, status, minutos_atras, afetados, falhas) in enumerate(execucoes):
+        trilha.record(
+            task_name=nome,
+            status=status,
+            started_at=agora - timedelta(minutes=minutos_atras),
+            duration_ms=300 + indice * 57,
+            rows_affected=afetados,
+            rows_failed=falhas,
+            user="visitante-demo",
+        )
 
 
 def _validate_journey_argv(

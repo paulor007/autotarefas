@@ -8,10 +8,14 @@ eles - nunca com a internet aberta. O health check usa http.client direto contra
 from __future__ import annotations
 
 import http.client
+import os
+import socket
 import subprocess  # nosec B404
 import sys
+import tempfile
 import time
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 from .config import settings
@@ -49,22 +53,62 @@ def _wait_health(port: int, timeout: float = 15.0) -> bool:
     return False
 
 
+def _wait_tcp(port: int, timeout: float = 15.0) -> bool:
+    """
+    Aguarda uma porta aceitar conexao TCP.
+
+    O mock de SMTP (aiosmtpd) nao tem `/health` HTTP — e um protocolo
+    diferente. Um connect que fecha na hora ja confirma que o servidor
+    esta escutando; nao precisamos falar SMTP de verdade so para checar.
+    """
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        try:
+            with socket.create_connection(("127.0.0.1", port), timeout=1):
+                return True
+        except OSError:
+            time.sleep(0.4)
+    return False
+
+
 def start() -> list[DemoServer]:
-    """Sobe o mock primario. Idempotente e respeita DEMO_SERVERS_AUTOSTART."""
+    """Sobe os mocks (Flask + SMTP). Idempotente e respeita DEMO_SERVERS_AUTOSTART."""
     if not settings.autostart_demo_servers:
         return []
     if _servers:
         return _servers
 
-    command = [sys.executable, "-m", "tools.demo_server"]
     # Comando fixo (python -m tools.demo_server), sem shell e sem entrada do usuario.
-    process = subprocess.Popen(  # nosec B603  # noqa: S603
-        command,
+    primary_cmd = [sys.executable, "-m", "tools.demo_server"]
+    primary_process = subprocess.Popen(  # nosec B603  # noqa: S603
+        primary_cmd,
         cwd=str(settings.repo_root),
     )
-    server = DemoServer(name="demo-primary", port=settings.demo_primary_port, process=process)
-    _servers.append(server)
-    _wait_health(server.port)
+    primary = DemoServer(
+        name="demo-primary", port=settings.demo_primary_port, process=primary_process
+    )
+    _servers.append(primary)
+    _wait_health(primary.port)
+
+    # SMTP de debug (Notificacoes por e-mail). Instancia COMPARTILHADA entre
+    # visitantes, como o mock Flask acima — por isso os .eml vao para o temp
+    # do sistema, e nao para dentro do repositorio: um servidor de uso
+    # comum nao pode escrever no diretorio de trabalho de quem o hospeda.
+    save_dir = Path(tempfile.gettempdir()) / "autotarefas-demo-smtp"
+    smtp_cmd = [sys.executable, "-m", "tools.smtp_debug"]
+    smtp_process = subprocess.Popen(  # nosec B603  # noqa: S603
+        smtp_cmd,
+        cwd=str(settings.repo_root),
+        env={
+            **os.environ,
+            "DEMO_SMTP_PORT": str(settings.smtp_port),
+            "DEMO_SMTP_SAVE_DIR": str(save_dir),
+        },
+    )
+    smtp = DemoServer(name="demo-smtp", port=settings.smtp_port, process=smtp_process)
+    _servers.append(smtp)
+    _wait_tcp(smtp.port)
+
     return _servers
 
 

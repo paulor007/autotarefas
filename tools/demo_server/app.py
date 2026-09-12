@@ -80,6 +80,48 @@ def _build_catalogo_demo() -> list[dict[str, Any]]:
 #: Catalogo-semente da Exportacao (imutavel; construido uma vez).
 _CATALOGO_DEMO: list[dict[str, Any]] = _build_catalogo_demo()
 
+
+def _build_clientes_legado() -> list[dict[str, Any]]:
+    """
+    Dataset FIXO e DETERMINISTICO para a Sincronizacao entre sistemas.
+
+    Simula o cliente de um CRM antigo, migrando para o CRM novo
+    (`/api/clientes`). Os campos casam com o que `/api/clientes` exige —
+    sincronizar exige que origem e destino falem o mesmo idioma; o
+    catalogo de produtos (`/api/catalogo`) não fala.
+    """
+    nomes = [
+        "Ana Ferreira",
+        "Bruno Costa",
+        "Carla Dias",
+        "Diego Martins",
+        "Elaine Souza",
+        "Fabio Lima",
+        "Gabriela Alves",
+        "Heitor Rocha",
+        "Isabela Nunes",
+        "Joao Pereira",
+        "Karina Ramos",
+        "Lucas Teixeira",
+    ]
+    registros: list[dict[str, Any]] = []
+    for i, nome in enumerate(nomes, start=1):
+        cpf = f"{i:03d}.{(i * 37) % 1000:03d}.{(i * 91) % 1000:03d}-{(i * 13) % 100:02d}"
+        registros.append(
+            {
+                "id": i,
+                "nome": nome,
+                "email": f"{nome.split()[0].lower()}.{nome.split()[1].lower()}@crm-legado.exemplo",
+                "cpf": cpf,
+                "telefone": f"(11) 9{4000 + i:04d}-{5000 + i:04d}",
+            }
+        )
+    return registros
+
+
+#: Clientes-semente do CRM legado (imutavel; construido uma vez).
+_CLIENTES_LEGADO: list[dict[str, Any]] = _build_clientes_legado()
+
 fake = Faker("pt_BR")
 
 
@@ -262,6 +304,20 @@ def api_catalogo() -> Response:
     page = request.args.get("page", 1, type=int)
     per_page = request.args.get("per_page", 10, type=int)
     return _paginate(_CATALOGO_DEMO, page, per_page)
+
+
+@app.route("/api/clientes-legado")
+def api_clientes_legado() -> Response:
+    """
+    API paginada de um CRM legado (dataset FIXO de demonstracao).
+
+    Fonte da Sincronização entre sistemas: campos de cliente de verdade
+    (nome, email, cpf, telefone), compatíveis com o POST de `/api/clientes`.
+    Independente do storage de cadastros, para a demo ser previsível.
+    """
+    page = request.args.get("page", 1, type=int)
+    per_page = request.args.get("per_page", 10, type=int)
+    return _paginate(_CLIENTES_LEGADO, page, per_page)
 
 
 @app.route("/api/clientes")
